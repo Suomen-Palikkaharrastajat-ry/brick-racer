@@ -200,6 +200,75 @@ suite =
                     , \_ -> Expect.greaterThan (abs (Vec3.getX sFixed.position)) (abs (Vec3.getX sTt.position))
                     ]
                     ()
+        , test "Turntable Bogie steering pulse settles cleanly without oversteer or spinout" <|
+            \_ ->
+                let
+                    track =
+                        buildFlatTestTrack 0.0 500.0
+
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    s0 =
+                        Physics.initPhysics track spec
+
+                    sStart =
+                        { s0 | velocity = vec3 0 0 15.0 }
+
+                    steerRightInput =
+                        { neutralInput | steer = 1.0 }
+
+                    -- 18 frames (~0.3s) of steering input
+                    sSteered =
+                        simulateSteps 18 track spec steerRightInput sStart
+
+                    -- 42 frames (~0.7s) of neutral steering recovery
+                    sRecovered =
+                        simulateSteps 42 track spec neutralInput sSteered
+                in
+                Expect.all
+                    [ -- Settles back into directional stability: yaw rate drops close to zero
+                      \_ -> Expect.lessThan 0.05 (abs sRecovered.yawRate)
+                      -- Holds line without runaway over-rotation beyond initial turn
+                    , \_ -> Expect.lessThan 0.70 (abs sRecovered.yaw)
+                    ]
+                    ()
+        , test "User car hash #b/fcsx... with turntable bogie navigates corner and stabilizes without oversteer" <|
+            \_ ->
+                let
+                    userHash =
+                        "#b/fcsxEgFBEAXQ_6ebRWC2SiQSKlmbGbs7md1A6hCOQugOHNERdDmA5FV3_f-nC7HU0pk5qWjuylFzX09NHlK9mT-Wq5OSZ4M5fVUiAlijdfFm_JCUaQUy3AmEEH7Ig6BAxsNVvRg3Mw93-7kA56efQPv6s2wE4xYLbwNf"
+
+                    track =
+                        buildFlatTestTrack 0.0 500.0
+                in
+                case Ingest.decodeRaceInput Nothing userHash of
+                    Ok decoded ->
+                        let
+                            analyzed =
+                                Analyze.analyzeDocument "UserCar" decoded.document EmbeddedParts.cache Catalog.emptyPartIndex
+
+                            s0 =
+                                Physics.initPhysics track analyzed.spec
+
+                            sStart =
+                                { s0 | velocity = vec3 0 0 14.0 }
+
+                            sSteered =
+                                simulateSteps 18 track analyzed.spec { neutralInput | steer = 1.0 } sStart
+
+                            sEnd =
+                                simulateSteps 42 track analyzed.spec neutralInput sSteered
+                        in
+                        Expect.all
+                            [ \_ -> Expect.lessThan 0.05 (abs sEnd.yawRate)
+                            , \_ -> Expect.greaterThan 0.0 (Vec3.length sEnd.velocity)
+                            , \_ -> Expect.within (Expect.Absolute 0.01) 100.0 sEnd.integrity
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("Failed to decode user car hash: " ++ Debug.toString err)
         , test "respawnAtCheckpoint restores full integrity and resets velocity to zero" <|
             \_ ->
                 let

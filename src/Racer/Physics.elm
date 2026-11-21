@@ -256,7 +256,7 @@ stepFixed dt track spec input state =
 
         -- Steering responsiveness and speed-dependent max angle (in radians; positive = right turn)
         maxSteer =
-            clamp 0.14 0.52 (0.52 / (1.0 + 0.055 * horizSpeed))
+            clamp 0.08 0.44 (0.44 / (1.0 + 0.085 * horizSpeed))
 
         targetSteer =
             clamp -1.0 1.0 input.steer * maxSteer
@@ -264,13 +264,13 @@ stepFixed dt track spec input state =
         steerAuthority =
             case spec.steering of
                 TurntableBogie _ ->
-                    1.25
+                    1.2
 
                 TwinKnuckle _ ->
-                    1.22
+                    1.18
 
                 FixedAxleFallback ->
-                    0.88
+                    0.85
 
         steerLerpRate =
             clamp 0.0 1.0 (dt * (7.0 + 3.0 * steerAuthority))
@@ -489,9 +489,9 @@ stepFixed dt track spec input state =
             if isGroundedNow then
                 let
                     stiffness =
-                        5.2 * surfaceGrip * tireGripFactor * steerAuthority * tuckFrontLoadBonus * groundedRatio
+                        4.8 * surfaceGrip * tireGripFactor * steerAuthority * tuckFrontLoadBonus * groundedRatio
                 in
-                clamp -(normalLoad * 0.72 * surfaceGrip) (normalLoad * 0.72 * surfaceGrip) (-vFrontRight * mass * stiffness)
+                clamp -(normalLoad * 0.74 * surfaceGrip) (normalLoad * 0.74 * surfaceGrip) (-vFrontRight * mass * stiffness)
 
             else
                 0.0
@@ -507,9 +507,9 @@ stepFixed dt track spec input state =
             if isGroundedNow then
                 let
                     stiffness =
-                        5.6 * surfaceGrip * tireGripFactor * rearGripScale * groundedRatio
+                        6.8 * surfaceGrip * tireGripFactor * rearGripScale * groundedRatio
                 in
-                clamp -(normalLoad * 0.75 * surfaceGrip) (normalLoad * 0.75 * surfaceGrip) (-vRearRight * mass * stiffness)
+                clamp -(normalLoad * 0.88 * surfaceGrip * rearGripScale) (normalLoad * 0.88 * surfaceGrip * rearGripScale) (-vRearRight * mass * stiffness)
 
             else
                 0.0
@@ -524,8 +524,11 @@ stepFixed dt track spec input state =
         alignDot =
             Vec3.dot frontAxleX right
 
+        yawDamping =
+            max 2.0 spec.inertia.yaw * 3.0
+
         yawTorque =
-            (-halfBase * frontGripForceMag * alignDot) + (halfBase * rearGripForceMag) - state.yawRate * (spec.inertia.yaw * 1.4)
+            (-halfBase * frontGripForceMag * alignDot) + (halfBase * rearGripForceMag) - state.yawRate * yawDamping
 
         nextYawRate =
             clamp -3.8 3.8 (state.yawRate + (yawTorque / max 2.0 spec.inertia.yaw) * dt)
