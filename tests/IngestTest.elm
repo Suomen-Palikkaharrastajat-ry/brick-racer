@@ -153,7 +153,7 @@ ingestSuite =
             \_ ->
                 let
                     newHash =
-                        "#b/fcsxEgFBEAXQ_6ebRWC2SiQSKlmbGbs7md1A5hSOQuQSHNERdDmA5FV3_f-nC7HU0pk5qWjuylFzX09NHlK9mT-Wq5OSZ4M5fVUiAlijdfFm_JCUaQUy3AmEEH7Ig6BAxsNVvRg3Mw93-7kA56efQPv6s2wE4xYLbwNf"
+                        "#b/fcsxEgFBEAXQ_6ebRWC2SiQSKlmbGbs7md1A6hCOQugOHNERdDmA5FV3_f-nC7HU0pk5qWjuylFzX09NHlK9mT-Wq5OSZ4M5fVUiAlijdfFm_JCUaQUy3AmEEH7Ig6BAxsNVvRg3Mw93-7kA56efQPv6s2wE4xYLbwNf"
                 in
                 case Ingest.decodeRaceInput Nothing newHash of
                     Ok decoded ->
@@ -165,6 +165,7 @@ ingestSuite =
                             [ \_ -> Expect.equal 16 (List.length (Document.mainPlacements decoded.document))
                             , \_ -> Expect.equal True analyzed.spec.isDrivable
                             , \_ -> Expect.equal 4 (List.length analyzed.spec.wheels)
+                            , \_ -> Expect.equal [] analyzed.spec.loosePlacementIds
                             ]
                             ()
 

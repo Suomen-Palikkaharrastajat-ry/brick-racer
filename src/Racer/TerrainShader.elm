@@ -374,6 +374,7 @@ skyDomeMesh =
 skyVertexShader : WebGL.Shader { position : Vec3 } { u_viewProj : Mat4, u_eyePos : Vec3, u_zenith : Vec3, u_horizon : Vec3, u_sunDir : Vec3 } { v_dir : Vec3 }
 skyVertexShader =
     [glsl|
+        precision mediump float;
         attribute vec3 position;
         uniform mat4 u_viewProj;
         uniform vec3 u_eyePos;
@@ -418,20 +419,19 @@ terrainVertexShader :
         , u_skyAmbient : Vec3
         , u_groundAmbient : Vec3
         }
-        { v_normal : Vec3, v_color : Vec3, v_dist : Float, v_worldPos : Vec3 }
+        { v_normal : Vec3, v_color : Vec3, v_worldPos : Vec3 }
 terrainVertexShader =
     [glsl|
+        precision mediump float;
         attribute vec3 position;
         attribute vec3 normal;
         attribute vec3 color;
 
         uniform mat4 u_model;
         uniform mat4 u_viewProj;
-        uniform vec3 u_eyePos;
 
         varying vec3 v_normal;
         varying vec3 v_color;
-        varying float v_dist;
         varying vec3 v_worldPos;
 
         void main() {
@@ -439,7 +439,6 @@ terrainVertexShader =
             v_worldPos = worldPos.xyz;
             v_normal = normalize((u_model * vec4(normal, 0.0)).xyz);
             v_color = color;
-            v_dist = length(worldPos.xyz - u_eyePos);
             gl_Position = u_viewProj * worldPos;
         }
     |]
@@ -457,21 +456,20 @@ debrisVertexShader :
         , u_groundAmbient : Vec3
         , u_tint : Vec3
         }
-        { v_normal : Vec3, v_color : Vec3, v_dist : Float, v_worldPos : Vec3 }
+        { v_normal : Vec3, v_color : Vec3, v_worldPos : Vec3 }
 debrisVertexShader =
     [glsl|
+        precision mediump float;
         attribute vec3 position;
         attribute vec3 normal;
         attribute vec3 color;
 
         uniform mat4 u_model;
         uniform mat4 u_viewProj;
-        uniform vec3 u_eyePos;
         uniform vec3 u_tint;
 
         varying vec3 v_normal;
         varying vec3 v_color;
-        varying float v_dist;
         varying vec3 v_worldPos;
 
         void main() {
@@ -479,7 +477,6 @@ debrisVertexShader =
             v_worldPos = worldPos.xyz;
             v_normal = normalize((u_model * vec4(normal, 0.0)).xyz);
             v_color = color * u_tint;
-            v_dist = length(worldPos.xyz - u_eyePos);
             gl_Position = u_viewProj * worldPos;
         }
     |]
@@ -495,7 +492,7 @@ terrainFragmentShader :
             , u_groundAmbient : Vec3
             , u_eyePos : Vec3
         }
-        { v_normal : Vec3, v_color : Vec3, v_dist : Float, v_worldPos : Vec3 }
+        { v_normal : Vec3, v_color : Vec3, v_worldPos : Vec3 }
 terrainFragmentShader =
     [glsl|
         precision mediump float;
@@ -508,10 +505,10 @@ terrainFragmentShader =
 
         varying vec3 v_normal;
         varying vec3 v_color;
-        varying float v_dist;
         varying vec3 v_worldPos;
 
         void main() {
+            float v_dist = length(v_worldPos - u_eyePos);
             vec3 rawN = normalize(v_normal);
             vec3 n = rawN;
             vec3 col = v_color;
@@ -648,6 +645,7 @@ terrainFragmentShader =
 shadowVertexShader : WebGL.Shader TerrainVertex { u_model : Mat4, u_viewProj : Mat4, u_alpha : Float } { v_edge : Float }
 shadowVertexShader =
     [glsl|
+        precision mediump float;
         attribute vec3 position;
         attribute vec3 normal;
         attribute vec3 color;
