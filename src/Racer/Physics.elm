@@ -1,0 +1,1151 @@
+module Racer.Physics exposing
+    ( forwardVector
+    , initPhysics
+    , initPhysicsWithOffset
+    , respawnAtCheckpoint
+    , rightVector
+    , stepFixed
+    , stepFrame
+    , surfaceGripMultiplier
+    , surfaceRollingResist
+    )
+
+{-| Deterministic 60 Hz downhill soapbox physics engine.
+
+Integrates gravity projected onto continuous 3D mountain terrain, 4-wheel suspension
+loads and pitch/roll chassis tilt, surface-dependent rolling resistance and lateral
+tire slip, articulated steering vs fixed-axle weight-shift authority, aerodynamic drag
+with aero tuck, obstacle impulses, structural brick pop-off events, and checkpoint tracking.
+
+-}
+
+import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Racer.Track as Track
+import Racer.Types
+    exposing
+        ( CrashReason(..)
+        , GeneratedTrack
+        , InputState
+        , PhysicsEvent(..)
+        , PhysicsState
+        , SteeringMechanism(..)
+        , SurfaceType(..)
+        , TrackObstacle
+        , VehicleSpec
+        , WheelSpec
+        , fixedDt
+        )
+
+
+gravityAccel : Float
+gravityAccel =
+    9.81
+
+
+airDensity : Float
+airDensity =
+    1.225
+
+
+maxFrameDelta : Float
+maxFrameDelta =
+    0.05
+
+
+maxSubstepsPerFrame : Int
+maxSubstepsPerFrame =
+    4
+
+
+{-| Initialize a `PhysicsState` parked squarely on the track starting ramp.
+-}
+initPhysics : GeneratedTrack -> VehicleSpec -> PhysicsState
+initPhysics track spec =
+    let
+        wheelCount =
+            max 1 (List.length spec.wheels)
+
+        terrain =
+            Track.sampleAt track (Vec3.getX track.startPosition) (Vec3.getZ track.startPosition)
+
+        tanY =
+            Vec3.getY terrain.nearestTangent
+
+        initPitch =
+            -(atan2 tanY (max 0.1 (sqrt (1.0 - min 0.99 (tanY * tanY)))))
+
+        startPos =
+            vec3 (Vec3.getX track.startPosition) terrain.height (Vec3.getZ track.startPosition)
+    in
+    { position = startPos
+    , velocity = vec3 0 0 0
+    , yaw = track.startYaw
+    , yawRate = 0.0
+    , pitch = initPitch
+    , pitchRate = 0.0
+    , roll = 0.0
+    , rollRate = 0.0
+    , steerAngle = 0.0
+    , leanInput = { x = 0.0, y = 0.0 }
+    , wheelSpinAngles = List.repeat wheelCount 0.0
+    , suspensionCompressions = List.repeat 4 0.0
+    , groundedWheels = wheelCount
+    , airborneTime = 0.0
+    , surfaceUnderCar = terrain.surface
+    , integrity = 100.0
+    , chassisScraping = spec.groundClearanceLdu < -0.5
+    , offTrack = False
+    , highSpeedBonus = False
+    , rolloverTimer = 0.0
+    , progressS = 0.0
+    , checkpointIndex = 0
+    , checkpointAnchor = { s = 0.0, position = startPos, yaw = track.startYaw }
+    , lastImpactCooldown = 0.0
+    , nextPopThreshold = 80.0
+    , gradeRatio = max 0.0 -(Vec3.getY terrain.nearestTangent)
+    }
+
+
+{-| Initialize downhill soapbox dynamics with a lateral starting grid offset in meters
+(e.g. -1.8 m for Player 1, +1.8 m for Player 2 in split-screen matches).
+-}
+initPhysicsWithOffset : Float -> GeneratedTrack -> VehicleSpec -> PhysicsState
+initPhysicsWithOffset lateralOffsetM track spec =
+    let
+        p0 =
+            initPhysics track spec
+
+        cosYaw =
+            cos p0.yaw
+
+        sinYaw =
+            sin p0.yaw
+
+        posX =
+            Vec3.getX p0.position + cosYaw * lateralOffsetM
+
+        posZ =
+            Vec3.getZ p0.position - sinYaw * lateralOffsetM
+
+        terrain =
+            Track.sampleAt track posX posZ
+
+        offsetPos =
+            vec3 posX terrain.height posZ
+
+        anchor =
+            { s = 0.0, position = offsetPos, yaw = track.startYaw }
+    in
+    { p0
+        | position = offsetPos
+        , checkpointAnchor = anchor
+        , surfaceUnderCar = terrain.surface
+    }
+
+
+{-| Reset car upright and stationary onto the most recently passed checkpoint anchor
+with restored structural integrity.
+-}
+respawnAtCheckpoint : PhysicsState -> PhysicsState
+respawnAtCheckpoint state =
+    { state
+        | position = Vec3.add state.checkpointAnchor.position (vec3 0 0.08 0)
+        , velocity = vec3 0 0 0
+        , yaw = state.checkpointAnchor.yaw
+        , yawRate = 0.0
+        , pitch = 0.0
+        , pitchRate = 0.0
+        , roll = 0.0
+        , rollRate = 0.0
+        , steerAngle = 0.0
+        , suspensionCompressions = List.map (\_ -> 0.0) state.suspensionCompressions
+        , groundedWheels = max 1 (List.length state.wheelSpinAngles)
+        , airborneTime = 0.0
+        , integrity = 100.0
+        , nextPopThreshold = 80.0
+        , rolloverTimer = 0.0
+        , progressS = state.checkpointAnchor.s
+        , lastImpactCooldown = 0.5
+        , highSpeedBonus = False
+    }
+
+
+{-| Accumulate raw frame delta (`dtSeconds`) and advance physics in fixed `1/60 s` steps,
+bounded to at most 4 substeps per frame to prevent spiral-of-death slowdowns.
+-}
+stepFrame :
+    Float
+    -> Float
+    -> GeneratedTrack
+    -> VehicleSpec
+    -> InputState
+    -> PhysicsState
+    -> ( Float, PhysicsState, List PhysicsEvent )
+stepFrame rawFrameDt accumulator track spec input state =
+    let
+        clampedDt =
+            clamp 0.0 maxFrameDelta rawFrameDt
+
+        totalAcc =
+            accumulator + clampedDt
+    in
+    runSubsteps 0 totalAcc track spec input state []
+
+
+runSubsteps :
+    Int
+    -> Float
+    -> GeneratedTrack
+    -> VehicleSpec
+    -> InputState
+    -> PhysicsState
+    -> List PhysicsEvent
+    -> ( Float, PhysicsState, List PhysicsEvent )
+runSubsteps steps acc track spec input state eventsAcc =
+    if steps >= maxSubstepsPerFrame || acc < fixedDt then
+        ( min acc (fixedDt * 2.0), state, List.reverse eventsAcc )
+
+    else
+        let
+            ( nextState, stepEvents ) =
+                stepFixed fixedDt track spec input state
+        in
+        runSubsteps (steps + 1) (acc - fixedDt) track spec input nextState (List.reverse stepEvents ++ eventsAcc)
+
+
+{-| Advance vehicle simulation by one deterministic fixed timestep `dt` seconds.
+-}
+stepFixed :
+    Float
+    -> GeneratedTrack
+    -> VehicleSpec
+    -> InputState
+    -> PhysicsState
+    -> ( PhysicsState, List PhysicsEvent )
+stepFixed dt track spec input state =
+    let
+        mass =
+            max 12.0 spec.totalMassKg
+
+        fwd =
+            forwardVector state.yaw
+
+        right =
+            rightVector state.yaw
+
+        halfTrack =
+            max 0.25 (spec.trackWidthM * 0.5)
+
+        halfBase =
+            max 0.32 (spec.wheelBaseM * 0.5)
+
+        centerTerrain =
+            Track.sampleAtHinted state.progressS track (Vec3.getX state.position) (Vec3.getZ state.position)
+
+        speed =
+            Vec3.length state.velocity
+
+        horizSpeed =
+            sqrt (Vec3.getX state.velocity ^ 2 + Vec3.getZ state.velocity ^ 2)
+
+        vFwd =
+            Vec3.dot state.velocity fwd
+
+        vRight =
+            Vec3.dot state.velocity right
+
+        -- Steering responsiveness and speed-dependent max angle (in radians; positive = right turn)
+        maxSteer =
+            clamp 0.14 0.52 (0.52 / (1.0 + 0.055 * horizSpeed))
+
+        targetSteer =
+            clamp -1.0 1.0 input.steer * maxSteer
+
+        steerAuthority =
+            case spec.steering of
+                TurntableBogie _ ->
+                    1.25
+
+                TwinKnuckle _ ->
+                    1.22
+
+                FixedAxleFallback ->
+                    0.88
+
+        steerLerpRate =
+            clamp 0.0 1.0 (dt * (7.0 + 3.0 * steerAuthority))
+
+        nextSteerAngle =
+            state.steerAngle + (targetSteer - state.steerAngle) * steerLerpRate
+
+        leanLat =
+            clamp -1.0 1.0 (input.leanX + input.steer * 0.35)
+
+        -- 4-corner terrain height & suspension probes
+        cornerOffsets =
+            [ ( -halfTrack, halfBase )
+            , ( halfTrack, halfBase )
+            , ( -halfTrack, -halfBase )
+            , ( halfTrack, -halfBase )
+            ]
+
+        probeCorner ( lx, lz ) =
+            let
+                worldPt =
+                    Vec3.add state.position
+                        (Vec3.add (Vec3.scale lx right) (Vec3.scale lz fwd))
+
+                smp =
+                    Track.sampleAtHinted centerTerrain.nearestS track (Vec3.getX worldPt) (Vec3.getZ worldPt)
+
+                -- Vertical offset of chassis corner due to pitch/roll
+                cornerY =
+                    Vec3.getY state.position - lz * sin state.pitch + lx * sin state.roll
+            in
+            { lx = lx
+            , lz = lz
+            , terrainHeight = smp.height
+            , compression = smp.height - cornerY
+            }
+
+        probes =
+            List.map probeCorner cornerOffsets
+
+        minAvgHeight =
+            (List.sum (List.map .terrainHeight probes) / 4.0)
+                |> max (centerTerrain.height - 0.12)
+
+        -- Nominal ride height keeps vehicle flush with terrain on zero slope at rest
+        maxCompression =
+            probes
+                |> List.map .compression
+                |> List.maximum
+                |> Maybe.withDefault 0.0
+
+        isGroundedNow =
+            Vec3.getY state.position <= centerTerrain.height + 0.16 || maxCompression > -0.08
+
+        prevWasAirborne =
+            state.groundedWheels == 0 && state.airborneTime > 0.12
+
+        groundedCornersCount =
+            if isGroundedNow then
+                probes
+                    |> List.filter (\p -> p.compression >= -0.14)
+                    |> List.length
+                    |> max 1
+
+            else
+                0
+
+        actualWheelCount =
+            max 1 (List.length spec.wheels)
+
+        groundedWheels =
+            if groundedCornersCount == 0 then
+                0
+
+            else
+                clamp 1 actualWheelCount (round (toFloat groundedCornersCount * toFloat actualWheelCount / 4.0))
+
+        groundedRatio =
+            toFloat groundedCornersCount / 4.0
+
+        -- Tire rubber & road surface parameters
+        hasAnyRubber =
+            List.any .hasRubberTire spec.wheels
+
+        tireGripFactor =
+            if hasAnyRubber then
+                1.0
+
+            else
+                0.62
+
+        surfaceGrip =
+            surfaceGripMultiplier centerTerrain.surface
+
+        surfaceRoll =
+            surfaceRollingResist centerTerrain.surface
+
+        bellyScrape =
+            spec.groundClearanceLdu < -0.5 || maxCompression > 0.22
+
+        scrapeResist =
+            if bellyScrape && isGroundedNow then
+                0.18
+
+            else
+                0.0
+
+        -- Gravity along mountain surface normal
+        normalUpDot =
+            clamp 0.25 1.0 (Vec3.getY centerTerrain.normal)
+
+        downForce =
+            vec3 0 (-mass * gravityAccel) 0
+
+        tangentGravity =
+            Vec3.sub downForce (Vec3.scale (Vec3.dot downForce centerTerrain.normal) centerTerrain.normal)
+
+        -- Normal force load on grounded wheels
+        normalLoad =
+            if isGroundedNow then
+                mass * gravityAccel * normalUpDot
+
+            else
+                0.0
+
+        -- Rolling resistance opposing velocity tangent to road
+        vSpeedMag =
+            max 1.0e-5 speed
+
+        rollingForceMag =
+            if isGroundedNow && speed > 0.04 then
+                (surfaceRoll + scrapeResist) * normalLoad
+
+            else
+                0.0
+
+        rollingForce =
+            if speed > 0.04 then
+                Vec3.scale (-rollingForceMag / vSpeedMag) state.velocity
+
+            else
+                vec3 0 0 0
+
+        -- Aerodynamic drag opposing velocity (tuck lowers CdA by 18%)
+        tuckMult =
+            1.0 - 0.18 * clamp 0.0 1.0 input.aeroTuck
+
+        aeroDragMag =
+            0.5 * airDensity * spec.dragCoeff * spec.frontalAreaM2 * tuckMult * speed * speed
+
+        aeroForce =
+            if speed > 0.05 then
+                Vec3.scale (-aeroDragMag / vSpeedMag) state.velocity
+
+            else
+                vec3 0 0 0
+
+        -- Service brakes & handbrake deceleration
+        brakeDecel =
+            let
+                service =
+                    6.8 * clamp 0.0 1.0 input.brake
+
+                hand =
+                    if input.handbrake then
+                        2.6
+
+                    else
+                        0.0
+            in
+            (service + hand) * mass * groundedRatio
+
+        brakeForce =
+            if isGroundedNow && horizSpeed > 0.08 then
+                let
+                    horizVel =
+                        vec3 (Vec3.getX state.velocity) 0 (Vec3.getZ state.velocity)
+
+                    dir =
+                        Vec3.scale (1.0 / horizSpeed) horizVel
+
+                    maxStopMag =
+                        mass * horizSpeed / dt
+                in
+                Vec3.scale -(min brakeDecel maxStopMag) dir
+
+            else
+                vec3 0 0 0
+
+        -- Bicycle lateral tire slip + steering forces
+        turnRad =
+            nextSteerAngle
+
+        frontAxleX =
+            vec3 (Vec3.getX right * cos turnRad - Vec3.getX fwd * sin turnRad)
+                0
+                (Vec3.getZ right * cos turnRad - Vec3.getZ fwd * sin turnRad)
+                |> (\v -> normalizeSafe v right)
+
+        -- Front & rear velocity along each axle's right direction
+        vFrontRight =
+            Vec3.dot
+                (vec3 (Vec3.getX state.velocity + state.yawRate * halfBase * -(Vec3.getX right))
+                    0
+                    (Vec3.getZ state.velocity + state.yawRate * halfBase * -(Vec3.getZ right))
+                )
+                frontAxleX
+
+        vRearRight =
+            vRight + state.yawRate * halfBase
+
+        tuckFrontLoadBonus =
+            1.0 + 0.15 * clamp 0.0 1.0 input.aeroTuck
+
+        frontGripForceMag =
+            if isGroundedNow then
+                let
+                    stiffness =
+                        5.2 * surfaceGrip * tireGripFactor * steerAuthority * tuckFrontLoadBonus * groundedRatio
+                in
+                clamp -(normalLoad * 0.72 * surfaceGrip) (normalLoad * 0.72 * surfaceGrip) (-vFrontRight * mass * stiffness)
+
+            else
+                0.0
+
+        rearGripScale =
+            if input.handbrake then
+                0.38
+
+            else
+                1.0
+
+        rearGripForceMag =
+            if isGroundedNow then
+                let
+                    stiffness =
+                        5.6 * surfaceGrip * tireGripFactor * rearGripScale * groundedRatio
+                in
+                clamp -(normalLoad * 0.75 * surfaceGrip) (normalLoad * 0.75 * surfaceGrip) (-vRearRight * mass * stiffness)
+
+            else
+                0.0
+
+        lateralForceVec =
+            Vec3.add
+                (Vec3.scale frontGripForceMag frontAxleX)
+                (Vec3.scale rearGripForceMag right)
+
+        -- Yaw torque from front & rear lateral forces:
+        -- (+halfBase * fwd) x (frontForce * frontRight) has Y = -(halfBase * frontForce * dot(frontAxleX, right))
+        alignDot =
+            Vec3.dot frontAxleX right
+
+        yawTorque =
+            (-halfBase * frontGripForceMag * alignDot) + (halfBase * rearGripForceMag) - state.yawRate * (spec.inertia.yaw * 1.4)
+
+        nextYawRate =
+            clamp -3.8 3.8 (state.yawRate + (yawTorque / max 2.0 spec.inertia.yaw) * dt)
+
+        nextYaw =
+            normalizeAngle (state.yaw + nextYawRate * dt)
+
+        -- Combine linear horizontal & tangent gravity acceleration
+        slopeComponent =
+            if isGroundedNow then
+                tangentGravity
+
+            else
+                vec3 0 0 0
+
+        totalForce3D =
+            slopeComponent
+                |> Vec3.add rollingForce
+                |> Vec3.add aeroForce
+                |> Vec3.add brakeForce
+                |> Vec3.add lateralForceVec
+
+        velAfterForcesXZ =
+            Vec3.add state.velocity (Vec3.scale (dt / mass) totalForce3D)
+
+        -- Keep velocity clean when nearly stopped on very gentle slopes or braking
+        dampedHorizVel =
+            let
+                slopeMag =
+                    Vec3.length tangentGravity
+
+                stillSpeed =
+                    Vec3.length velAfterForcesXZ
+            in
+            if isGroundedNow && input.brake > 0.5 && horizSpeed < 0.25 then
+                vec3 0 (Vec3.getY velAfterForcesXZ) 0
+
+            else if isGroundedNow && stillSpeed < 0.03 && slopeMag < mass * gravityAccel * surfaceRoll * 0.85 then
+                vec3 0 (Vec3.getY velAfterForcesXZ) 0
+
+            else
+                velAfterForcesXZ
+
+        -- Vertical integration with smooth spring-damper ground following vs ballistic airtime
+        rawNextYVel =
+            Vec3.getY state.velocity - gravityAccel * dt
+
+        prevVy =
+            Vec3.getY state.velocity
+
+        ( finalPosY, finalVelY, landingImpact ) =
+            let
+                predictedY =
+                    Vec3.getY state.position + rawNextYVel * dt
+            in
+            if predictedY <= minAvgHeight then
+                let
+                    terrainSlopeVy =
+                        vFwd * Vec3.getY centerTerrain.nearestTangent
+
+                    penetration =
+                        minAvgHeight - predictedY
+
+                    impactVel =
+                        max 0.0 -(rawNextYVel - terrainSlopeVy)
+
+                    bounceVy =
+                        if prevWasAirborne && impactVel > 2.6 then
+                            terrainSlopeVy + impactVel * 0.05
+
+                        else
+                            terrainSlopeVy
+
+                    landEv =
+                        if prevWasAirborne && impactVel > 2.0 then
+                            [ Landing { impulse = clamp 0.1 1.0 (impactVel / 9.0) } ]
+
+                        else
+                            []
+
+                    targetY =
+                        minAvgHeight + min 0.015 (penetration * 0.03)
+
+                    smoothY =
+                        Vec3.getY state.position + (targetY - Vec3.getY state.position) * min 1.0 (dt * 36.0)
+                in
+                ( smoothY, bounceVy, landEv )
+
+            else if isGroundedNow && maxCompression > -0.05 && rawNextYVel <= 0.6 then
+                -- Stay planted smoothly along continuous downward curved hills unless cresting hard
+                let
+                    terrainFollowY =
+                        Vec3.getY state.position + (minAvgHeight - Vec3.getY state.position) * min 1.0 (dt * 32.0)
+
+                    terrainSlopeVy =
+                        vFwd * Vec3.getY centerTerrain.nearestTangent
+                in
+                ( max minAvgHeight terrainFollowY, terrainSlopeVy, [] )
+
+            else
+                ( predictedY, rawNextYVel, [] )
+
+        prelimPos =
+            vec3
+                (Vec3.getX state.position + Vec3.getX dampedHorizVel * dt)
+                finalPosY
+                (Vec3.getZ state.position + Vec3.getZ dampedHorizVel * dt)
+
+        prelimVel =
+            vec3 (Vec3.getX dampedHorizVel) finalVelY (Vec3.getZ dampedHorizVel)
+
+        -- Suspension pitch & roll spring simulation driven by terrain slope, cornering lateral accel & driver lean
+        targetRoadPitch =
+            let
+                tanY =
+                    Vec3.getY centerTerrain.nearestTangent
+
+                horizTangentLen =
+                    sqrt (Vec3.getX centerTerrain.nearestTangent ^ 2 + Vec3.getZ centerTerrain.nearestTangent ^ 2)
+
+                headingDot =
+                    if horizTangentLen > 1.0e-3 then
+                        clamp -1.0 1.0 ((Vec3.getX fwd * Vec3.getX centerTerrain.nearestTangent + Vec3.getZ fwd * Vec3.getZ centerTerrain.nearestTangent) / horizTangentLen)
+
+                    else
+                        1.0
+
+                effectiveTanY =
+                    headingDot * tanY
+            in
+            -(atan2 effectiveTanY (max 0.1 (sqrt (1.0 - min 0.99 (effectiveTanY * effectiveTanY)))))
+
+        latAccel =
+            vFwd * -nextYawRate
+
+        comHeight =
+            max 0.18 (Vec3.getY spec.centerOfMassM)
+
+        rollTorqueInput =
+            (latAccel * comHeight * mass * 0.38) - (leanLat * mass * 2.1 * halfTrack)
+
+        rollSpring =
+            -mass * halfTrack * 28.0 * state.roll - mass * 9.5 * state.rollRate
+
+        nextRollRate =
+            clamp -4.5 4.5 (state.rollRate + ((rollTorqueInput + rollSpring) / max 1.5 spec.inertia.roll) * dt)
+
+        nextRoll =
+            clamp -1.35 1.35 (state.roll + nextRollRate * dt)
+
+        pitchDiff =
+            targetRoadPitch - state.pitch
+
+        nextPitchRate =
+            clamp -4.0 4.0 (state.pitchRate + (pitchDiff * 42.0 - state.pitchRate * 13.5 + input.brake * 2.4) * dt)
+
+        nextPitch =
+            clamp -0.75 0.75 (state.pitch + nextPitchRate * dt)
+
+        -- Spin each wheel cleanly from longitudinal wheel speed
+        wheelSpinDelta w =
+            (vFwd / max 0.08 w.radiusM) * dt
+
+        nextWheelSpins =
+            List.map2 (\ang w -> ang + wheelSpinDelta w) state.wheelSpinAngles spec.wheels
+
+        -- Re-sample terrain and resolve obstacles & containment walls
+        postTerrain =
+            Track.sampleAtHinted centerTerrain.nearestS track (Vec3.getX prelimPos) (Vec3.getZ prelimPos)
+
+        nextCooldown =
+            max 0.0 (state.lastImpactCooldown - dt)
+
+        obsRes =
+            resolveObstacles
+                (Track.obstaclesNear track postTerrain.nearestS 24.0)
+                halfTrack
+                spec
+                mass
+                nextCooldown
+                prelimPos
+                prelimVel
+
+        -- Valley cliff containment walls outside shoulder runoff
+        maxCorridor =
+            postTerrain.halfWidthM + 22.0
+
+        wallRes =
+            resolveValleyContainment maxCorridor postTerrain mass obsRes.pos obsRes.vel
+
+        finalPos =
+            wallRes.pos
+
+        finalVel =
+            wallRes.vel
+
+        obsCooldown =
+            obsRes.cooldown
+
+        totalDamage =
+            obsRes.damage + wallRes.damage
+
+        nextIntegrity =
+            max 0.0 (state.integrity - totalDamage)
+
+        ( nextPopThreshold, popEvents ) =
+            if nextIntegrity <= state.nextPopThreshold && totalDamage > 0.0 then
+                ( max 0.0 (state.nextPopThreshold - 20.0)
+                , [ BrickDetached { remainingIntegrity = nextIntegrity } ]
+                )
+
+            else
+                ( state.nextPopThreshold, [] )
+
+        -- Checkpoints & finish gate progression
+        prevS =
+            state.progressS
+
+        newS =
+            max prevS postTerrain.nearestS
+
+        ( nextCpIndex, nextAnchor, cpEvents ) =
+            checkCheckpoints track state.checkpointIndex state.checkpointAnchor prevS newS finalPos nextYaw
+
+        -- Airborne and rollover tracking
+        nextAirborneTime =
+            if groundedWheels == 0 then
+                state.airborneTime + dt
+
+            else
+                0.0
+
+        nextRolloverTimer =
+            if abs nextRoll > 1.15 then
+                state.rolloverTimer + dt
+
+            else
+                max 0.0 (state.rolloverTimer - dt * 2.0)
+
+        crashEvents =
+            if nextIntegrity <= 0.0 then
+                [ Crashed StructuralCollapse ]
+
+            else if nextRolloverTimer > 0.75 then
+                [ Crashed RolloverTumble ]
+
+            else if Vec3.getY finalPos < postTerrain.height - 28.0 then
+                [ Crashed OffMountainDrop ]
+
+            else
+                []
+
+        scrapeEvents =
+            if bellyScrape && isGroundedNow && speed > 4.5 && obsCooldown <= 0.0 && abs postTerrain.roadOffsetM <= postTerrain.halfWidthM then
+                []
+
+            else
+                []
+
+        allEvents =
+            landingImpact ++ obsRes.events ++ wallRes.events ++ scrapeEvents ++ popEvents ++ cpEvents ++ crashEvents
+
+        nextState =
+            { state
+                | position = finalPos
+                , velocity = finalVel
+                , yaw = nextYaw
+                , yawRate = nextYawRate
+                , pitch = nextPitch
+                , pitchRate = nextPitchRate
+                , roll = nextRoll
+                , rollRate = nextRollRate
+                , steerAngle = nextSteerAngle
+                , leanInput = { x = leanLat, y = input.aeroTuck - input.brake }
+                , wheelSpinAngles = nextWheelSpins
+                , suspensionCompressions = List.map (\p -> clamp 0.0 0.35 (p.compression + 0.08)) probes
+                , groundedWheels = groundedWheels
+                , airborneTime = nextAirborneTime
+                , surfaceUnderCar = postTerrain.surface
+                , integrity = nextIntegrity
+                , chassisScraping = bellyScrape && isGroundedNow
+                , offTrack = abs postTerrain.roadOffsetM > postTerrain.halfWidthM + 0.5
+                , highSpeedBonus = prevWasAirborne && List.length landingImpact > 0
+                , rolloverTimer = nextRolloverTimer
+                , progressS = newS
+                , checkpointIndex = nextCpIndex
+                , checkpointAnchor = nextAnchor
+                , lastImpactCooldown = obsCooldown
+                , nextPopThreshold = nextPopThreshold
+                , gradeRatio = max 0.0 -(Vec3.getY postTerrain.nearestTangent)
+            }
+    in
+    ( nextState, allEvents )
+
+
+{-| Horizontal forward unit vector `(sin yaw, 0, cos yaw)` at vehicle heading `yaw` radians.
+-}
+forwardVector : Float -> Vec3
+forwardVector yaw =
+    vec3 (sin yaw) 0.0 (cos yaw)
+
+
+{-| Horizontal driver-right unit vector `(-cos yaw, 0, sin yaw)` orthogonal to `forwardVector yaw`.
+-}
+rightVector : Float -> Vec3
+rightVector yaw =
+    vec3 -(cos yaw) 0.0 (sin yaw)
+
+
+{-| Lateral tire grip multiplier for each terrain surface type.
+-}
+surfaceGripMultiplier : SurfaceType -> Float
+surfaceGripMultiplier surface =
+    case surface of
+        AsphaltTrack ->
+            1.15
+
+        CobbleStone ->
+            0.92
+
+        GravelShoulder ->
+            0.7
+
+        AlpineGrass ->
+            0.52
+
+
+{-| Rolling resistance coefficient for each terrain surface type.
+-}
+surfaceRollingResist : SurfaceType -> Float
+surfaceRollingResist surface =
+    case surface of
+        AsphaltTrack ->
+            0.015
+
+        CobbleStone ->
+            0.028
+
+        GravelShoulder ->
+            0.065
+
+        AlpineGrass ->
+            0.14
+
+
+
+-- ── Internal Collision, Containment & Checkpoint Helpers ──────────────────────
+
+
+type alias ObstacleRes =
+    { pos : Vec3
+    , vel : Vec3
+    , damage : Float
+    , events : List PhysicsEvent
+    , cooldown : Float
+    }
+
+
+type alias WallRes =
+    { pos : Vec3
+    , vel : Vec3
+    , damage : Float
+    , events : List PhysicsEvent
+    }
+
+
+resolveObstacles :
+    List TrackObstacle
+    -> Float
+    -> VehicleSpec
+    -> Float
+    -> Float
+    -> Vec3
+    -> Vec3
+    -> ObstacleRes
+resolveObstacles obsList halfTrack spec _ cooldown pos vel =
+    let
+        carRadius =
+            clamp 0.52 1.15 (max halfTrack (spec.wheelBaseM * 0.35))
+
+        carTopY =
+            Vec3.getY pos + max 0.45 (Vec3.getY spec.boundsMaxLdu / 160.0)
+
+        step obs acc =
+            let
+                obsTop =
+                    Vec3.getY obs.position + obs.heightM
+
+                obsBottom =
+                    Vec3.getY obs.position - 0.5
+            in
+            if Vec3.getY acc.pos > obsTop || carTopY < obsBottom then
+                acc
+
+            else
+                let
+                    dx =
+                        Vec3.getX acc.pos - Vec3.getX obs.position
+
+                    dz =
+                        Vec3.getZ acc.pos - Vec3.getZ obs.position
+
+                    minDist =
+                        carRadius + obs.radiusM
+
+                    distSq =
+                        dx * dx + dz * dz
+                in
+                if distSq >= minDist * minDist || distSq < 1.0e-8 then
+                    acc
+
+                else
+                    let
+                        dist =
+                            sqrt distSq
+
+                        nx =
+                            dx / dist
+
+                        nz =
+                            dz / dist
+
+                        penetration =
+                            minDist - dist + 0.02
+
+                        pushedPos =
+                            vec3 (Vec3.getX acc.pos + nx * penetration) (Vec3.getY acc.pos) (Vec3.getZ acc.pos + nz * penetration)
+
+                        vn =
+                            Vec3.getX acc.vel * nx + Vec3.getZ acc.vel * nz
+                    in
+                    if vn < 0.0 then
+                        let
+                            impactSpeed =
+                                -vn
+
+                            restitution =
+                                0.32
+
+                            deltaVn =
+                                -(1.0 + restitution) * vn
+
+                            nextVx =
+                                Vec3.getX acc.vel + nx * deltaVn * 0.92
+
+                            nextVz =
+                                Vec3.getZ acc.vel + nz * deltaVn * 0.92
+
+                            newVel =
+                                vec3 nextVx (Vec3.getY acc.vel * 0.85) nextVz
+
+                            dmg =
+                                if impactSpeed > 4.5 && acc.cooldown <= 0.0 then
+                                    clamp 5.0 42.0 ((impactSpeed - 4.5) * 3.8)
+
+                                else
+                                    0.0
+
+                            ev =
+                                if impactSpeed > 1.8 && acc.cooldown <= 0.0 then
+                                    [ Impact { impulse = clamp 0.1 1.0 (impactSpeed / 16.0), scrape = False } ]
+
+                                else
+                                    []
+
+                            nextCd =
+                                if List.isEmpty ev then
+                                    acc.cooldown
+
+                                else
+                                    0.22
+                        in
+                        { pos = pushedPos
+                        , vel = newVel
+                        , damage = acc.damage + dmg
+                        , events = acc.events ++ ev
+                        , cooldown = nextCd
+                        }
+
+                    else
+                        { acc | pos = pushedPos }
+    in
+    List.foldl step { pos = pos, vel = vel, damage = 0.0, events = [], cooldown = cooldown } obsList
+
+
+resolveValleyContainment :
+    Float
+    -> Racer.Types.TerrainSample
+    -> Float
+    -> Vec3
+    -> Vec3
+    -> WallRes
+resolveValleyContainment maxCorridor terrain _ pos vel =
+    if abs terrain.roadOffsetM <= maxCorridor then
+        { pos = pos, vel = vel, damage = 0.0, events = [] }
+
+    else
+        let
+            tanXZ =
+                normalizeSafe (vec3 (Vec3.getX terrain.nearestTangent) 0 (Vec3.getZ terrain.nearestTangent)) (vec3 0 0 1)
+
+            rightXZ =
+                vec3 -(Vec3.getZ tanXZ) 0 (Vec3.getX tanXZ)
+
+            excess =
+                abs terrain.roadOffsetM - maxCorridor
+
+            signD =
+                if terrain.roadOffsetM >= 0.0 then
+                    1.0
+
+                else
+                    -1.0
+
+            inwardNormal =
+                Vec3.scale -signD rightXZ
+
+            clampedPos =
+                Vec3.add pos (Vec3.scale excess inwardNormal)
+
+            outwardVel =
+                -(Vec3.getX vel * Vec3.getX inwardNormal + Vec3.getZ vel * Vec3.getZ inwardNormal)
+        in
+        if outwardVel > 0.0 then
+            let
+                bouncedVel =
+                    Vec3.add vel (Vec3.scale (outwardVel * 1.25) inwardNormal)
+
+                dmg =
+                    if outwardVel > 6.5 then
+                        clamp 3.0 18.0 ((outwardVel - 6.5) * 1.5)
+
+                    else
+                        0.0
+
+                evs =
+                    if outwardVel > 3.5 then
+                        [ Impact { impulse = clamp 0.1 1.0 (outwardVel / 18.0), scrape = True } ]
+
+                    else
+                        []
+            in
+            { pos = clampedPos, vel = bouncedVel, damage = dmg, events = evs }
+
+        else
+            { pos = clampedPos, vel = vel, damage = 0.0, events = [] }
+
+
+checkCheckpoints :
+    GeneratedTrack
+    -> Int
+    -> { s : Float, position : Vec3, yaw : Float }
+    -> Float
+    -> Float
+    -> Vec3
+    -> Float
+    -> ( Int, { s : Float, position : Vec3, yaw : Float }, List PhysicsEvent )
+checkCheckpoints track currIdx currAnchor prevS newS pos _ =
+    let
+        process cp ( idxAcc, anchAcc, evAcc ) =
+            if cp.index >= idxAcc && prevS < cp.s && newS >= cp.s then
+                if cp.isFinish then
+                    ( cp.index + 1
+                    , anchAcc
+                    , evAcc ++ [ CheckpointCrossed { index = cp.index, splitTimeS = 0.0 }, FinishedRace ]
+                    )
+
+                else
+                    let
+                        anchorYaw =
+                            atan2 (Vec3.getX cp.tangent) (Vec3.getZ cp.tangent)
+
+                        cpAnchor =
+                            { s = cp.s
+                            , position = vec3 (Vec3.getX cp.center) (Vec3.getY pos + 0.05) (Vec3.getZ cp.center)
+                            , yaw = anchorYaw
+                            }
+                    in
+                    ( cp.index + 1
+                    , cpAnchor
+                    , evAcc ++ [ CheckpointCrossed { index = cp.index, splitTimeS = 0.0 } ]
+                    )
+
+            else
+                ( idxAcc, anchAcc, evAcc )
+
+        ( nextIdx, nextAnch, evs ) =
+            List.foldl process ( currIdx, currAnchor, [] ) track.checkpoints
+    in
+    if not (List.member FinishedRace evs) && prevS < track.finishS && newS >= track.finishS then
+        ( nextIdx, nextAnch, evs ++ [ FinishedRace ] )
+
+    else
+        ( nextIdx, nextAnch, evs )
+
+
+normalizeAngle : Float -> Float
+normalizeAngle a =
+    let
+        twoPi =
+            2.0 * pi
+    in
+    if a > pi then
+        normalizeAngle (a - twoPi)
+
+    else if a < -pi then
+        normalizeAngle (a + twoPi)
+
+    else
+        a
+
+
+normalizeSafe : Vec3 -> Vec3 -> Vec3
+normalizeSafe v fallback =
+    let
+        len =
+            Vec3.length v
+    in
+    if len < 1.0e-7 then
+        fallback
+
+    else
+        Vec3.scale (1.0 / len) v

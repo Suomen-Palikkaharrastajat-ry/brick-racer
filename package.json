@@ -1,0 +1,26 @@
+{
+  "name": "brick-racer",
+  "version": "1.0.0",
+  "description": "3D LEGO soapbox downhill racer built with Elm, WebGL, and Brick Frame",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader native --host 0.0.0.0 --port 5176",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --configLoader native --host 0.0.0.0 --port 4176",
+    "test": "elm-test",
+    "format": "elm-format --yes src/ tests/",
+    "check": "elm-format --validate src/ tests/",
+    "review": "elm-review"
+  },
+  "keywords": [
+    "lego",
+    "ldraw",
+    "brick-frame",
+    "elm",
+    "webgl",
+    "soapbox",
+    "racing"
+  ],
+  "author": "Suomen Palikkaharrastajat ry",
+  "license": "MIT"
+}
