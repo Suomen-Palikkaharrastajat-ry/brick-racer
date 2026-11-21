@@ -840,16 +840,11 @@ update msg model =
                     model.tilt
 
                 zeroRef =
-                    case oldTilt.zeroGamma of
-                        Just z ->
-                            Just z
+                    if orient.available then
+                        Just 0.0
 
-                        Nothing ->
-                            if orient.available then
-                                Just orient.gamma
-
-                            else
-                                Nothing
+                    else
+                        Nothing
             in
             ( { model
                 | tilt =
@@ -1817,7 +1812,7 @@ sampleP1Input model =
                         Maybe.withDefault 0.0 model.tilt.zeroGamma
 
                     deltaDeg =
-                        zero - model.tilt.gamma
+                        model.tilt.gamma - zero
 
                     deadZone =
                         if abs deltaDeg < 3.0 then

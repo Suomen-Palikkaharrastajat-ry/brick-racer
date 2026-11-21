@@ -160,17 +160,87 @@ ports?.copyShareUrl?.subscribe((hashOrUrl) => {
   }
 })
 
+function getScreenTiltDegrees(betaDeg, gammaDeg) {
+  const degToRad = Math.PI / 180
+  const radToDeg = 180 / Math.PI
+  const b = betaDeg * degToRad
+  const g = gammaDeg * degToRad
+
+  // Earth "Up" unit vector in physical device coordinates (W3C Z-X'-Y'' rotation matrix row 3):
+  // +x = portrait right edge, +y = portrait top edge, +z = out of front screen
+  const ux = -Math.cos(b) * Math.sin(g)
+  const uy = Math.sin(b)
+  const uz = Math.cos(b) * Math.cos(g)
+
+  const legacyAngle = typeof window.orientation === 'number' ? window.orientation : null
+  const modernAngle =
+    typeof window.screen !== 'undefined' &&
+    window.screen.orientation &&
+    typeof window.screen.orientation.angle === 'number'
+      ? window.screen.orientation.angle
+      : null
+  const mediaLandscape =
+    typeof window.matchMedia === 'function' && window.matchMedia('(orientation: landscape)').matches
+
+  const isLandscape =
+    mediaLandscape ||
+    window.innerWidth > window.innerHeight ||
+    legacyAngle === 90 ||
+    legacyAngle === -90 ||
+    modernAngle === 90 ||
+    modernAngle === 270
+
+  let negURight
+  let uTop
+  if (isLandscape) {
+    // Determine whether +x_dev (Landscape Left, top of phone in left hand) or
+    // -x_dev (Landscape Right, top of phone in right hand) is the upper edge of the screen.
+    // Using gravity ux when pitched (> ~8 deg from flat) makes this immune to iOS/Android
+    // 90 vs 270 angle reporting differences.
+    let topIsPosX
+    if (Math.abs(ux) > 0.14) {
+      topIsPosX = ux > 0
+    } else if (legacyAngle === 90 || legacyAngle === -90) {
+      topIsPosX = legacyAngle === 90
+    } else {
+      topIsPosX = modernAngle !== 270
+    }
+
+    if (topIsPosX) {
+      // Landscape Left (top of phone on left): steering clockwise (right) raises +y_dev (uy > 0)
+      negURight = uy
+      uTop = Math.abs(ux)
+    } else {
+      // Landscape Right (top of phone on right): steering clockwise (right) lowers +y_dev (uy < 0)
+      negURight = -uy
+      uTop = Math.abs(ux)
+    }
+  } else if (legacyAngle === 180 || modernAngle === 180) {
+    negURight = ux
+    uTop = Math.abs(uy)
+  } else {
+    // Portrait: steering clockwise (right) lowers +x_dev (ux < 0 => -ux > 0)
+    negURight = -ux
+    uTop = Math.abs(uy)
+  }
+
+  const denom = Math.max(0.35, Math.hypot(uTop, uz * 0.5))
+  return Math.atan2(negURight, denom) * radToDeg
+}
+
 let tiltAttached = false
 function attachTiltListener() {
   if (tiltAttached) return
   tiltAttached = true
   window.addEventListener('deviceorientation', (event) => {
-    const gamma = typeof event.gamma === 'number' ? event.gamma : 0
-    const beta = typeof event.beta === 'number' ? event.beta : 0
+    const hasAngles = typeof event.gamma === 'number' || typeof event.beta === 'number'
+    const rawGamma = typeof event.gamma === 'number' ? event.gamma : 0
+    const rawBeta = typeof event.beta === 'number' ? event.beta : 0
+    const steerGamma = hasAngles ? getScreenTiltDegrees(rawBeta, rawGamma) : 0
     ports?.tiltOrientationReceived?.send({
-      available: typeof event.gamma === 'number',
-      gamma,
-      beta,
+      available: hasAngles,
+      gamma: steerGamma,
+      beta: rawBeta,
     })
   })
 }
