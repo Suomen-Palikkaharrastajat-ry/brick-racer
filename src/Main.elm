@@ -1817,7 +1817,7 @@ sampleP1Input model =
                         Maybe.withDefault 0.0 model.tilt.zeroGamma
 
                     deltaDeg =
-                        model.tilt.gamma - zero
+                        zero - model.tilt.gamma
 
                     deadZone =
                         if abs deltaDeg < 3.0 then

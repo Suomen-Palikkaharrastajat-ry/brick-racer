@@ -7,6 +7,7 @@ import Dict
 import EmbeddedParts
 import Expect
 import LDraw.Catalog as Catalog
+import LDraw.Connectivity as Connectivity exposing (ConnectionType(..))
 import LDraw.Document as Document
 import Math.Matrix4 as Mat4
 import Math.Vector3 as Vec3
@@ -14,6 +15,8 @@ import Racer.Analyze as Analyze exposing (FallbackCacheMode(..))
 import Racer.Ingest as Ingest exposing (IngestError(..))
 import Racer.Types as Types exposing (SteeringMechanism(..), TrackId(..), ValidationCode(..), ValidationSeverity(..))
 import Render.Camera as Camera
+import Set
+import Studio.Health as Health
 import Test exposing (Test, describe, test)
 
 
@@ -171,6 +174,128 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
+        , test "All 4 built-in presets are 100% legal LEGO builds with zero Studio.Health issues, zero tidy moves, and zero loose parts" <|
+            \_ ->
+                let
+                    checkPreset preset =
+                        let
+                            doc =
+                                Document.parse preset.ldrText
+
+                            healthIssues =
+                                Health.check EmbeddedParts.cache doc Set.empty
+
+                            tidyFixes =
+                                Health.plan EmbeddedParts.cache doc Set.empty healthIssues
+
+                            analyzed =
+                                Analyze.analyzeDocument preset.nameEn doc EmbeddedParts.cache Catalog.emptyPartIndex
+
+                            spec =
+                                analyzed.spec
+
+                            hasBlockerOrWarning =
+                                List.any
+                                    (\i -> i.severity == Blocker || i.severity == Warning)
+                                    spec.issues
+
+                            placements =
+                                Document.mainPlacements doc
+
+                            -- Verify every non-bottom studded part has at least one anti-stud coinciding within 0.5 LDU of a stud below it
+                            allWorldStuds =
+                                placements
+                                    |> List.concatMap
+                                        (\pl ->
+                                            case Connectivity.knownCatalogPart pl.part of
+                                                Just conn ->
+                                                    conn.connections
+                                                        |> List.filter (\c -> c.connType == Stud)
+                                                        |> List.map (Connectivity.transformPoint pl.matrix pl.id)
+
+                                                Nothing ->
+                                                    []
+                                        )
+
+                            floatingStudParts =
+                                placements
+                                    |> List.filter
+                                        (\pl ->
+                                            case Connectivity.knownCatalogPart pl.part of
+                                                Just conn ->
+                                                    let
+                                                        antis =
+                                                            conn.connections
+                                                                |> List.filter (\c -> c.connType == AntiStud)
+                                                                |> List.map (Connectivity.transformPoint pl.matrix pl.id)
+
+                                                        hasTech =
+                                                            List.any
+                                                                (\c ->
+                                                                    case c.connType of
+                                                                        TechnicPinMale _ ->
+                                                                            True
+
+                                                                        TechnicPinFemale _ ->
+                                                                            True
+
+                                                                        TechnicAxleMale _ ->
+                                                                            True
+
+                                                                        TechnicAxleFemale _ ->
+                                                                            True
+
+                                                                        _ ->
+                                                                            False
+                                                                )
+                                                                conn.connections
+
+                                                        matchesStud anti =
+                                                            List.any
+                                                                (\st ->
+                                                                    st.placementId
+                                                                        /= pl.id
+                                                                        && Vec3.distance anti.worldPosition st.worldPosition
+                                                                        <= 0.5
+                                                                        && Vec3.dot anti.worldNormal st.worldNormal
+                                                                        < -0.7
+                                                                )
+                                                                allWorldStuds
+                                                    in
+                                                    not (List.isEmpty antis) && not hasTech && not (List.any matchesStud antis)
+
+                                                Nothing ->
+                                                    True
+                                        )
+                                    |> List.map .id
+                        in
+                        { id = preset.id
+                        , healthIssues = healthIssues
+                        , tidyMoveCount = List.length tidyFixes
+                        , isDrivable = spec.isDrivable
+                        , loosePlacementIds = spec.loosePlacementIds
+                        , floatingStudPartIds = floatingStudParts
+                        , hasBlockerOrWarning = hasBlockerOrWarning
+                        }
+
+                    results =
+                        List.map checkPreset Ingest.presets
+
+                    expected =
+                        List.map
+                            (\p ->
+                                { id = p.id
+                                , healthIssues = []
+                                , tidyMoveCount = 0
+                                , isDrivable = True
+                                , loosePlacementIds = []
+                                , floatingStudPartIds = []
+                                , hasBlockerOrWarning = False
+                                }
+                            )
+                            Ingest.presets
+                in
+                Expect.equal expected results
         , test "decodes user grouped car hash and validates as drivable 4-wheel vehicle" <|
             \_ ->
                 let
