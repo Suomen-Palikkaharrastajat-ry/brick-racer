@@ -158,10 +158,19 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
                             Mat4.makeRotate spinAngle (vec3 1 0 0)
 
                         wheelWorld =
-                            carInMeters
-                                |> (\m -> Mat4.mul m (Mat4.makeTranslate wheel.localHubPosLdu))
-                                |> (\m -> Mat4.mul m steerTransform)
-                                |> (\m -> Mat4.mul m spinTransform)
+                            case ( wheel.isSteerable, meshes.steeringBogie ) of
+                                ( True, Just bogie ) ->
+                                    carInMeters
+                                        |> (\m -> Mat4.mul m (Mat4.makeTranslate bogie.pivotLdu))
+                                        |> (\m -> Mat4.mul m steerTransform)
+                                        |> (\m -> Mat4.mul m (Mat4.makeTranslate (Vec3.sub wheel.localHubPosLdu bogie.pivotLdu)))
+                                        |> (\m -> Mat4.mul m spinTransform)
+
+                                _ ->
+                                    carInMeters
+                                        |> (\m -> Mat4.mul m (Mat4.makeTranslate wheel.localHubPosLdu))
+                                        |> (\m -> Mat4.mul m steerTransform)
+                                        |> (\m -> Mat4.mul m spinTransform)
                     in
                     Scene.renderSceneWithTransform wheelWorld scene camera style width height
                 )

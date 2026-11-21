@@ -1166,12 +1166,12 @@ collectBogieIdsForTurntable tt records wheels =
                 |> List.map .placement
                 |> List.map .id
 
-        ttTopIds =
+        ttBaseIds =
             records
-                |> List.filter (\r -> (r.cleanId == "3679" || r.cleanId == "99010") && Vec3.distance r.carCenter tt.carCenter < 20.0)
+                |> List.filter (\r -> (r.cleanId == "3680" || r.cleanId == "99009") && Vec3.distance r.carCenter tt.carCenter < 20.0)
                 |> List.map (.placement >> .id)
     in
-    Set.fromList (ttTopIds ++ attachedAxleParts ++ frontWheelsIds)
+    Set.fromList (ttBaseIds ++ attachedAxleParts ++ frontWheelsIds)
         |> Set.toList
 
 

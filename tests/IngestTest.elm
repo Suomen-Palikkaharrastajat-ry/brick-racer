@@ -157,7 +157,16 @@ ingestSuite =
                 in
                 case Ingest.decodeRaceInput Nothing newHash of
                     Ok decoded ->
-                        Expect.equal 16 (List.length (Document.mainPlacements decoded.document))
+                        let
+                            analyzed =
+                                Analyze.analyzeDocument "UserTurntableCar" decoded.document EmbeddedParts.cache Catalog.emptyPartIndex
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal 16 (List.length (Document.mainPlacements decoded.document))
+                            , \_ -> Expect.equal True analyzed.spec.isDrivable
+                            , \_ -> Expect.equal 4 (List.length analyzed.spec.wheels)
+                            ]
+                            ()
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
