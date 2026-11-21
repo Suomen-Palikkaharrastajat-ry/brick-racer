@@ -13,7 +13,6 @@ node_modules/
 packages
 vendor/packages
 vendor/master-builder
-vendor/brick-studio
 review/src/LlmAgent
 
 # --- Elm / frontend build artifacts ---

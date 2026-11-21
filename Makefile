@@ -9,13 +9,14 @@ help: ## Show available targets
 # ── Vendor / symlinks ────────────────────────────────────────────────────────
 
 .PHONY: vendor
-vendor: ## Configure symlinks to ../brick-studio and master-builder
+vendor: ## Init and update submodules and configure symlinks
+	@[ -z "$$CI" ] || git config --global url."https://github.com/".insteadOf "git@github.com:"
+	@if [ -d .git ]; then git submodule update --init --recursive; fi
 	mkdir -p vendor review/src
-	ln -sfn ../../brick-studio/packages vendor/packages
-	ln -sfn ../../brick-studio/vendor/master-builder vendor/master-builder
-	ln -sfn ../../brick-studio vendor/brick-studio
-	ln -sfn vendor/master-builder/packages packages
-	ln -sfn ../../vendor/master-builder/review/src/LlmAgent review/src/LlmAgent
+	ln -sfn brick-studio/packages vendor/packages
+	ln -sfn brick-studio/vendor/master-builder vendor/master-builder
+	ln -sfn vendor/brick-studio/vendor/master-builder/packages packages
+	ln -sfn ../../vendor/brick-studio/vendor/master-builder/review/src/LlmAgent review/src/LlmAgent
 
 # ── Development environment ──────────────────────────────────────────────────
 

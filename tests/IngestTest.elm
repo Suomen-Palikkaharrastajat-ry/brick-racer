@@ -10,10 +10,10 @@ import LDraw.Catalog as Catalog
 import LDraw.Document as Document
 import Math.Matrix4 as Mat4
 import Math.Vector3 as Vec3
-import Render.Camera as Camera
 import Racer.Analyze as Analyze exposing (FallbackCacheMode(..))
 import Racer.Ingest as Ingest exposing (IngestError(..))
 import Racer.Types as Types exposing (SteeringMechanism(..), TrackId(..), ValidationCode(..), ValidationSeverity(..))
+import Render.Camera as Camera
 import Test exposing (Test, describe, test)
 
 
@@ -157,7 +157,7 @@ ingestSuite =
                 in
                 case Ingest.decodeRaceInput Nothing newHash of
                     Ok decoded ->
-                        Expect.pass
+                        Expect.equal 16 (List.length (Document.mainPlacements decoded.document))
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
