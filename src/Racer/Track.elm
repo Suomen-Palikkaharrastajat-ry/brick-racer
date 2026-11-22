@@ -5,11 +5,14 @@ module Racer.Track exposing
     , generate
     , groundHeightAt
     , obstaclesNear
+    , recoveryBankGrade
+    , recoveryCorridorM
     , removeObstacles
     , sampleAt
     , sampleAtHinted
     , splineSampleAtS
     , trackConfigFor
+    , vergeWidthM
     )
 
 {-| Procedural downhill countryside course generator and spatial terrain sampler.
@@ -383,6 +386,33 @@ fieldUndulation seed x z =
 vergeWidthM : Float
 vergeWidthM =
     2.5
+
+
+{-| Off-road band (m beyond the road edge) the car can reach: the valley
+containment wall stands at its outer edge. Inside it the ground is a clean,
+gentle bank that always slopes back down toward the road.
+-}
+recoveryCorridorM : Float
+recoveryCorridorM =
+    22.0
+
+
+{-| Rise of the off-road bank per metre away from the road edge, at the edge.
+Gentle enough to drive on, steep enough that a car left in the field rolls back
+to the road.
+-}
+recoveryBankGrade : Float
+recoveryBankGrade =
+    0.08
+
+
+{-| How quickly the bank steepens further out (rise = grade u + curve u^2), so
+it still leads back to the road on the inside of bends, where the road's own
+downhill grade pulls along it. About 25 % at the corridor wall.
+-}
+recoveryBankCurve : Float
+recoveryBankCurve =
+    0.004
 
 
 
@@ -1612,9 +1642,6 @@ heightWithProjection track proj x z =
 
         hw =
             proj.halfWidth
-
-        shoulderOuter =
-            hw + vergeWidthM
     in
     if absD <= hw then
         pureRoadY
@@ -1630,31 +1657,24 @@ heightWithProjection track proj x z =
             edgeY =
                 edgeBankedY + edgeDelta
 
-            shoulderDip =
-                -0.18 * smoothstep hw shoulderOuter absD
+            -- Metres beyond the road edge.
+            u =
+                absD - hw
 
             noiseVal =
                 fieldUndulation track.config.seed x z
 
-            valleyRise =
-                max 0.0 (absD - shoulderOuter) * 0.12
+            -- Inside the recovery corridor the bank rises steadily away from the
+            -- road with only a faint ripple (its slope stays well below the
+            -- bank's), so the ground everywhere the car can reach leads back
+            -- down to the road. The rolling fields start past the corridor wall.
+            ripple =
+                noiseVal * 0.03 * smoothstep 0.0 8.0 u
 
-            mountainTarget =
-                edgeY + valleyRise + noiseVal * smoothstep hw (hw + 26.0) absD
+            fields =
+                noiseVal * smoothstep recoveryCorridorM (recoveryCorridorM + 24.0) u
         in
-        if absD <= shoulderOuter then
-            let
-                t =
-                    smoothstep hw shoulderOuter absD
-            in
-            lerp t edgeY (edgeY + shoulderDip + noiseVal * 0.08)
-
-        else
-            let
-                t =
-                    smoothstep shoulderOuter (hw + 26.0) absD
-            in
-            lerp t (edgeY + shoulderDip + noiseVal * 0.08) mountainTarget
+        edgeY + recoveryBankGrade * u + recoveryBankCurve * u * u + ripple + fields
 
 
 rampHeightOffset : List RampZone -> Float -> Float -> Float

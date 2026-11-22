@@ -3,6 +3,7 @@ module Racer.Physics exposing
     , forwardVector
     , initPhysics
     , initPhysicsWithOffset
+    , recoveryTowSpeed
     , respawnAtCheckpoint
     , rightVector
     , stepFixed
@@ -683,11 +684,35 @@ stepFixed dt track spec input state =
             else
                 ( predictedY, rawNextYVel, [] )
 
+        -- Recovery tow: a slow car stranded out in the field is eased back
+        -- toward the nearest point of the road. Off on the road itself.
+        towSpeed =
+            recoveryTowSpeed
+                { roadOffsetM = centerTerrain.roadOffsetM
+                , halfWidthM = centerTerrain.halfWidthM
+                , speed = horizSpeed
+                , grounded = isGroundedNow
+                }
+
+        towStep =
+            if towSpeed > 0.0 then
+                let
+                    toRoad =
+                        vec3
+                            (Vec3.getX centerTerrain.nearestCenter - Vec3.getX state.position)
+                            0
+                            (Vec3.getZ centerTerrain.nearestCenter - Vec3.getZ state.position)
+                in
+                Vec3.scale (towSpeed * dt) (normalizeSafe toRoad (vec3 0 0 0))
+
+            else
+                vec3 0 0 0
+
         prelimPos =
             vec3
-                (Vec3.getX state.position + Vec3.getX dampedHorizVel * dt)
+                (Vec3.getX state.position + Vec3.getX dampedHorizVel * dt + Vec3.getX towStep)
                 finalPosY
-                (Vec3.getZ state.position + Vec3.getZ dampedHorizVel * dt)
+                (Vec3.getZ state.position + Vec3.getZ dampedHorizVel * dt + Vec3.getZ towStep)
 
         prelimVel =
             vec3 (Vec3.getX dampedHorizVel) finalVelY (Vec3.getZ dampedHorizVel)
@@ -766,7 +791,7 @@ stepFixed dt track spec input state =
 
         -- Valley cliff containment walls outside shoulder runoff
         maxCorridor =
-            postTerrain.halfWidthM + 22.0
+            postTerrain.halfWidthM + Track.recoveryCorridorM
 
         wallRes =
             resolveValleyContainment maxCorridor postTerrain mass obsRes.pos obsRes.vel
@@ -874,6 +899,47 @@ stepFixed dt track spec input state =
             }
     in
     ( nextState, allEvents )
+
+
+{-| Speed (m/s) at which a car off the road is eased back toward it.
+
+Zero on the road and its verge, while airborne, and at speed: only a car that is
+slow and well out in the field gets the gentle tow, so it never drives the car
+along the road. Grows smoothly with the distance from the road edge and fades
+out as the car picks up speed. Pure and deterministic.
+
+-}
+recoveryTowSpeed : { roadOffsetM : Float, halfWidthM : Float, speed : Float, grounded : Bool } -> Float
+recoveryTowSpeed { roadOffsetM, halfWidthM, speed, grounded } =
+    let
+        beyondVerge =
+            abs roadOffsetM - halfWidthM - Track.vergeWidthM
+
+        farFactor =
+            clamp 0.0 1.0 (beyondVerge / 4.0)
+
+        slowFactor =
+            clamp 0.0 1.0 ((recoveryTowMaxCarSpeed - speed) / 3.0)
+    in
+    if not grounded || beyondVerge <= 0.0 then
+        0.0
+
+    else
+        recoveryTowTopSpeed * farFactor * slowFactor
+
+
+{-| Fastest tow toward the road (m/s).
+-}
+recoveryTowTopSpeed : Float
+recoveryTowTopSpeed =
+    2.0
+
+
+{-| Car speed (m/s) above which the tow is off.
+-}
+recoveryTowMaxCarSpeed : Float
+recoveryTowMaxCarSpeed =
+    6.0
 
 
 {-| How far (m) the ground may drop below the car's free-fall path in one step

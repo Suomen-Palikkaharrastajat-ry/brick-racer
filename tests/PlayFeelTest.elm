@@ -17,7 +17,7 @@ import Racer.Ingest as Ingest
 import Racer.Physics as Physics
 import Racer.Render as Render
 import Racer.Track as Track
-import Racer.Types exposing (CameraMode(..), PhysicsState, TrackId(..), VehicleSpec, lduToMeters)
+import Racer.Types exposing (CameraMode(..), GeneratedTrack, TrackId(..), VehicleSpec, lduToMeters)
 import Render.Camera as Camera
 import Test exposing (Test, describe, test)
 
@@ -34,7 +34,7 @@ presetSpec presetId =
         |> .spec
 
 
-farmLane : Racer.Types.GeneratedTrack
+farmLane : GeneratedTrack
 farmLane =
     Track.generate (Track.trackConfigFor FarmLane 1)
 
@@ -105,6 +105,50 @@ carCornersOnScreen aspect spec speed grade =
     List.map project corners
 
 
+{-| Off-road points up to 12 m beyond the road edge where the ground does not
+slope back down toward the road: (s, offset) pairs. Further out, on the inside
+of tight bends the road's own grade can win; the recovery tow covers that.
+-}
+pointsSlopingAway : GeneratedTrack -> List ( Float, Float )
+pointsSlopingAway track =
+    let
+        stations =
+            List.range 1 (floor (track.totalLengthM / 8.0) - 1)
+                |> List.map (\i -> toFloat i * 8.0)
+
+        check s side extra =
+            let
+                smp =
+                    Track.splineSampleAtS track s
+
+                offset =
+                    side * (smp.halfWidth + extra)
+
+                p =
+                    Vec3.add smp.center (Vec3.scale offset smp.right)
+
+                t =
+                    Track.sampleAtHinted s track (Vec3.getX p) (Vec3.getZ p)
+
+                toRoad =
+                    vec3 (Vec3.getX t.nearestCenter - Vec3.getX p) 0 (Vec3.getZ t.nearestCenter - Vec3.getZ p)
+
+                downhillToRoad =
+                    Vec3.getX t.normal * Vec3.getX toRoad + Vec3.getZ t.normal * Vec3.getZ toRoad
+            in
+            if abs t.roadOffsetM > t.halfWidthM + 0.5 && downhillToRoad <= 0.0 then
+                Just ( s, offset )
+
+            else
+                Nothing
+    in
+    List.concatMap
+        (\s ->
+            List.concatMap (\side -> List.filterMap (check s side) [ 1.0, 3.0, 6.0, 9.0, 12.0 ]) [ -1.0, 1.0 ]
+        )
+        stations
+
+
 screenHeightShare : List ( Float, Float ) -> Float
 screenHeightShare pts =
     let
@@ -171,5 +215,89 @@ suite =
                     carCornersOnScreen (844 / 390) (presetSpec "turntable-kart") 15 0.3
                         |> screenHeightShare
                         |> Expect.atLeast 0.2
+            ]
+        , describe "Getting back onto the road"
+            [ describe "the ground beside the road slopes back toward it"
+                (List.map
+                    (\( name, trackId ) ->
+                        test name <|
+                            \_ ->
+                                List.range 1 3
+                                    |> List.concatMap (\seed -> pointsSlopingAway (Track.generate (Track.trackConfigFor trackId seed)))
+                                    |> Expect.equal []
+                    )
+                    [ ( "Farm lane", FarmLane ), ( "Forest trail", ForestTrail ), ( "Meadow path", MeadowPath ) ]
+                )
+            , test "no tow on the road or its verge" <|
+                \_ ->
+                    Physics.recoveryTowSpeed { roadOffsetM = 6.5, halfWidthM = 4.4, speed = 0, grounded = True }
+                        |> Expect.equal 0
+            , test "no tow at speed, so the car never drives itself" <|
+                \_ ->
+                    Physics.recoveryTowSpeed { roadOffsetM = 20, halfWidthM = 4.4, speed = 9, grounded = True }
+                        |> Expect.equal 0
+            , test "no tow in the air" <|
+                \_ ->
+                    Physics.recoveryTowSpeed { roadOffsetM = 20, halfWidthM = 4.4, speed = 0, grounded = False }
+                        |> Expect.equal 0
+            , test "a slow car out in the field gets a gentle tow" <|
+                \_ ->
+                    Physics.recoveryTowSpeed { roadOffsetM = -18, halfWidthM = 4.4, speed = 1, grounded = True }
+                        |> Expect.all [ Expect.greaterThan 1.0, Expect.atMost 2.0 ]
+            , test "the tow grows with the distance from the road" <|
+                \_ ->
+                    List.map (\d -> Physics.recoveryTowSpeed { roadOffsetM = toFloat d, halfWidthM = 4.4, speed = 0, grounded = True }) (List.range 0 30)
+                        |> (\ts -> List.map2 (<=) ts (List.drop 1 ts))
+                        |> List.all identity
+                        |> Expect.equal True
+            , test "a car stopped far out in the field comes back near the road, the same way every time" <|
+                \_ ->
+                    let
+                        spec =
+                            presetSpec "turntable-kart"
+
+                        start =
+                            Physics.initPhysics farmLane spec
+
+                        smp =
+                            Track.splineSampleAtS farmLane 120.0
+
+                        offPos =
+                            Vec3.add smp.center (Vec3.scale (smp.halfWidth + 16.0) smp.right)
+
+                        ground =
+                            Track.sampleAtHinted 120.0 farmLane (Vec3.getX offPos) (Vec3.getZ offPos)
+
+                        stranded =
+                            { start
+                                | position = vec3 (Vec3.getX offPos) ground.height (Vec3.getZ offPos)
+                                , progressS = 120.0
+
+                                -- Facing across the slope, so gravity alone does not bring it back.
+                                , yaw = start.yaw + pi / 2
+                            }
+
+                        idle =
+                            { steer = 0, brake = 1, handbrake = False, aeroTuck = 0, leanX = 0 }
+
+                        run n st =
+                            if n <= 0 then
+                                st
+
+                            else
+                                run (n - 1) (Tuple.first (Physics.stepFixed (1 / 60) farmLane spec idle st))
+
+                        after =
+                            run (60 * 12) stranded
+
+                        offsetAfter =
+                            Track.sampleAtHinted after.progressS farmLane (Vec3.getX after.position) (Vec3.getZ after.position)
+                                |> (\t -> abs t.roadOffsetM - t.halfWidthM)
+                    in
+                    Expect.all
+                        [ \_ -> Expect.atMost (Track.vergeWidthM + 1.0) offsetAfter
+                        , \_ -> Expect.equal after.position (run (60 * 12) stranded).position
+                        ]
+                        ()
             ]
         ]
