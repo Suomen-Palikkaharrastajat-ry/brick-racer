@@ -246,6 +246,7 @@ type alias Model =
     , tilt : TiltState
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
+    , roomCodeInput : String
     , multiplayer : Maybe RoomState
     , remoteCars : Dict String (Maybe RemoteCar)
     , page : Page
@@ -283,8 +284,9 @@ type Msg
     | ToggleLanguage
     | ToggleAudioMute
     | ToggleRaceMode
-    | StartHostMultiplayer
-    | JoinMultiplayer
+    | StartHostMultiplayer Multiplayer.SessionMode
+    | JoinMultiplayer String
+    | RoomCodeChanged String
     | MultiplayerRoomChanged Decode.Value
     | MultiplayerError String
     | MultiplayerVehicleLoaded { id : String, payload : String }
@@ -409,6 +411,7 @@ init flags =
                     }
                 , shareCopiedNotice = False
                 , raceMode = SinglePlayer
+                , roomCodeInput = ""
                 , multiplayer = Nothing
                 , remoteCars = Dict.empty
                 , page = MenuPage
@@ -577,7 +580,7 @@ update msg model =
             in
             ( { model | raceMode = nextMode }, Cmd.none )
 
-        StartHostMultiplayer ->
+        StartHostMultiplayer mode ->
             let
                 vHash =
                     case activeDocument model.page of
@@ -593,10 +596,14 @@ update msg model =
                 , courseId = Racer.Types.trackIdToString model.trackId
                 , name = "Host Commentator"
                 , vehicleHash = vHash
+                , maxPlayers = Multiplayer.sessionCapacity mode
                 }
             )
 
-        JoinMultiplayer ->
+        RoomCodeChanged code ->
+            ( { model | roomCodeInput = Multiplayer.roomCodeFrom code }, Cmd.none )
+
+        JoinMultiplayer code ->
             let
                 vHash =
                     case activeDocument model.page of
@@ -608,7 +615,7 @@ update msg model =
             in
             ( model
             , GamePorts.joinMultiplayerRoom
-                { roomId = ""
+                { roomId = Multiplayer.roomCodeFrom code
                 , name = "Racer"
                 , vehicleHash = vHash
                 }
@@ -2702,11 +2709,13 @@ view model =
                 , viewportHeight = model.viewportHeight
                 , shareCopiedNotice = model.shareCopiedNotice
                 , raceMode = model.raceMode
+                , roomCode = model.roomCodeInput
                 }
                 { onBackToMenu = BackToMenu
                 , onStartRace = GarageToRace
                 , onStartHostMultiplayer = StartHostMultiplayer
                 , onJoinMultiplayer = JoinMultiplayer
+                , onRoomCodeChanged = RoomCodeChanged
                 , onSelectTrack = SelectTrack
                 , onCopyShareLink = CopyShareLink
                 , onOpenQrScanner = OpenQrScanner

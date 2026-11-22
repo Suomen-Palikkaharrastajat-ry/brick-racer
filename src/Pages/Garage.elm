@@ -13,9 +13,10 @@ ground clearance) and diagnostic findings, and launches into the selected course
 -}
 
 import FeatherIcons
-import Html exposing (Html, button, div, h1, h2, p, span, text)
+import Game.Multiplayer exposing (SessionMode(..))
+import Html exposing (Html, button, div, h1, h2, input, p, span, text)
 import Html.Attributes as Attr
-import Html.Events exposing (onClick)
+import Html.Events exposing (onClick, onInput)
 import I18n exposing (Language)
 import Json.Decode as Decode
 import Racer.Analyze exposing (CarMeshBundle)
@@ -49,6 +50,7 @@ type alias GarageViewData =
     , viewportHeight : Int
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
+    , roomCode : String
     }
 
 
@@ -57,8 +59,9 @@ type alias GarageViewData =
 type alias GarageActions msg =
     { onBackToMenu : msg
     , onStartRace : msg
-    , onStartHostMultiplayer : msg
-    , onJoinMultiplayer : msg
+    , onStartHostMultiplayer : SessionMode -> msg
+    , onJoinMultiplayer : String -> msg
+    , onRoomCodeChanged : String -> msg
     , onSelectTrack : TrackId -> msg
     , onCopyShareLink : msg
     , onOpenQrScanner : msg
@@ -236,20 +239,27 @@ view data actions =
                         [ span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.uppercase ], Attr.style "color" "#38bdf8" ]
                             [ text "Online Multiplayer" ]
                         , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
-                            [ button
-                                [ Attr.type_ "button"
-                                , onClick actions.onStartHostMultiplayer
-                                , Tw.classes [ Tw.flex_1, Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
-                                , Attr.style "cursor" "pointer"
-                                , Attr.style "background" "rgba(14, 165, 233, 0.18)"
-                                , Attr.style "border-color" "#38bdf8"
-                                , Attr.style "color" "#7dd3fc"
+                            [ hostButton actions TwoPlayers "Host 2-player"
+                            , hostButton actions GridSession "Host grid (8)"
+                            ]
+                        , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
+                            [ input
+                                [ Attr.type_ "text"
+                                , Attr.value data.roomCode
+                                , onInput actions.onRoomCodeChanged
+                                , Attr.placeholder "Room code or link"
+                                , Attr.attribute "aria-label" "Room code"
+                                , Attr.attribute "autocomplete" "off"
+                                , Attr.class "flex-1 min-w-0 px-2.5 rounded-lg text-xs font-mono"
+                                , Attr.style "background" "rgba(30, 41, 59, 0.8)"
+                                , Attr.style "border" "1px solid rgba(148, 163, 184, 0.3)"
+                                , Attr.style "color" "#e2e8f0"
                                 ]
-                                [ text "Host (4-Split)" ]
+                                []
                             , button
                                 [ Attr.type_ "button"
-                                , onClick actions.onJoinMultiplayer
-                                , Tw.classes [ Tw.flex_1, Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
+                                , onClick (actions.onJoinMultiplayer data.roomCode)
+                                , Tw.classes [ Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
                                 , Attr.style "cursor" "pointer"
                                 , Attr.style "background" "rgba(30, 41, 59, 0.8)"
                                 , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
@@ -429,3 +439,19 @@ viewIssueCard lang issue =
             , div [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#cbd5e1" ] [ text issue.detail ]
             ]
         ]
+
+
+{-| A host button for one session mode (a 2-player room or a grid session).
+-}
+hostButton : GarageActions msg -> SessionMode -> String -> Html msg
+hostButton actions mode label =
+    button
+        [ Attr.type_ "button"
+        , onClick (actions.onStartHostMultiplayer mode)
+        , Tw.classes [ Tw.flex_1, Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background" "rgba(14, 165, 233, 0.18)"
+        , Attr.style "border-color" "#38bdf8"
+        , Attr.style "color" "#7dd3fc"
+        ]
+        [ text label ]

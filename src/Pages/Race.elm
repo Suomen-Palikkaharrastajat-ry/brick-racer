@@ -1,11 +1,12 @@
 module Pages.Race exposing (RaceOrbitActions, SplitScreenData, view)
 
 {-| Live downhill 3D racing viewport composition (`RacePage`).
-Supports single-player full-bleed racing and dual-player local split-screen driving.
+Supports single-player full-bleed racing, dual-player local split-screen driving,
+and online rooms: one full view alone, a grid of every player's view otherwise.
 -}
 
 import FeatherIcons
-import Game.Camera as GameCamera
+import Game.Grid as Grid
 import Game.Multiplayer as Multiplayer exposing (RemotePlayer, Role(..), RoomState, RoomStatus(..))
 import Game.MultiplayerUI as MultiplayerUI
 import Html exposing (Html, button, div, span, text)
@@ -49,7 +50,7 @@ type alias RaceOrbitActions msg =
 
 
 {-| Render the full-viewport WebGL racing scene and overlaid HUD, with optional
-Player 2 split-screen dual viewports or 4-player online multiplayer commentator split-view.
+Player 2 split-screen dual viewports or online room grids.
 -}
 view :
     TrackRenderBundle
@@ -73,12 +74,7 @@ view :
 view bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
     case maybeMulti of
         Just room ->
-            case room.role of
-                HostCommentator ->
-                    viewFourPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris width height hudData hudActions room multiActions
-
-                JoinedPlayer ->
-                    viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
+            viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
 
         Nothing ->
             case maybeSplit of
@@ -216,35 +212,15 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" "#0f172a"
         ]
-        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
-        , div
-            [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.border ]
-            , Attr.style "top" "1rem"
-            , Attr.style "left" "1rem"
-            , Attr.style "background" "rgba(15, 23, 42, 0.88)"
-            , Attr.style "border-color" (Multiplayer.slotColor room.mySlot)
-            ]
-            [ span
-                [ Tw.classes [ Tw.rounded_full ]
-                , Attr.style "width" "10px"
-                , Attr.style "height" "10px"
-                , Attr.style "background" (Multiplayer.slotColor room.mySlot)
-                ]
-                []
-            , span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.text_simple Th.white ] ]
-                [ text ("P" ++ String.fromInt room.mySlot ++ " • ROOM: " ++ room.roomId) ]
-            , button
-                [ Attr.type_ "button"
-                , onClick multiActions.onCopyShareLink
-                , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_lg, Tw.border ]
-                , Attr.style "background" "rgba(30, 41, 59, 0.8)"
-                , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
-                , Attr.style "color" "#94a3b8"
-                , Attr.style "cursor" "pointer"
-                ]
-                [ text "Copy" ]
-            ]
+        [ case Grid.layoutFor (Grid.orientation width height) (List.length room.players) of
+            Grid.Tiles _ ->
+                viewPlayerGrid bundle track allCars props shadowMesh debris physics width height room
+
+            Grid.SingleView ->
+                Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
+        , roomHeader room multiActions
         , HUD.viewHudOverlay hudData hudActions
+        , rosterStrip room
         , case room.status of
             Countdown n ->
                 MultiplayerUI.viewCountdownOverlay { secondsRemaining = n }
@@ -254,189 +230,184 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         ]
 
 
-viewFourPlayerSplitScreen :
+{-| Top bar of an online room: the commentator controls (count, copy link,
+start) for the host, a room badge for everyone else.
+-}
+roomHeader : RoomState -> MultiplayerActions msg -> Html msg
+roomHeader room multiActions =
+    case room.role of
+        HostCommentator ->
+            MultiplayerUI.viewCommentatorHeader
+                { room = room
+                , startLabel = "START RACE"
+                , onCopyShareLink = multiActions.onCopyShareLink
+                , onStartCountdown = multiActions.onStartCountdown
+                }
+
+        JoinedPlayer ->
+            div
+                [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.border ]
+                , Attr.style "top" "1rem"
+                , Attr.style "left" "1rem"
+                , Attr.style "background" "rgba(15, 23, 42, 0.88)"
+                , Attr.style "border-color" (Multiplayer.slotColor room.mySlot)
+                ]
+                [ span
+                    [ Tw.classes [ Tw.rounded_full ]
+                    , Attr.style "width" "10px"
+                    , Attr.style "height" "10px"
+                    , Attr.style "background" (Multiplayer.slotColor room.mySlot)
+                    ]
+                    []
+                , span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.text_simple Th.white ] ]
+                    [ text ("P" ++ String.fromInt room.mySlot ++ " • ROOM: " ++ room.roomId) ]
+                , button
+                    [ Attr.type_ "button"
+                    , onClick multiActions.onCopyShareLink
+                    , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_lg, Tw.border ]
+                    , Attr.style "background" "rgba(30, 41, 59, 0.8)"
+                    , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
+                    , Attr.style "color" "#94a3b8"
+                    , Attr.style "cursor" "pointer"
+                    ]
+                    [ text "Copy" ]
+                ]
+
+
+{-| Who is in the room, shown while the room waits in its lobby.
+-}
+rosterStrip : RoomState -> Html msg
+rosterStrip room =
+    case room.status of
+        Lobby ->
+            div
+                [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.px Th.s3, Tw.py Th.s1_dot_5 ]
+                , Attr.style "left" "0"
+                , Attr.style "right" "0"
+                , Attr.style "bottom" "1rem"
+                ]
+                [ MultiplayerUI.viewRoster room ]
+
+        _ ->
+            text ""
+
+
+{-| Every player's view in one grid that fills the screen (`Grid.gridShape`),
+the local player's first. Each tile follows one car from behind.
+-}
+viewPlayerGrid :
     TrackRenderBundle
     -> GeneratedTrack
-    -> VehicleSpec
-    -> CarMeshBundle
+    -> List RenderCarSlot
     -> Props
     -> WebGL.Mesh TerrainVertex
-    -> PhysicsState
     -> List DebrisPiece
+    -> PhysicsState
     -> Int
     -> Int
-    -> HudViewData
-    -> HudActions msg
     -> RoomState
-    -> MultiplayerActions msg
     -> Html msg
-viewFourPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris width height hudData hudActions room multiActions =
+viewPlayerGrid bundle track cars props shadowMesh debris physics width height room =
     let
-        qW =
-            max 160 (width // 2)
+        shape =
+            Grid.gridShape (Grid.orientation width height) (List.length room.players)
 
-        qH =
-            max 120 (height // 2)
+        tileW =
+            max 160 (width // shape.cols)
 
-        allCars =
-            List.map
-                (\p ->
-                    let
-                        remY =
-                            (Vec3.toRecord p.rotation).y
+        tileH =
+            max 120 (height // shape.rows)
 
-                        remP =
-                            (Vec3.toRecord p.rotation).x
-
-                        remR =
-                            (Vec3.toRecord p.rotation).z
-
-                        remPhysics =
-                            { position = p.position
-                            , velocity = vec3 0 0 p.speed
-                            , yaw = remY
-                            , yawRate = 0.0
-                            , pitch = remP
-                            , pitchRate = 0.0
-                            , roll = remR
-                            , rollRate = 0.0
-                            , steerAngle = 0.0
-                            , leanInput = { x = 0, y = 0 }
-                            , wheelSpinAngles = [ 0, 0, 0, 0 ]
-                            , suspensionCompressions = [ 0, 0, 0, 0 ]
-                            , groundedWheels = 4
-                            , airborneTime = 0.0
-                            , surfaceUnderCar = DirtRoad
-                            , integrity = 1.0
-                            , chassisScraping = False
-                            , offTrack = False
-                            , highSpeedBonus = False
-                            , rolloverTimer = 0.0
-                            , progressS = p.progress * track.totalLengthM
-                            , checkpointIndex = 0
-                            , checkpointAnchor = { s = 0, position = p.position, yaw = remY }
-                            , lastImpactCooldown = 0.0
-                            , nextPopThreshold = 1.0
-                            , gradeRatio = 0.0
-                            }
-
-                        ( remSpec, remMeshes ) =
-                            lookFor multiActions spec meshes p
-                    in
-                    { spec = remSpec
-                    , meshes = remMeshes
-                    , physics = remPhysics
-                    }
-                )
-                room.players
-
-        renderQuadrant slot =
+        tile p =
             let
-                playerMaybe =
-                    List.filter (\p -> p.slot == slot) room.players
-                        |> List.head
+                ( yaw, pos ) =
+                    if p.slot == room.mySlot then
+                        ( physics.yaw, physics.position )
+
+                    else
+                        ( (Vec3.toRecord p.rotation).y, p.position )
             in
-            case playerMaybe of
-                Just p ->
-                    let
-                        yawRad =
-                            (Vec3.toRecord p.rotation).y
-
-                        fwd =
-                            vec3 (sin yawRad) 0.0 (cos yawRad)
-
-                        camEye =
-                            GameCamera.chasePosition p.position fwd 9.0 3.2
-
-                        cam =
-                            Camera.init
-                                |> Camera.setViewportHeight (toFloat (max 1 qH))
-                                |> Camera.setSceneRadius 450.0
-                                |> (\c ->
-                                        { c
-                                            | azimuth = yawRad + pi
-                                            , elevation = 0.28
-                                            , distance = 5.0
-                                            , target = p.position
-                                        }
-                                   )
-                    in
-                    div
-                        [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.overflow_hidden, Tw.border ]
-                        , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
-                        , Attr.style "background" "#020617"
-                        ]
-                        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris cam qW qH []
-                        , div
-                            [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-                            , Attr.style "top" "0.5rem"
-                            , Attr.style "left" "0.5rem"
-                            , Attr.style "background" "rgba(15, 23, 42, 0.85)"
-                            , Attr.style "border-color" (Multiplayer.slotColor slot)
-                            ]
-                            [ span
-                                [ Tw.classes [ Tw.rounded_full ]
-                                , Attr.style "width" "8px"
-                                , Attr.style "height" "8px"
-                                , Attr.style "background" (Multiplayer.slotColor slot)
-                                ]
-                                []
-                            , span [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.text_simple Th.white ] ]
-                                [ text ("P" ++ String.fromInt slot ++ ": " ++ p.name) ]
-                            , span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold ], Attr.style "color" "#38bdf8" ]
-                                [ text (String.fromInt (round (p.speed * 3.6)) ++ " km/h") ]
-                            , if p.finished then
-                                span [ Tw.classes [ Tw.text_xs, Tw.font_black ], Attr.style "color" "#4ade80" ]
-                                    [ text "FINISH" ]
-
-                              else
-                                text ""
-                            ]
-                        ]
-
-                Nothing ->
-                    div
-                        [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.flex, Tw.flex_col, Tw.items_center, Tw.justify_center, Tw.border ]
-                        , Attr.style "border-color" "rgba(148, 163, 184, 0.15)"
-                        , Attr.style "background" "rgba(15, 23, 42, 0.6)"
-                        ]
-                        [ span
-                            [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_md, Tw.border, Tw.mb Th.s1 ]
-                            , Attr.style "border-color" (Multiplayer.slotColor slot)
-                            , Attr.style "color" (Multiplayer.slotColor slot)
-                            ]
-                            [ text ("SLOT " ++ String.fromInt slot) ]
-                        , span [ Tw.classes [ Tw.text_xs, Tw.font_semibold ], Attr.style "color" "#94a3b8" ]
-                            [ text "Waiting for racer to join..." ]
-                        , span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.mt Th.s0_dot_5 ], Attr.style "color" "#64748b" ]
-                            [ text ("Invite: #room=" ++ room.roomId) ]
-                        ]
+            div
+                [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.overflow_hidden, Tw.border ]
+                , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
+                , Attr.style "background" "#020617"
+                ]
+                [ Render.renderRaceViewportMulti bundle track cars props shadowMesh debris (tileCamera tileH pos yaw) tileW tileH []
+                , tileBadge room p
+                ]
     in
     div
-        [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
-        , Attr.style "background" "#020617"
+        [ Tw.classes [ Tw.absolute, Tw.w_full, Tw.h_full ]
+        , Attr.style "top" "0"
+        , Attr.style "left" "0"
+        , Attr.style "display" "grid"
+        , Attr.style "grid-template-columns" ("repeat(" ++ String.fromInt shape.cols ++ ", minmax(0, 1fr))")
+        , Attr.style "grid-template-rows" ("repeat(" ++ String.fromInt shape.rows ++ ", minmax(0, 1fr))")
         ]
-        [ -- 2x2 Grid Viewports
-          div [ Tw.classes [ Tw.grid, Tw.grid_cols_2, Tw.w_full, Tw.h_full ] ]
-            [ renderQuadrant 1
-            , renderQuadrant 2
-            , renderQuadrant 3
-            , renderQuadrant 4
+        (List.map tile (Grid.selfFirst .slot room.mySlot room.players))
+
+
+{-| Chase camera for one tile: behind the car at `target`, facing `yaw`.
+-}
+tileCamera : Int -> Vec3.Vec3 -> Float -> Camera
+tileCamera tileH target yaw =
+    Camera.init
+        |> Camera.setViewportHeight (toFloat (max 1 tileH))
+        |> Camera.setSceneRadius 450.0
+        |> (\c ->
+                { c
+                    | azimuth = yaw + pi
+                    , elevation = 0.28
+                    , distance = 5.0
+                    , target = target
+                }
+           )
+
+
+{-| Name, colour and speed of a player, on their tile.
+-}
+tileBadge : RoomState -> RemotePlayer -> Html msg
+tileBadge room p =
+    let
+        isMe =
+            p.slot == room.mySlot
+    in
+    div
+        [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
+        , Attr.style "top" "0.5rem"
+        , Attr.style "left" "0.5rem"
+        , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+        , Attr.style "border-color" (Multiplayer.slotColor p.slot)
+        ]
+        [ span
+            [ Tw.classes [ Tw.rounded_full ]
+            , Attr.style "width" "8px"
+            , Attr.style "height" "8px"
+            , Attr.style "background" (Multiplayer.slotColor p.slot)
             ]
+            []
+        , span [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.text_simple Th.white ] ]
+            [ text
+                ("P"
+                    ++ String.fromInt p.slot
+                    ++ ": "
+                    ++ p.name
+                    ++ (if isMe then
+                            " (you)"
 
-        -- Top Commentator Header
-        , MultiplayerUI.viewCommentatorHeader
-            { room = room
-            , startLabel = "START RACE"
-            , onCopyShareLink = multiActions.onCopyShareLink
-            , onStartCountdown = multiActions.onStartCountdown
-            }
-        , case room.status of
-            Countdown n ->
-                MultiplayerUI.viewCountdownOverlay { secondsRemaining = n }
+                        else
+                            ""
+                       )
+                )
+            ]
+        , span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold ], Attr.style "color" "#38bdf8" ]
+            [ text (String.fromInt (round (p.speed * 3.6)) ++ " km/h") ]
+        , if p.finished then
+            span [ Tw.classes [ Tw.text_xs, Tw.font_black ], Attr.style "color" "#4ade80" ]
+                [ text "FINISH" ]
 
-            _ ->
-                text ""
+          else
+            text ""
         ]
 
 
