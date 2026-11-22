@@ -1,23 +1,11 @@
 @import "tailwindcss";
 @import "./vendor/packages/brick-frame-ui/theme.css";
+@import "./vendor/packages/brick-frame-ui/game.css";
 @source "./packages/ui-components/src";
 @source "./src";
 
 #app {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
   background-color: #0b1623;
-}
-
-.touch-only {
-  display: none;
-}
-
-@media (pointer: coarse) {
-  .touch-only {
-    display: flex;
-  }
 }
 
 .racer-hud-glass {
