@@ -792,7 +792,9 @@ update msg model =
             ( model, Ports.openQrScanner () )
 
         QrCodeScanned scannedHash ->
-            ( model, Ports.decodeBinaryHash scannedHash )
+            ( { model | pendingBinaryPaste = Just scannedHash }
+            , Ports.decodeBinaryHash scannedHash
+            )
 
         QrScannerError _ ->
             ( model, Cmd.none )
