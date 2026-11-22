@@ -15,6 +15,7 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Events
 import Dict
+import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
 import Html exposing (Html)
 import Http
 import I18n exposing (Language(..))
@@ -133,6 +134,7 @@ type alias RaceState =
     , debris : List DebrisPiece
     , debrisSeed : Int
     , player2 : Maybe PlayerTwoState
+    , multiplayer : Maybe RoomState
     }
 
 
@@ -239,6 +241,7 @@ type alias Model =
     , tilt : TiltState
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
+    , multiplayer : Maybe RoomState
     , page : Page
     }
 
@@ -254,6 +257,12 @@ type Msg
     | ToggleLanguage
     | ToggleAudioMute
     | ToggleRaceMode
+    | StartHostMultiplayer
+    | JoinMultiplayer
+    | MultiplayerRoomChanged Decode.Value
+    | MultiplayerError String
+    | StartMultiplayerCountdown
+    | CopyMultiplayerLink
     | PasteChanged String
     | SubmitPaste
     | BinaryHashDecoded (Maybe (List Int))
@@ -369,6 +378,7 @@ init flags =
                 }
             , shareCopiedNotice = False
             , raceMode = SinglePlayer
+            , multiplayer = Nothing
             , page = MenuPage
             }
 
@@ -532,6 +542,90 @@ update msg model =
             in
             ( { model | raceMode = nextMode }, Cmd.none )
 
+        StartHostMultiplayer ->
+            let
+                vHash =
+                    case activeDocument model.page of
+                        Just doc ->
+                            Ingest.encodeRaceHash model.trackId model.seed doc
+
+                        Nothing ->
+                            ""
+            in
+            ( model
+            , Ports.createMultiplayerRoom
+                { roomId = ""
+                , courseId = Racer.Types.trackIdToString model.trackId
+                , name = "Host Commentator"
+                , vehicleHash = vHash
+                }
+            )
+
+        JoinMultiplayer ->
+            let
+                vHash =
+                    case activeDocument model.page of
+                        Just doc ->
+                            Ingest.encodeRaceHash model.trackId model.seed doc
+
+                        Nothing ->
+                            ""
+            in
+            ( model
+            , Ports.joinMultiplayerRoom
+                { roomId = ""
+                , name = "Racer"
+                , vehicleHash = vHash
+                }
+            )
+
+        StartMultiplayerCountdown ->
+            ( model, Ports.startMultiplayerCountdown () )
+
+        CopyMultiplayerLink ->
+            let
+                roomArg =
+                    case model.multiplayer of
+                        Just r ->
+                            "#room=" ++ r.roomId
+
+                        Nothing ->
+                            ""
+            in
+            ( model, Ports.copyShareUrl roomArg )
+
+        MultiplayerRoomChanged rawJson ->
+            case Decode.decodeValue Multiplayer.decodeRoomState rawJson of
+                Ok room ->
+                    case model.page of
+                        RacePage race ->
+                            let
+                                updatedRace =
+                                    { race | multiplayer = Just room }
+                            in
+                            ( { model | page = RacePage updatedRace, multiplayer = Just room }, Cmd.none )
+
+                        LoadGaragePage garage ->
+                            let
+                                ( nextModel, enterCmd ) =
+                                    startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { model | multiplayer = Just room }
+                            in
+                            ( nextModel
+                            , Cmd.batch
+                                [ enterCmd
+                                , Ports.setUrlHash ("#room=" ++ room.roomId)
+                                ]
+                            )
+
+                        _ ->
+                            ( { model | multiplayer = Just room }, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        MultiplayerError _ ->
+            ( model, Cmd.none )
+
         PasteChanged txt ->
             ( { model | pasteText = txt, pasteError = Nothing }, Cmd.none )
 
@@ -672,8 +766,9 @@ update msg model =
                 , pressedKeys = Set.empty
                 , touch = emptyTouch
                 , shareCopiedNotice = False
+                , multiplayer = Nothing
               }
-            , silenceAudioCmd
+            , Cmd.batch [ silenceAudioCmd, Ports.leaveMultiplayerRoom () ]
             )
 
         CopyShareLink ->
@@ -703,12 +798,24 @@ update msg model =
                     ( model, Cmd.none )
 
         InspectInGarage ->
+            let
+                cleanModel =
+                    { model | multiplayer = Nothing }
+            in
             case model.page of
                 RacePage race ->
-                    enterGarageFromRaceOrResults race.document race.title race.vehicle race.meshes model
+                    let
+                        ( nextModel, cmd ) =
+                            enterGarageFromRaceOrResults race.document race.title race.vehicle race.meshes cleanModel
+                    in
+                    ( nextModel, Cmd.batch [ cmd, Ports.leaveMultiplayerRoom () ] )
 
                 FinishLeaderboardPage res ->
-                    enterGarageFromRaceOrResults res.document res.title res.vehicle res.meshes model
+                    let
+                        ( nextModel, cmd ) =
+                            enterGarageFromRaceOrResults res.document res.title res.vehicle res.meshes cleanModel
+                    in
+                    ( nextModel, Cmd.batch [ cmd, Ports.leaveMultiplayerRoom () ] )
 
                 _ ->
                     ( model, Cmd.none )
@@ -1009,7 +1116,43 @@ stepFrame deltaMs model =
                 ( model, Cmd.none )
 
             else
-                stepRaceFrame dt race model
+                let
+                    ( nextModel, raceCmd ) =
+                        stepRaceFrame dt race model
+
+                    telemetryCmd =
+                        case race.multiplayer of
+                            Just room ->
+                                let
+                                    p =
+                                        race.physics
+
+                                    prog =
+                                        clamp 0.0 1.0 (p.progressS / max 1.0 race.track.totalLengthM)
+
+                                    spd =
+                                        Vec3.length p.velocity
+
+                                    isFin =
+                                        case race.subPhase of
+                                            ActiveDriving ->
+                                                False
+
+                                            _ ->
+                                                p.progressS >= (race.track.totalLengthM - 5.0)
+                                in
+                                Ports.sendMultiplayerTelemetry
+                                    { pos = [ Vec3.getX p.position, Vec3.getY p.position, Vec3.getZ p.position ]
+                                    , rot = [ p.pitch, p.yaw, p.roll ]
+                                    , speed = spd
+                                    , progress = prog
+                                    , finished = isFin
+                                    }
+
+                            Nothing ->
+                                Cmd.none
+                in
+                ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
 
         _ ->
             ( model, Cmd.none )
@@ -1597,6 +1740,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , debris = []
             , debrisSeed = max 1 (modelWithTrack.seed * 73 + vehicle.placementCount)
             , player2 = maybeP2
+            , multiplayer = model.multiplayer
             }
 
         nextModel =
@@ -2178,6 +2322,8 @@ subscriptions model =
         , Ports.binaryHashDecoded BinaryHashDecoded
         , Ports.hashChanged HashChanged
         , Ports.tiltOrientationReceived TiltOrientationReceived
+        , Ports.multiplayerRoomStateChanged MultiplayerRoomChanged
+        , Ports.multiplayerError MultiplayerError
         , Browser.Events.onVisibilityChange VisibilityChanged
         , Browser.Events.onKeyDown (Decode.map KeyDown keyEventDecoder)
         , Browser.Events.onKeyUp (Decode.map KeyUp (Decode.field "key" Decode.string))
@@ -2261,6 +2407,8 @@ view model =
                 }
                 { onBackToMenu = BackToMenu
                 , onStartRace = GarageToRace
+                , onStartHostMultiplayer = StartHostMultiplayer
+                , onJoinMultiplayer = JoinMultiplayer
                 , onSelectTrack = SelectTrack
                 , onCopyShareLink = CopyShareLink
                 , onToggleRaceMode = ToggleRaceMode
@@ -2383,6 +2531,10 @@ view model =
                 , onWheel = CamWheel
                 }
                 maybeSplit
+                race.multiplayer
+                { onStartCountdown = StartMultiplayerCountdown
+                , onCopyShareLink = CopyMultiplayerLink
+                }
 
         FinishLeaderboardPage res ->
             Results.view

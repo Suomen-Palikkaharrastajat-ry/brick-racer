@@ -57,6 +57,8 @@ type alias GarageViewData =
 type alias GarageActions msg =
     { onBackToMenu : msg
     , onStartRace : msg
+    , onStartHostMultiplayer : msg
+    , onJoinMultiplayer : msg
     , onSelectTrack : TrackId -> msg
     , onCopyShareLink : msg
     , onToggleRaceMode : msg
@@ -213,7 +215,38 @@ view data actions =
                             else
                                 RI18n.startRaceButton lang
                     in
-                    [ button
+                    [ -- Online Multiplayer Controls
+                      div
+                        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1_dot_5, Tw.p Th.s2_dot_5, Tw.rounded_xl, Tw.border ]
+                        , Attr.style "background" "rgba(15, 23, 42, 0.75)"
+                        , Attr.style "border-color" "rgba(56, 189, 248, 0.25)"
+                        ]
+                        [ span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.uppercase ], Attr.style "color" "#38bdf8" ]
+                            [ text "Online Multiplayer" ]
+                        , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
+                            [ button
+                                [ Attr.type_ "button"
+                                , onClick actions.onStartHostMultiplayer
+                                , Tw.classes [ Tw.flex_1, Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
+                                , Attr.style "cursor" "pointer"
+                                , Attr.style "background" "rgba(14, 165, 233, 0.18)"
+                                , Attr.style "border-color" "#38bdf8"
+                                , Attr.style "color" "#7dd3fc"
+                                ]
+                                [ text "Host (4-Split)" ]
+                            , button
+                                [ Attr.type_ "button"
+                                , onClick actions.onJoinMultiplayer
+                                , Tw.classes [ Tw.flex_1, Tw.py Th.s2, Tw.px Th.s2_dot_5, Tw.rounded_lg, Tw.font_bold, Tw.text_xs, Tw.border ]
+                                , Attr.style "cursor" "pointer"
+                                , Attr.style "background" "rgba(30, 41, 59, 0.8)"
+                                , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
+                                , Attr.style "color" "#e2e8f0"
+                                ]
+                                [ text "Join Race" ]
+                            ]
+                        ]
+                    , button
                         [ Attr.type_ "button"
                         , onClick actions.onToggleRaceMode
                         , Tw.classes [ Tw.w_full, Tw.py Th.s2, Tw.px Th.s4, Tw.rounded_xl, Tw.font_bold, Tw.text_sm, Tw.border ]
