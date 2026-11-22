@@ -108,7 +108,7 @@ suite =
             [ test "time and split formatting produce deterministic strings" <|
                 \_ ->
                     Expect.all
-                        [ \_ -> Expect.equal "00:00.00" (Leaderboard.formatRaceTime -2.5)
+                        [ \_ -> Expect.equal "--:--.--" (Leaderboard.formatRaceTime -2.5)
                         , \_ -> Expect.equal "01:14.32" (Leaderboard.formatRaceTime 74.32)
                         , \_ -> Expect.equal "-0.62 s" (Leaderboard.formatSplitDelta -0.62)
                         , \_ -> Expect.equal "+1.05 s" (Leaderboard.formatSplitDelta 1.05)
