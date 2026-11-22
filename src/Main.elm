@@ -14,7 +14,7 @@ local leaderboards (`Racer.Leaderboard`), and responsive menus/HUD (`Pages.*`,
 import Browser
 import Browser.Dom as Dom
 import Browser.Events
-import Dict
+import Dict exposing (Dict)
 import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
 import Html exposing (Html)
 import Http
@@ -244,8 +244,29 @@ type alias Model =
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
     , multiplayer : Maybe RoomState
+    , remoteCars : Dict String (Maybe RemoteCar)
     , page : Page
     }
+
+
+{-| Another player's car, built once from the model they shared.
+`Nothing` in `remoteCars` marks a model that could not be used; that player
+then shows with the default look.
+-}
+type alias RemoteCar =
+    { title : String
+    , document : Document
+    , vehicle : VehicleSpec
+    , meshes : CarMeshBundle
+    , settled : Bool
+    }
+
+
+{-| Builds with more parts than this are not drawn for other players.
+-}
+maxRemoteParts : Int
+maxRemoteParts =
+    600
 
 
 {-| Top-level application messages.
@@ -263,6 +284,7 @@ type Msg
     | JoinMultiplayer
     | MultiplayerRoomChanged Decode.Value
     | MultiplayerError String
+    | MultiplayerVehicleLoaded { id : String, payload : String }
     | StartMultiplayerCountdown
     | CopyMultiplayerLink
     | PasteChanged String
@@ -384,6 +406,7 @@ init flags =
             , shareCopiedNotice = False
             , raceMode = SinglePlayer
             , multiplayer = Nothing
+            , remoteCars = Dict.empty
             , page = MenuPage
             }
 
@@ -468,35 +491,36 @@ update msg model =
                 modelWithCache =
                     { model | partCache = nextCache }
             in
-            case activeDocument modelWithCache.page of
-                Nothing ->
-                    ( modelWithCache, Cmd.none )
+            refreshRemoteCars <|
+                case activeDocument modelWithCache.page of
+                    Nothing ->
+                        ( modelWithCache, Cmd.none )
 
-                Just doc ->
-                    let
-                        stats =
-                            reachablePartStats doc nextCache
+                    Just doc ->
+                        let
+                            stats =
+                                reachablePartStats doc nextCache
 
-                        markedCache =
-                            Resolve.markLoading stats.needed nextCache
+                            markedCache =
+                                Resolve.markLoading stats.needed nextCache
 
-                        fetchCmd =
-                            fetchPartsCmd modelWithCache.resolverConfig stats.needed
+                            fetchCmd =
+                                fetchPartsCmd modelWithCache.resolverConfig stats.needed
 
-                        updatedModel =
-                            { modelWithCache | partCache = markedCache }
+                            updatedModel =
+                                { modelWithCache | partCache = markedCache }
 
-                        finalModel =
-                            if stats.inFlight == 0 && List.isEmpty stats.needed then
-                                reanalyzeActiveVehicle updatedModel
+                            finalModel =
+                                if stats.inFlight == 0 && List.isEmpty stats.needed then
+                                    reanalyzeActiveVehicle updatedModel
 
-                            else if modBy 4 stats.settled == 0 then
-                                reanalyzeActiveVehicle updatedModel
+                                else if modBy 4 stats.settled == 0 then
+                                    reanalyzeActiveVehicle updatedModel
 
-                            else
-                                updatedModel
-                    in
-                    ( finalModel, fetchCmd )
+                                else
+                                    updatedModel
+                        in
+                        ( finalModel, fetchCmd )
 
         ToggleLanguage ->
             let
@@ -614,10 +638,18 @@ update msg model =
                             let
                                 ( nextModel, enterCmd ) =
                                     startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { model | multiplayer = Just room }
+
+                                shareCmd =
+                                    if room.role == JoinedPlayer then
+                                        Ports.setMultiplayerVehicle (Ingest.encodeRaceHash model.trackId model.seed garage.document)
+
+                                    else
+                                        Cmd.none
                             in
                             ( nextModel
                             , Cmd.batch
                                 [ enterCmd
+                                , shareCmd
                                 , Ports.setUrlHash ("#room=" ++ room.roomId)
                                 ]
                             )
@@ -628,8 +660,15 @@ update msg model =
                 Err _ ->
                     ( model, Cmd.none )
 
-        MultiplayerError _ ->
-            ( model, Cmd.none )
+        MultiplayerError err ->
+            ( { model | pasteError = Just err }, Cmd.none )
+
+        MultiplayerVehicleLoaded vehicle ->
+            if Dict.member vehicle.id model.remoteCars then
+                ( model, Cmd.none )
+
+            else
+                addRemoteCar vehicle.id vehicle.payload model
 
         PasteChanged txt ->
             ( { model | pasteText = txt, pasteError = Nothing }, Cmd.none )
@@ -1936,6 +1975,91 @@ reachablePartStats doc cache =
     step seedNames Set.empty [] 0 0 0
 
 
+{-| Build another player's car from the race hash they shared, once per
+vehicle id, and fetch the parts it needs. A model that does not decode or has
+more than `maxRemoteParts` parts is remembered as unusable.
+-}
+addRemoteCar : String -> String -> Model -> ( Model, Cmd Msg )
+addRemoteCar id payload model =
+    case Ingest.decodeRaceInput Nothing payload of
+        Ok decoded ->
+            if List.length (Document.flattenedPlacements decoded.document) > maxRemoteParts then
+                ( { model | remoteCars = Dict.insert id Nothing model.remoteCars }, Cmd.none )
+
+            else
+                let
+                    stats =
+                        reachablePartStats decoded.document model.partCache
+
+                    analyzed =
+                        Analyze.analyzeDocument decoded.suggestedName decoded.document model.partCache model.partIndex
+
+                    car =
+                        { title = decoded.suggestedName
+                        , document = decoded.document
+                        , vehicle = analyzed.spec
+                        , meshes = analyzed.meshes
+                        , settled = List.isEmpty stats.needed && stats.inFlight == 0
+                        }
+                in
+                ( { model
+                    | remoteCars = Dict.insert id (Just car) model.remoteCars
+                    , partCache = Resolve.markLoading stats.needed model.partCache
+                  }
+                , fetchPartsCmd model.resolverConfig stats.needed
+                )
+
+        Err _ ->
+            ( { model | remoteCars = Dict.insert id Nothing model.remoteCars }, Cmd.none )
+
+
+{-| After a part arrives: fetch what other players' cars still need, and
+rebuild a car once all of its parts are in.
+-}
+refreshRemoteCars : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+refreshRemoteCars ( model, cmd ) =
+    let
+        step id maybeCar ( cars, cache, needed ) =
+            case maybeCar of
+                Just car ->
+                    if car.settled then
+                        ( Dict.insert id maybeCar cars, cache, needed )
+
+                    else
+                        let
+                            stats =
+                                reachablePartStats car.document cache
+                        in
+                        if List.isEmpty stats.needed && stats.inFlight == 0 then
+                            let
+                                analyzed =
+                                    Analyze.analyzeDocument car.title car.document cache model.partIndex
+                            in
+                            ( Dict.insert id (Just { car | vehicle = analyzed.spec, meshes = analyzed.meshes, settled = True }) cars, cache, needed )
+
+                        else
+                            ( Dict.insert id maybeCar cars, Resolve.markLoading stats.needed cache, needed ++ stats.needed )
+
+                Nothing ->
+                    ( Dict.insert id Nothing cars, cache, needed )
+
+        ( nextCars, nextCache, allNeeded ) =
+            Dict.foldl step ( Dict.empty, model.partCache, [] ) model.remoteCars
+    in
+    ( { model | remoteCars = nextCars, partCache = nextCache }
+    , Cmd.batch [ cmd, fetchPartsCmd model.resolverConfig allNeeded ]
+    )
+
+
+{-| The look of another player's car by vehicle id, once it is built.
+-}
+remoteCarLook : Model -> String -> Maybe { spec : VehicleSpec, meshes : CarMeshBundle }
+remoteCarLook model id =
+    Dict.get id model.remoteCars
+        |> Maybe.andThen identity
+        |> Maybe.map (\car -> { spec = car.vehicle, meshes = car.meshes })
+
+
 fetchPartsCmd : ResolverConfig -> List String -> Cmd Msg
 fetchPartsCmd config names =
     if List.isEmpty names then
@@ -2527,6 +2651,7 @@ subscriptions model =
         , Ports.tiltOrientationReceived TiltOrientationReceived
         , Ports.multiplayerRoomStateChanged MultiplayerRoomChanged
         , Ports.multiplayerError MultiplayerError
+        , Ports.multiplayerVehicleLoaded MultiplayerVehicleLoaded
         , Ports.qrCodeScanned QrCodeScanned
         , Ports.qrScannerError QrScannerError
         , Browser.Events.onVisibilityChange VisibilityChanged
@@ -2740,6 +2865,7 @@ view model =
                 race.multiplayer
                 { onStartCountdown = StartMultiplayerCountdown
                 , onCopyShareLink = CopyMultiplayerLink
+                , remoteCar = remoteCarLook model
                 }
 
         FinishLeaderboardPage res ->

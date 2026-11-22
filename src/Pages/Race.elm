@@ -67,7 +67,7 @@ view :
     -> RaceOrbitActions msg
     -> Maybe SplitScreenData
     -> Maybe RoomState
-    -> { onStartCountdown : msg, onCopyShareLink : msg }
+    -> MultiplayerActions msg
     -> Html msg
 view bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
     case maybeMulti of
@@ -88,6 +88,29 @@ view bundle track spec meshes cubeMesh shadowMesh physics debris camera width he
                     viewTwoPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions p2
 
 
+{-| Room callbacks, plus the look of another player's car by vehicle id once
+their model has arrived (`Nothing` until then: the car shows with the local
+car's look).
+-}
+type alias MultiplayerActions msg =
+    { onStartCountdown : msg
+    , onCopyShareLink : msg
+    , remoteCar : String -> Maybe { spec : VehicleSpec, meshes : CarMeshBundle }
+    }
+
+
+{-| Spec and meshes to draw a room player's car with.
+-}
+lookFor : MultiplayerActions msg -> VehicleSpec -> CarMeshBundle -> RemotePlayer -> ( VehicleSpec, CarMeshBundle )
+lookFor actions spec meshes p =
+    case actions.remoteCar p.vehicleId of
+        Just look ->
+            ( look.spec, look.meshes )
+
+        Nothing ->
+            ( spec, meshes )
+
+
 viewMultiplayerSinglePlayer :
     TrackRenderBundle
     -> GeneratedTrack
@@ -104,7 +127,7 @@ viewMultiplayerSinglePlayer :
     -> HudActions msg
     -> RaceOrbitActions msg
     -> RoomState
-    -> { onStartCountdown : msg, onCopyShareLink : msg }
+    -> MultiplayerActions msg
     -> Html msg
 viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
     let
@@ -156,9 +179,12 @@ viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics
                                 , nextPopThreshold = 1.0
                                 , gradeRatio = 0.0
                                 }
+
+                            ( remSpec, remMeshes ) =
+                                lookFor multiActions spec meshes p
                         in
-                        { spec = spec
-                        , meshes = meshes
+                        { spec = remSpec
+                        , meshes = remMeshes
                         , physics = remPhysics
                         }
                     )
@@ -241,7 +267,7 @@ viewFourPlayerSplitScreen :
     -> HudViewData
     -> HudActions msg
     -> RoomState
-    -> { onStartCountdown : msg, onCopyShareLink : msg }
+    -> MultiplayerActions msg
     -> Html msg
 viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics debris width height hudData hudActions room multiActions =
     let
@@ -292,9 +318,12 @@ viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics d
                             , nextPopThreshold = 1.0
                             , gradeRatio = 0.0
                             }
+
+                        ( remSpec, remMeshes ) =
+                            lookFor multiActions spec meshes p
                     in
-                    { spec = spec
-                    , meshes = meshes
+                    { spec = remSpec
+                    , meshes = remMeshes
                     , physics = remPhysics
                     }
                 )

@@ -1,5 +1,6 @@
 port module Ports exposing
     ( binaryHashDecoded
+    , closeQrScanner
     , copyShareUrl
     , createMultiplayerRoom
     , decodeBinaryHash
@@ -12,8 +13,8 @@ port module Ports exposing
     , leaveMultiplayerRoom
     , multiplayerError
     , multiplayerRoomStateChanged
+    , multiplayerVehicleLoaded
     , openQrScanner
-    , closeQrScanner
     , playSfx
     , qrCodeScanned
     , qrScannerError
@@ -23,6 +24,7 @@ port module Ports exposing
     , saveLeaderboard
     , sendMultiplayerTelemetry
     , setAudioMuted
+    , setMultiplayerVehicle
     , setUrlHash
     , startMultiplayerCountdown
     , storeLanguage
@@ -178,6 +180,18 @@ port leaveMultiplayerRoom : () -> Cmd msg
 {-| Incoming room state update from WebRTC signaling runtime.
 -}
 port multiplayerRoomStateChanged : (Json.Decode.Value -> msg) -> Sub msg
+
+
+{-| A player's vehicle model arrived: `id` is the `vehicleId` the room state
+names, `payload` the race hash that player shared. Sent once per id and room
+session; the payload never travels inside room updates.
+-}
+port multiplayerVehicleLoaded : ({ id : String, payload : String } -> msg) -> Sub msg
+
+
+{-| Change the local vehicle (a race hash) while in a multiplayer room.
+-}
+port setMultiplayerVehicle : String -> Cmd msg
 
 
 {-| Multiplayer error notification.
