@@ -174,7 +174,7 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
-        , test "All 4 built-in presets are 100% legal LEGO builds with zero Studio.Health issues, zero tidy moves, and zero loose parts" <|
+        , test "All 4 built-in presets are 100% legal brick builds with zero Studio.Health issues, zero tidy moves, and zero loose parts" <|
             \_ ->
                 let
                     checkPreset preset =

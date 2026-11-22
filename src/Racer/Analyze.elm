@@ -88,7 +88,7 @@ yUpFlip =
     Mat4.makeScale3 1 -1 -1
 
 
-{-| Scale LEGO brick mass (grams) smoothly to realistic soapbox cart mass (kg).
+{-| Scale toy brick mass (grams) smoothly to realistic soapbox cart mass (kg).
 -}
 carWeightKgFromGrams : Float -> Float
 carWeightKgFromGrams grams =
@@ -293,7 +293,7 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
         spec =
             { name = title
             , placementCount = List.length placements
-            , legoMassGrams = totalMassGrams
+            , brickMassGrams = totalMassGrams
             , totalMassKg = totalMassKg
             , centerOfMassLdu = comLdu
             , centerOfMassM = comM

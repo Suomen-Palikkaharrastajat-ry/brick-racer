@@ -44,7 +44,7 @@ lduToMetersMatrix =
     Mat4.makeScale3 s s s
 
 
-{-| Match LEGO plastic lighting direction and vibrance to each course's sky palette.
+{-| Match brick plastic lighting direction and vibrance to each course's sky palette.
 -}
 carStyleForTrack : TrackId -> Style.Style
 carStyleForTrack trackId =
@@ -90,7 +90,7 @@ buildCarWorldMatrix physics =
         |> (\m -> Mat4.mul m pitchMat)
 
 
-{-| Render the static and articulated LEGO sub-assemblies of a vehicle in world space.
+{-| Render the static and articulated brick sub-assemblies of a vehicle in world space.
 -}
 renderVehicle :
     Mat4

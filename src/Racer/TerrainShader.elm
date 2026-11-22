@@ -230,7 +230,7 @@ shadowEntity modelMat mesh camera width height heightAboveGround =
         }
 
 
-{-| Render one tumbling LEGO debris brick particle.
+{-| Render one tumbling debris brick particle.
 -}
 debrisEntity : WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> DebrisPiece -> WebGL.Entity
 debrisEntity cubeMesh trackId camera width height piece =

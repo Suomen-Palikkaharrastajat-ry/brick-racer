@@ -380,7 +380,7 @@ type alias ValidationIssue =
 type alias VehicleSpec =
     { name : String
     , placementCount : Int
-    , legoMassGrams : Float
+    , brickMassGrams : Float
     , totalMassKg : Float
     , centerOfMassLdu : Vec3
     , centerOfMassM : Vec3

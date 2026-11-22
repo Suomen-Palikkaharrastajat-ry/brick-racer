@@ -368,8 +368,8 @@ presets =
     , { id = "alpine-crawler"
       , nameEn = "Alpine Trail Crawler"
       , nameFi = "Alppimaasturi"
-      , summaryEn = "High-clearance 37x18 off-road tires and heavy Technic turntable chassis."
-      , summaryFi = "Korkea maavara, 37x18-maastorenkaat ja tukeva Technic-ohjausrunko."
+      , summaryEn = "High-clearance 37x18 off-road tires and heavy pin-and-axle turntable chassis."
+      , summaryFi = "Korkea maavara, 37x18-maastorenkaat ja tukeva tappi- ja akselirunko."
       , ldrText = alpineCrawlerLdr
       }
     , { id = "trike-wedge"

@@ -6,7 +6,7 @@ module Pages.Garage exposing
 
 {-| Garage inspection & mechanical validation screen (`LoadGaragePage`).
 
-Displays a 3D turntable preview of the loaded LEGO soapbox build, reports async
+Displays a 3D turntable preview of the loaded brick soapbox build, reports async
 part resolution progress, lists mechanical specs (wheels, steering type, weight,
 ground clearance) and diagnostic findings, and launches into the selected course.
 
@@ -22,7 +22,7 @@ import Racer.Analyze exposing (CarMeshBundle)
 import Racer.I18n as RI18n
 import Racer.Render as Render
 import Racer.TerrainShader exposing (TerrainVertex)
-import Racer.Types exposing (RaceMode(..), TrackId, ValidationIssue, allTrackIds, ValidationSeverity(..), VehicleSpec)
+import Racer.Types exposing (RaceMode(..), TrackId, ValidationIssue, ValidationSeverity(..), VehicleSpec, allTrackIds)
 import Render.Camera exposing (Camera)
 import Tailwind as Tw
 import Tailwind.Breakpoints as Bp
@@ -371,7 +371,7 @@ viewSpecsGrid data =
         massVal =
             String.fromInt (round spec.totalMassKg)
                 ++ " kg ("
-                ++ String.fromFloat (toFloat (round (spec.legoMassGrams * 10)) / 10.0)
+                ++ String.fromFloat (toFloat (round (spec.brickMassGrams * 10)) / 10.0)
                 ++ " g)"
 
         clearanceVal =

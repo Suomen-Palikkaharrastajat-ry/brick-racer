@@ -334,10 +334,10 @@ garageMassLabel : Language -> String
 garageMassLabel lang =
     case lang of
         Fi ->
-            "Massa (Mäkiauto / LEGO)"
+            "Massa (Mäkiauto / palikat)"
 
         En ->
-            "Mass (Kart / LEGO)"
+            "Mass (Kart / bricks)"
 
 
 {-| Telemetry card label for ground clearance.

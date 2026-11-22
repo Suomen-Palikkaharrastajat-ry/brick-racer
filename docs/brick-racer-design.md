@@ -136,7 +136,7 @@ Players can bring a build into `brick-racer` in four ways:
    - **Viewport Camera Preservation (`Viewport.Hash`):** Optional `&az=...&el=...&d=...` flags are tolerated without breaking model decoding.
 2. **Paste Box in Menu / Garage:** Accepts any full URL containing `#b/...` or `#model=...`, bare `b/...` fragments, or raw LDraw `.ldr`/`.mpd` text pasted directly.
 3. **File Drop / Upload:** `.ldr`, `.mpd`, `.dat`, and `.io` (handled through `initBricksRuntime` file drop and `.io` zip/crypto extraction, reusing the existing `fileContentReceived` JS runtime bridge).
-4. **Curated Starter Soapboxes:** Built-in builds (e.g., *Classic Pinewood Plank*, *Balloon-Tire Offroader*, *Technic Turntable Steering Kart*, *Brick-Built Trike*) stored using `EmbeddedParts` or bundled hashes so new players can race immediately without switching apps first.
+4. **Curated Starter Soapboxes:** Built-in builds (e.g., *Classic Pinewood Plank*, *Balloon-Tire Offroader*, *Turntable Steering Kart*, *Brick-Built Trike*) stored using `EmbeddedParts` or bundled hashes so new players can race immediately without switching apps first.
 
 ### 3.2 Coordinate Systems & Scale Normalization
 
@@ -191,7 +191,7 @@ A placement is classified as a wheel component via three ordered tiers:
    - Small rim/tire: `4624.dat` (Rim, r=16) + `3641.dat` (Tyre, outerR=18)
    - Medium rims/tires: `6014.dat` / `6014b.dat` (r=24) + `6015.dat` (outerR=24.8) or `56890.dat` (Balloon Tyre, outerR=30); `42610.dat` (r=20) + `50951.dat`/`50945.dat` (outerR=19)
    - Off-road rims/tires: `55981.dat` (pin hole, r=34) / `55982.dat` (axle hole, r=34) + `56891.dat` (Off-Road Tyre 37x18, outerR=37)
-   - Large Technic: `56145.dat` (6-spoke, r=44) + `44309.dat` (Tyre 43x22, outerR=54)
+   - Large pin-and-axle wheel: `56145.dat` (6-spoke, r=44) + `44309.dat` (Tyre 43x22, outerR=54)
 2. **Catalog Category & Keyword Match (`LDraw.Catalog.PartInfo`):** Parts whose category/description contains `"Wheel"` or `"Tyre"` / `"Tire"` (case-insensitive) when not in `Connectivity`.
 3. **Geometry Measurement:** For any catalog/non-hardcoded wheel or tire, flatten its local triangles (`LDraw.Geometry.flatten`) in Y-up render space and measure:
    - Cylindrical symmetry axis (minimum inertia / equal radial extents in 2 orthogonal axes, narrower width in the spin-axis third direction).
@@ -201,11 +201,11 @@ A placement is classified as a wheel component via three ordered tiers:
 #### Pass 2 — Axle Grouping & Steering Pivot Detection
 1. **Axle Grouping:** `WheelAssembly` items with approximately equal longitudinal projection (`|z_i - z_j| < 24 LDU`) and collinear spin axes are grouped into front/mid/rear axle sets.
 2. **Steering Mechanism Detection (using `LDraw.Connectivity` + part rules):**
-   `Racer.Analyze` constructs the physical connection graph between placements (stud/anti-stud, Technic pins/axles, clips/bars, ball joints, hinges, wheel pins, turntables) and checks whether the front axle subgraph attaches to the main chassis exclusively through a pivotable steering joint:
-   - **Articulated Turntable Bogie:** Front axle + wheels sit on one side of a turntable top/base (`3679.dat`/`3680.dat`, `99009.dat`/`99010.dat`, `18938.dat`) or a single vertical smooth Technic pin (`3673.dat` / `4274.dat`) aligned close to world `+Y`. Result: `SteeringMechanism.TurntableBogie { pivotPos, bogiePlacementIds }`.
+   `Racer.Analyze` constructs the physical connection graph between placements (stud/anti-stud, pins/axles, clips/bars, ball joints, hinges, wheel pins, turntables) and checks whether the front axle subgraph attaches to the main chassis exclusively through a pivotable steering joint:
+   - **Articulated Turntable Bogie:** Front axle + wheels sit on one side of a turntable top/base (`3679.dat`/`3680.dat`, `99009.dat`/`99010.dat`, `18938.dat`) or a single vertical smooth pin (`3673.dat` / `4274.dat`) aligned close to world `+Y`. Result: `SteeringMechanism.TurntableBogie { pivotPos, bogiePlacementIds }`.
    - **Knuckle / Hinge Steering:** Left and right front wheel carriers attach via hinge plates (`2429.dat`/`2430.dat`, `4275b.dat`/`4276b.dat`) or ball joints (`14417.dat`/`14418.dat`, `2736.dat`). Result: `SteeringMechanism.TwinKnuckle { leftPivot, rightPivot, leftIds, rightIds }`.
    - **Cosmetic Steering Wheel Indicator:** Detects `3829c01.dat` (Car Steering Stand and Wheel) so its wheel rotates visually in sync with steering input.
-   - **Virtual Ackermann Fallback:** When wheels mount to fixed wheel-holder plates (`4600.dat`, `4488.dat`, `24326.dat`) or fixed Technic axles (`3704.dat`–`3707.dat`, `6587.dat`) directly on the rigid chassis, the car remains **fully playable** via **Soapbox Weight-Shift + Virtual Front Axle Yaw (`SteeringMechanism.FixedAxleFallback`)**: front wheels visibly yaw by up to `±22°`, but steering responsiveness is slightly softer and weight-shifting (leaning) plays a bigger role — creating an authentic gameplay incentive to build real turntable/knuckle steering in `brick-studio`!
+   - **Virtual Ackermann Fallback:** When wheels mount to fixed wheel-holder plates (`4600.dat`, `4488.dat`, `24326.dat`) or fixed axles (`3704.dat`–`3707.dat`, `6587.dat`) directly on the rigid chassis, the car remains **fully playable** via **Soapbox Weight-Shift + Virtual Front Axle Yaw (`SteeringMechanism.FixedAxleFallback`)**: front wheels visibly yaw by up to `±22°`, but steering responsiveness is slightly softer and weight-shifting (leaning) plays a bigger role — creating an authentic gameplay incentive to build real turntable/knuckle steering in `brick-studio`!
 
 #### Pass 3 — Mass, Center of Mass (CoM), Moment of Inertia & Aero
 For every placement `p`:
