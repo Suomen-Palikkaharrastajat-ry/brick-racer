@@ -10,9 +10,11 @@ module Racer.Render exposing
 
 {-| WebGL rendering compositor for Brick Racer's Garage Inspector and 3D Race View.
 
-Combines sky dome, chunked countryside terrain (`Racer.TerrainMesh`), frustum culling
-(`Render.Instanced.frustumFromMatrix`), articulated brick sub-assemblies
-(`Render.Scene.renderSceneWithTransform`), ground contact shadows, and debris particles.
+Combines the brick sky, chunked countryside terrain in the brick look
+(`Racer.TerrainMesh`), frustum culling (`Render.Instanced.frustumFromMatrix`),
+brick-built scenery, arches and debris from catalog models (`Racer.Scenery`),
+articulated brick sub-assemblies (`Render.Scene.renderSceneWithTransform`) and
+ground contact shadows.
 
 -}
 
@@ -22,6 +24,7 @@ import Html.Attributes as Attr
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Analyze exposing (CarMeshBundle)
+import Racer.Scenery as Scenery exposing (Props)
 import Racer.TerrainMesh exposing (TrackChunk, TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
@@ -273,7 +276,7 @@ renderRaceViewport :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -282,12 +285,12 @@ renderRaceViewport :
     -> Int
     -> List (Html.Attribute msg)
     -> Html msg
-renderRaceViewport bundle track spec meshes cubeMesh shadowMesh physics debris camera w h attrs =
+renderRaceViewport bundle track spec meshes props shadowMesh physics debris camera w h attrs =
     renderRaceViewportMulti
         bundle
         track
         [ { spec = spec, meshes = meshes, physics = physics } ]
-        cubeMesh
+        props
         shadowMesh
         debris
         camera
@@ -303,7 +306,7 @@ renderRaceViewportMulti :
     TrackRenderBundle
     -> GeneratedTrack
     -> List RenderCarSlot
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> List DebrisPiece
     -> Camera
@@ -311,7 +314,7 @@ renderRaceViewportMulti :
     -> Int
     -> List (Html.Attribute msg)
     -> Html msg
-renderRaceViewportMulti bundle track cars cubeMesh shadowMesh debris camera w h attrs =
+renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h attrs =
     let
         safeW =
             max 1 w
@@ -342,16 +345,27 @@ renderRaceViewportMulti bundle track cars cubeMesh shadowMesh debris camera w h 
         chunkIndices =
             List.range (max 0 (currentChunk - 1)) (min (Array.length bundle.chunks - 1) (currentChunk + 4))
 
-        visibleChunkEntities =
+        propView =
+            TerrainShader.propView camera bundle.trackId safeW safeH
+
+        inView center radius =
+            Instanced.sphereInFrustum frustum center radius
+
+        visibleChunks =
             chunkIndices
                 |> List.filterMap (\idx -> Array.get idx bundle.chunks)
                 |> List.filter (\c -> Instanced.sphereInFrustum frustum c.boundsCenter c.boundsRadius)
-                |> List.concatMap
-                    (\c ->
-                        [ TerrainShader.groundEntity c.mesh bundle.trackId camera safeW safeH
-                        , TerrainShader.terrainEntity Mat4.identity c.sceneryMesh bundle.trackId camera safeW safeH
-                        ]
-                    )
+
+        groundEntities =
+            List.map (\c -> TerrainShader.groundEntity c.mesh bundle.trackId camera safeW safeH) visibleChunks
+
+        propEntities =
+            List.concatMap
+                (\c ->
+                    Scenery.archEntities propView inView props c.arches
+                        ++ Scenery.obstacleEntities propView inView props c.scenery
+                )
+                visibleChunks
 
         style =
             carStyleForTrack bundle.trackId
@@ -401,12 +415,13 @@ renderRaceViewportMulti bundle track cars cubeMesh shadowMesh debris camera w h 
             List.concatMap renderOneCar cars
 
         debrisEntities =
-            List.map (TerrainShader.debrisEntity cubeMesh bundle.trackId camera safeW safeH) debris
+            Scenery.debrisEntities propView props debris
 
         allEntities =
             [ TerrainShader.skyEntity camera bundle.trackId safeW safeH ]
-                ++ visibleChunkEntities
+                ++ groundEntities
                 ++ carsEntities
+                ++ propEntities
                 ++ debrisEntities
     in
     WebGL.toHtmlWith

@@ -16,6 +16,7 @@ import Math.Vector3 as Vec3 exposing (vec3)
 import Racer.Analyze exposing (CarMeshBundle)
 import Racer.HUD as HUD exposing (HudActions, HudViewData)
 import Racer.Render as Render exposing (RenderCarSlot)
+import Racer.Scenery exposing (Props)
 import Racer.TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
@@ -55,7 +56,7 @@ view :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -69,23 +70,23 @@ view :
     -> Maybe RoomState
     -> MultiplayerActions msg
     -> Html msg
-view bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
+view bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
     case maybeMulti of
         Just room ->
             case room.role of
                 HostCommentator ->
-                    viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics debris width height hudData hudActions room multiActions
+                    viewFourPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris width height hudData hudActions room multiActions
 
                 JoinedPlayer ->
-                    viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
+                    viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
 
         Nothing ->
             case maybeSplit of
                 Nothing ->
-                    viewSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions
+                    viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions
 
                 Just p2 ->
-                    viewTwoPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions p2
+                    viewTwoPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions p2
 
 
 {-| Room callbacks, plus the look of another player's car by vehicle id once
@@ -116,7 +117,7 @@ viewMultiplayerSinglePlayer :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -129,7 +130,7 @@ viewMultiplayerSinglePlayer :
     -> RoomState
     -> MultiplayerActions msg
     -> Html msg
-viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
+viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
     let
         localCar =
             { spec = spec
@@ -215,7 +216,7 @@ viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" "#0f172a"
         ]
-        [ Render.renderRaceViewportMulti bundle track allCars cubeMesh shadowMesh debris camera width height canvasAttrs
+        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
         , div
             [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.border ]
             , Attr.style "top" "1rem"
@@ -258,7 +259,7 @@ viewFourPlayerSplitScreen :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -269,7 +270,7 @@ viewFourPlayerSplitScreen :
     -> RoomState
     -> MultiplayerActions msg
     -> Html msg
-viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics debris width height hudData hudActions room multiActions =
+viewFourPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris width height hudData hudActions room multiActions =
     let
         qW =
             max 160 (width // 2)
@@ -365,7 +366,7 @@ viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics d
                         , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
                         , Attr.style "background" "#020617"
                         ]
-                        [ Render.renderRaceViewportMulti bundle track allCars cubeMesh shadowMesh debris cam qW qH []
+                        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris cam qW qH []
                         , div
                             [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
                             , Attr.style "top" "0.5rem"
@@ -444,7 +445,7 @@ viewSinglePlayer :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -455,7 +456,7 @@ viewSinglePlayer :
     -> HudActions msg
     -> RaceOrbitActions msg
     -> Html msg
-viewSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris camera width height hudData hudActions orbitActions =
+viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions =
     let
         mouseDecoder msgCtor =
             Decode.map2 msgCtor
@@ -480,7 +481,7 @@ viewSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics debris cam
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" "#0f172a"
         ]
-        [ Render.renderRaceViewport bundle track spec meshes cubeMesh shadowMesh physics debris camera width height canvasAttrs
+        [ Render.renderRaceViewport bundle track spec meshes props shadowMesh physics debris camera width height canvasAttrs
         , HUD.viewHudOverlay hudData hudActions
         ]
 
@@ -490,7 +491,7 @@ viewTwoPlayerSplitScreen :
     -> GeneratedTrack
     -> VehicleSpec
     -> CarMeshBundle
-    -> WebGL.Mesh TerrainVertex
+    -> Props
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
@@ -501,7 +502,7 @@ viewTwoPlayerSplitScreen :
     -> HudActions msg
     -> SplitScreenData
     -> Html msg
-viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes cubeMesh shadowMesh p1Physics debris p1Camera width height p1HudData hudActions p2 =
+viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics debris p1Camera width height p1HudData hudActions p2 =
     let
         isWide =
             width >= height
@@ -575,7 +576,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes cubeMesh shadowMesh p1Phys
                 )
             , Attr.style "border-color" "#f59e0b"
             ]
-            [ Render.renderRaceViewportMulti bundle track bothCars cubeMesh shadowMesh debris p1Camera p1W p1H []
+            [ Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1Camera p1W p1H []
             , playerBadge "PLAYER 1" "#38bdf8" "WASD"
             , HUD.viewHudOverlay p1HudData hudActions
             ]
@@ -592,7 +593,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes cubeMesh shadowMesh p1Phys
                        )
                 )
             ]
-            [ Render.renderRaceViewportMulti bundle track p2FirstCars cubeMesh shadowMesh debris p2.p2Camera p2W p2H []
+            [ Render.renderRaceViewportMulti bundle track p2FirstCars props shadowMesh debris p2.p2Camera p2W p2H []
             , playerBadge "PLAYER 2" "#f43f5e" "ARROWS"
             , HUD.viewHudOverlay p2.p2HudData hudActions
             ]

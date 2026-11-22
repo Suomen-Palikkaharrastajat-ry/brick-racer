@@ -41,6 +41,7 @@ import Racer.Ingest as Ingest
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
 import Racer.Physics as Physics
 import Racer.Render as Render
+import Racer.Scenery as Scenery
 import Racer.TerrainMesh as TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
@@ -212,7 +213,6 @@ type alias TiltState =
 -}
 type alias StaticMeshes =
     { plinth : WebGL.Mesh TerrainVertex
-    , cube : WebGL.Mesh TerrainVertex
     , shadow : WebGL.Mesh TerrainVertex
     }
 
@@ -226,6 +226,7 @@ type alias Model =
     , partCache : PartCache
     , partIndex : PartIndex
     , partIndexLoaded : Bool
+    , props : Scenery.Props
     , staticMeshes : StaticMeshes
     , trackId : TrackId
     , seed : Int
@@ -366,54 +367,56 @@ init flags =
         initSeed =
             Maybe.withDefault 1 parsedInit.seed
 
-        baseModel =
-            { resolverConfig = resolverCfg
-            , ldrawBase = flags.ldrawBase
-            , indicesBase = flags.indicesBase
-            , partCache = Resolve.initCache
-            , partIndex = Catalog.emptyPartIndex
-            , partIndexLoaded = False
-            , staticMeshes =
-                { plinth = TerrainMesh.buildGaragePlinthMesh
-                , cube = TerrainShader.buildUnitCubeMesh
-                , shadow = TerrainShader.buildShadowQuadMesh
+        ( baseModel, propsCmd ) =
+            refreshProps
+                { resolverConfig = resolverCfg
+                , ldrawBase = flags.ldrawBase
+                , indicesBase = flags.indicesBase
+                , partCache = Resolve.initCache
+                , partIndex = Catalog.emptyPartIndex
+                , partIndexLoaded = False
+                , props = Scenery.empty
+                , staticMeshes =
+                    { plinth = TerrainMesh.buildGaragePlinthMesh
+                    , shadow = TerrainShader.buildShadowQuadMesh
+                    }
+                , trackId = initTrackId
+                , seed = max 1 initSeed
+                , cachedTrack = Nothing
+                , language = lang
+                , viewportWidth = 1280
+                , viewportHeight = 720
+                , coarsePointer = flags.coarsePointer
+                , showTouchControls = flags.coarsePointer
+                , audioMuted = flags.savedAudioMuted
+                , leaderboard = Leaderboard.decodeLeaderboard flags.savedLeaderboardJson
+                , pasteText = ""
+                , pasteError = Nothing
+                , pendingBinaryPaste = Nothing
+                , pressedKeys = Set.empty
+                , touch =
+                    { left = False
+                    , right = False
+                    , brake = False
+                    , tuck = False
+                    , drift = False
+                    }
+                , tilt =
+                    { enabled = False
+                    , available = False
+                    , zeroGamma = Nothing
+                    , gamma = 0.0
+                    }
+                , shareCopiedNotice = False
+                , raceMode = SinglePlayer
+                , multiplayer = Nothing
+                , remoteCars = Dict.empty
+                , page = MenuPage
                 }
-            , trackId = initTrackId
-            , seed = max 1 initSeed
-            , cachedTrack = Nothing
-            , language = lang
-            , viewportWidth = 1280
-            , viewportHeight = 720
-            , coarsePointer = flags.coarsePointer
-            , showTouchControls = flags.coarsePointer
-            , audioMuted = flags.savedAudioMuted
-            , leaderboard = Leaderboard.decodeLeaderboard flags.savedLeaderboardJson
-            , pasteText = ""
-            , pasteError = Nothing
-            , pendingBinaryPaste = Nothing
-            , pressedKeys = Set.empty
-            , touch =
-                { left = False
-                , right = False
-                , brake = False
-                , tuck = False
-                , drift = False
-                }
-            , tilt =
-                { enabled = False
-                , available = False
-                , zeroGamma = Nothing
-                , gamma = 0.0
-                }
-            , shareCopiedNotice = False
-            , raceMode = SinglePlayer
-            , multiplayer = Nothing
-            , remoteCars = Dict.empty
-            , page = MenuPage
-            }
 
         startupCmds =
             [ Task.perform GotDomViewport Dom.getViewport
+            , propsCmd
             , PartIndex.fetchWithFallback (nonEmptyMaybe flags.indicesBase) flags.ldrawBase PartIndexLoaded
             ]
 
@@ -493,36 +496,37 @@ update msg model =
                 modelWithCache =
                     { model | partCache = nextCache }
             in
-            refreshRemoteCars <|
-                case activeDocument modelWithCache.page of
-                    Nothing ->
-                        ( modelWithCache, Cmd.none )
+            withProps <|
+                refreshRemoteCars <|
+                    case activeDocument modelWithCache.page of
+                        Nothing ->
+                            ( modelWithCache, Cmd.none )
 
-                    Just doc ->
-                        let
-                            stats =
-                                reachablePartStats doc nextCache
+                        Just doc ->
+                            let
+                                stats =
+                                    reachablePartStats doc nextCache
 
-                            markedCache =
-                                Resolve.markLoading stats.needed nextCache
+                                markedCache =
+                                    Resolve.markLoading stats.needed nextCache
 
-                            fetchCmd =
-                                fetchPartsCmd modelWithCache.resolverConfig stats.needed
+                                fetchCmd =
+                                    fetchPartsCmd modelWithCache.resolverConfig stats.needed
 
-                            updatedModel =
-                                { modelWithCache | partCache = markedCache }
+                                updatedModel =
+                                    { modelWithCache | partCache = markedCache }
 
-                            finalModel =
-                                if stats.inFlight == 0 && List.isEmpty stats.needed then
-                                    reanalyzeActiveVehicle updatedModel
+                                finalModel =
+                                    if stats.inFlight == 0 && List.isEmpty stats.needed then
+                                        reanalyzeActiveVehicle updatedModel
 
-                                else if modBy 4 stats.settled == 0 then
-                                    reanalyzeActiveVehicle updatedModel
+                                    else if modBy 4 stats.settled == 0 then
+                                        reanalyzeActiveVehicle updatedModel
 
-                                else
-                                    updatedModel
-                        in
-                        ( finalModel, fetchCmd )
+                                    else
+                                        updatedModel
+                            in
+                            ( finalModel, fetchCmd )
 
         ToggleLanguage ->
             let
@@ -2007,6 +2011,27 @@ remoteCarLook model id =
         |> Maybe.map (\car -> { spec = car.vehicle, meshes = car.meshes })
 
 
+{-| Build the brick scenery models whose parts are in, and fetch the parts
+the others still need.
+-}
+refreshProps : Model -> ( Model, Cmd Msg )
+refreshProps model =
+    let
+        r =
+            Scenery.refresh model.partCache model.props
+    in
+    ( { model | props = r.props, partCache = r.cache }, fetchPartsCmd model.resolverConfig r.fetch )
+
+
+withProps : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+withProps ( model, cmd ) =
+    let
+        ( next, propsCmd ) =
+            refreshProps model
+    in
+    ( next, Cmd.batch [ cmd, propsCmd ] )
+
+
 fetchPartsCmd : ResolverConfig -> List String -> Cmd Msg
 fetchPartsCmd config names =
     PartLoading.fetchParts config PartFetched names
@@ -2755,7 +2780,7 @@ view model =
                 race.track
                 race.vehicle
                 race.meshes
-                model.staticMeshes.cube
+                model.props
                 model.staticMeshes.shadow
                 race.physics
                 race.debris

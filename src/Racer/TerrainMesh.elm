@@ -7,19 +7,20 @@ module Racer.TerrainMesh exposing
     , sceneryDebrisStyle
     )
 
-{-| Chunked WebGL countryside ground (unpaved road, verges and fields), launch
-humps, brick launch ramps, checkpoint/finish arches, brick-built roadside
-scenery (trees, bushes, fences, rocks, signposts, hay bales, cottages, barns,
-crates, barrels, garden gnomes, brick walls), and the garage display plinth mesh.
+{-| Chunked WebGL countryside ground (unpaved road, verges and fields, launch
+humps) in the brick look of LEGO plates and tiles, the brick launch ramps on
+it, and the garage display plinth mesh.
 
-Each chunk keeps its scenery in a separate mesh so smashed pieces can be removed
-by rebuilding only that small mesh.
+Each chunk also lists the brick-built roadside scenery still standing in it
+and the arches it holds; `Racer.Scenery` draws those from catalog models, so
+removing a smashed piece only filters a short list.
 
 -}
 
 import Array exposing (Array)
-import LDraw.Colors as Colors
+import Game.BrickLook as BrickLook
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Racer.Scenery exposing (ArchKind(..), ArchSpot)
 import Racer.TerrainShader exposing (TerrainVertex)
 import Racer.Track as Track
 import Racer.Types
@@ -36,8 +37,9 @@ import Racer.Types
 import WebGL
 
 
-{-| One spatial `100 m` slice of ground and arches (`mesh`) plus the brick-built
-scenery still standing in it (`sceneryMesh`).
+{-| One spatial `100 m` slice of ground and the brick launch ramps that start
+in it (`mesh`), the brick-built scenery still standing in it (`scenery`) and its
+start, checkpoint and finish arches.
 -}
 type alias TrackChunk =
     { chunkIndex : Int
@@ -46,7 +48,8 @@ type alias TrackChunk =
     , boundsCenter : Vec3
     , boundsRadius : Float
     , mesh : WebGL.Mesh TerrainVertex
-    , sceneryMesh : WebGL.Mesh TerrainVertex
+    , scenery : List TrackObstacle
+    , arches : List ArchSpot
     }
 
 
@@ -63,12 +66,8 @@ type alias TrackRenderBundle =
 {-| Resolve an LDraw color code to an RGB vector.
 -}
 ldrawColor : Int -> Vec3
-ldrawColor code =
-    let
-        c =
-            Colors.resolveColor 0 code
-    in
-    vec3 c.r c.g c.b
+ldrawColor =
+    BrickLook.colour
 
 
 {-| Build chunked static WebGL meshes (`100 m` chunks) once per track load.
@@ -94,7 +93,8 @@ buildTrackRenderBundle track =
     }
 
 
-{-| Circular display plinth with red/white studded curb blocks for Garage inspection.
+{-| Circular display plinth: a dark grey studded plate ringed by red and white
+curb plates, for Garage inspection.
 -}
 buildGaragePlinthMesh : WebGL.Mesh TerrainVertex
 buildGaragePlinthMesh =
@@ -112,7 +112,7 @@ buildGaragePlinthMesh =
             -0.22
 
         topCol =
-            vec3 0.24 0.26 0.3
+            ldrawColor 72
 
         curbRed =
             ldrawColor 4
@@ -170,24 +170,10 @@ buildGaragePlinthMesh =
 
                 sideN =
                     normalizeSafe (vec3 (c0 + c1) 0 (s0 + s1)) (vec3 0 1 0)
-
-                -- 3D stud on the curb block
-                aMid =
-                    (a0 + a1) * 0.5
-
-                rMid =
-                    (radius + rIn) * 0.5
-
-                studCenter =
-                    vec3 (rMid * cos aMid) topY (rMid * sin aMid)
-
-                studTris =
-                    cylinderAt studCenter 0.045 0.035 6 curbCol
             in
             [ tri centerV in1 in0 upN topCol ]
                 ++ quad out0 in0 in1 out1 upN curbCol
                 ++ quad low0 out0 out1 low1 sideN (vec3 0.35 0.36 0.38)
-                ++ studTris
     in
     List.concatMap ring (List.range 0 (segments - 1))
         |> WebGL.triangles
@@ -229,23 +215,37 @@ buildChunk track chunkSizeM numChunks chunkIdx =
                         |> List.concatMap (buildStripBetweenSamples track)
                    )
 
-        gateTris =
+        arches =
             let
-                startGate =
+                startArch =
                     if chunkIdx == 0 then
                         Array.get 0 track.samples
-                            |> Maybe.map (\s0 -> buildArchTris s0 False True)
+                            |> Maybe.map (\s0 -> [ archSpot s0 StartArch ])
                             |> Maybe.withDefault []
 
                     else
                         []
 
-                cpGates =
+                cpArches =
                     track.checkpoints
                         |> List.filter (\cp -> cp.s >= minS && cp.s < maxS + 2.0)
-                        |> List.concatMap (\cp -> buildCheckpointTris track cp)
+                        |> List.map
+                            (\cp ->
+                                archSpot (Track.splineSampleAtS track cp.s)
+                                    (if cp.isFinish then
+                                        FinishArch
+
+                                     else
+                                        CheckpointArch
+                                    )
+                            )
             in
-            startGate ++ cpGates
+            startArch ++ cpArches
+
+        rampTris =
+            track.brickRamps
+                |> List.filter (\rp -> rp.startS >= minS && rp.startS < maxS)
+                |> List.concatMap (buildBrickRampTris track)
 
         centerSample =
             Track.splineSampleAtS track ((minS + maxS) * 0.5)
@@ -255,8 +255,9 @@ buildChunk track chunkSizeM numChunks chunkIdx =
     , maxS = maxS
     , boundsCenter = centerSample.center
     , boundsRadius = chunkSizeM * 0.85 + 52.0
-    , mesh = WebGL.triangles (ribbonTris ++ gateTris)
-    , sceneryMesh = buildSceneryMesh track minS maxS
+    , mesh = WebGL.triangles (ribbonTris ++ rampTris)
+    , scenery = sceneryInRange minS maxS track.obstacles
+    , arches = arches
     }
 
 
@@ -265,7 +266,7 @@ sceneryInRange minS maxS obstacles =
     List.filter (\o -> o.s >= minS && o.s < maxS) obstacles
 
 
-{-| Rebuild only the scenery mesh of the chunk that holds arc length `s`, after
+{-| Refresh only the scenery list of the chunk that holds arc length `s`, after
 pieces there were smashed and removed from `track.obstacles`. The ground mesh is
 left untouched, so this stays cheap enough to run mid-race.
 -}
@@ -280,26 +281,12 @@ rebuildChunkScenery track s bundle =
             { bundle
                 | chunks =
                     Array.set idx
-                        { chunk | sceneryMesh = buildSceneryMesh track chunk.minS chunk.maxS }
+                        { chunk | scenery = sceneryInRange chunk.minS chunk.maxS track.obstacles }
                         bundle.chunks
             }
 
         Nothing ->
             bundle
-
-
-{-| The scenery still standing in `[minS, maxS)` plus the brick launch ramps
-that start there, all in the studded plastic finish.
--}
-buildSceneryMesh : GeneratedTrack -> Float -> Float -> WebGL.Mesh TerrainVertex
-buildSceneryMesh track minS maxS =
-    let
-        rampTris =
-            track.brickRamps
-                |> List.filter (\rp -> rp.startS >= minS && rp.startS < maxS)
-                |> List.concatMap (buildBrickRampTris track)
-    in
-    WebGL.triangles (List.concatMap buildSceneryTris (sceneryInRange minS maxS track.obstacles) ++ rampTris)
 
 
 buildStartApronTris : GeneratedTrack -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -425,9 +412,15 @@ stitchCrossSections trackId surface segIdx r0 r1 =
             let
                 col =
                     bandColor trackId surface segIdx bandIdx
+
+                studs =
+                    bandStuds surface bandIdx
+
+                v cv =
+                    toTV cv col studs
             in
-            [ ( toTV a0 col, toTV b0 col, toTV b1 col )
-            , ( toTV a0 col, toTV b1 col, toTV a1 col )
+            [ ( v a0, v b0, v b1 )
+            , ( v a0, v b1, v a1 )
             ]
     in
     List.map2 Tuple.pair pairs0 pairs1
@@ -446,53 +439,89 @@ patchNoise segIdx bandIdx =
     toFloat h / 498.5 - 1.0
 
 
+{-| Road colours, from the LDraw palette: reddish brown and dark tan dirt,
+dark grey gravel, dark brown forest track, tan footpath, and green for the
+grassy surfaces.
+-}
 roadColors : SurfaceType -> { road : Vec3, edge : Vec3, center : Vec3 }
 roadColors surface =
     case surface of
         DirtRoad ->
-            { road = vec3 0.56 0.41 0.26, edge = vec3 0.5 0.44 0.27, center = vec3 0.42 0.54 0.25 }
+            { road = ldrawColor 70, edge = ldrawColor 28, center = ldrawColor 2 }
 
         GravelRoad ->
-            { road = vec3 0.67 0.63 0.55, edge = vec3 0.6 0.58 0.46, center = vec3 0.58 0.57 0.45 }
+            { road = ldrawColor 72, edge = ldrawColor 71, center = ldrawColor 71 }
 
         ForestTrack ->
-            { road = vec3 0.42 0.31 0.2, edge = vec3 0.36 0.33 0.2, center = vec3 0.38 0.34 0.2 }
+            { road = ldrawColor 308, edge = ldrawColor 70, center = ldrawColor 70 }
 
         GrassPath ->
-            { road = vec3 0.7 0.63 0.42, edge = vec3 0.56 0.6 0.34, center = vec3 0.5 0.62 0.3 }
+            { road = ldrawColor 19, edge = ldrawColor 28, center = ldrawColor 2 }
 
         RoughVerge ->
-            { road = vec3 0.46 0.56 0.28, edge = vec3 0.46 0.56 0.28, center = vec3 0.46 0.56 0.28 }
+            { road = ldrawColor 2, edge = ldrawColor 2, center = ldrawColor 2 }
 
         MeadowGrass ->
-            { road = vec3 0.42 0.62 0.26, edge = vec3 0.42 0.62 0.26, center = vec3 0.42 0.62 0.26 }
+            { road = ldrawColor 10, edge = ldrawColor 10, center = ldrawColor 10 }
+
+
+{-| Whether a cross-section band is studded plates (1) or smooth tiles (0):
+the road bands of an unpaved road are tiles, grass is plates.
+-}
+bandStuds : SurfaceType -> Int -> Float
+bandStuds surface bandIdx =
+    let
+        isRoadBand =
+            bandIdx >= 4 && bandIdx <= 8
+    in
+    case surface of
+        RoughVerge ->
+            1
+
+        MeadowGrass ->
+            1
+
+        _ ->
+            if isRoadBand && bandIdx /= 6 then
+                0
+
+            else if isRoadBand then
+                -- The grassy strip down the middle of a dirt road or path.
+                if surface == GravelRoad || surface == ForestTrack then
+                    0
+
+                else
+                    1
+
+            else
+                1
 
 
 fieldColors : TrackId -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
 fieldColors trackId segIdx =
     case trackId of
         FarmLane ->
-            { verge = vec3 0.5 0.6 0.28
-            , near = vec3 0.42 0.62 0.26
+            { verge = ldrawColor 10
+            , near = ldrawColor 2
             , far =
                 -- Alternating crop strips: ripening grain and pasture
                 if modBy 10 (segIdx + 1000) < 5 then
-                    vec3 0.78 0.66 0.32
+                    ldrawColor 191
 
                 else
-                    vec3 0.46 0.64 0.27
+                    ldrawColor 10
             }
 
         ForestTrail ->
-            { verge = vec3 0.36 0.46 0.22
-            , near = vec3 0.27 0.43 0.2
-            , far = vec3 0.2 0.34 0.17
+            { verge = ldrawColor 2
+            , near = ldrawColor 288
+            , far = ldrawColor 288
             }
 
         MeadowPath ->
-            { verge = vec3 0.55 0.66 0.3
-            , near = vec3 0.48 0.68 0.28
-            , far = vec3 0.6 0.7 0.33
+            { verge = ldrawColor 10
+            , near = ldrawColor 10
+            , far = ldrawColor 326
             }
 
 
@@ -547,134 +576,23 @@ bandColor trackId surface segIdx bandIdx =
                     field.far
 
         jitter =
-            1.0 + 0.07 * patchNoise segIdx bandIdx
+            1.0 + 0.04 * patchNoise segIdx bandIdx
     in
     Vec3.scale jitter base
 
 
-buildCheckpointTris : GeneratedTrack -> Checkpoint -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildCheckpointTris track cp =
-    let
-        smp =
-            Track.splineSampleAtS track cp.s
-    in
-    buildArchTris smp cp.isFinish False
-
-
-buildArchTris : TrackSample -> Bool -> Bool -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildArchTris smp isFinish isStart =
-    let
-        rightXZ =
-            normalizeXZ smp.right
-
-        fwdXZ =
-            normalizeXZ smp.tangent
-
-        hw =
-            smp.halfWidth + 0.3
-
-        postHeight =
-            4.8
-
-        postCol =
-            if isStart then
-                ldrawColor 2
-
-            else if isFinish then
-                ldrawColor 0
-
-            else
-                ldrawColor 1
-
-        bannerCol =
-            if isStart then
-                ldrawColor 14
-
-            else if isFinish then
-                ldrawColor 15
-
-            else
-                ldrawColor 191
-
-        leftBase =
-            Vec3.sub smp.center (Vec3.scale hw rightXZ)
-
-        rightBase =
-            Vec3.add smp.center (Vec3.scale hw rightXZ)
-
-        leftPost =
-            boxAt leftBase rightXZ fwdXZ 0.32 postHeight 0.32 postCol
-
-        rightPost =
-            boxAt rightBase rightXZ fwdXZ 0.32 postHeight 0.32 postCol
-
-        beamCenter =
-            Vec3.add smp.center (vec3 0 postHeight 0)
-
-        crossBeam =
-            boxAt beamCenter rightXZ fwdXZ (hw + 0.35) 0.75 0.28 bannerCol
-    in
-    leftPost ++ rightPost ++ crossBeam
-
-
-
--- ── Brick-built scenery ──────────────────────────────────────────────────────
---
--- Every scenery piece is assembled from axis-aligned bricks (in the piece's own
--- yaw frame) with round studs on top, so it reads as a brick build and so the
--- same bricks can fly apart as debris when the racer smashes into it.
-
-
-type alias Frame =
-    { origin : Vec3
-    , right : Vec3
-    , fwd : Vec3
+archSpot : TrackSample -> ArchKind -> ArchSpot
+archSpot smp kind =
+    { center = smp.center
+    , right = normalizeXZ smp.right
+    , forward = normalizeXZ smp.tangent
+    , halfWidth = smp.halfWidth + 0.3
+    , kind = kind
     }
 
 
-frameFor : TrackObstacle -> Frame
-frameFor obs =
-    { origin = obs.position
-    , right = vec3 (cos obs.yaw) 0 -(sin obs.yaw)
-    , fwd = vec3 (sin obs.yaw) 0 (cos obs.yaw)
-    }
 
-
-localPt : Frame -> Float -> Float -> Float -> Vec3
-localPt fr lx ly lz =
-    fr.origin
-        |> Vec3.add (Vec3.scale lx fr.right)
-        |> Vec3.add (vec3 0 ly 0)
-        |> Vec3.add (Vec3.scale lz fr.fwd)
-
-
-{-| One brick: centered at local (lx, lz), bottom at ly, half-extents (hx, hz), height h.
--}
-brick : Frame -> ( Float, Float, Float ) -> ( Float, Float, Float ) -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-brick fr ( lx, ly, lz ) ( hx, h, hz ) col =
-    boxAt (localPt fr lx ly lz) fr.right fr.fwd hx h hz col
-
-
-{-| A grid of `nx` × `nz` studs centered on local (lx, lz) at height ly.
--}
-studs : Frame -> ( Float, Float, Float ) -> ( Int, Int ) -> Float -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-studs fr ( lx, ly, lz ) ( nx, nz ) spacing col =
-    List.range 0 (nx - 1)
-        |> List.concatMap
-            (\i ->
-                List.range 0 (nz - 1)
-                    |> List.concatMap
-                        (\k ->
-                            let
-                                ox =
-                                    (toFloat i - toFloat (nx - 1) * 0.5) * spacing
-
-                                oz =
-                                    (toFloat k - toFloat (nz - 1) * 0.5) * spacing
-                            in
-                            cylinderAt (localPt fr (lx + ox) ly (lz + oz)) (spacing * 0.28) (spacing * 0.18) 6 col
-                        )
-            )
+-- ── Debris of smashed scenery ────────────────────────────────────────────────
 
 
 {-| How a smashed scenery piece breaks up: the brick colors it is built from,
@@ -723,320 +641,14 @@ sceneryDebrisStyle kind =
             { colors = [ ldrawColor 4, ldrawColor 320, ldrawColor 4, ldrawColor 71 ], count = 12, scale = 0.9 }
 
 
-buildSceneryTris : TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildSceneryTris obs =
-    let
-        fr =
-            frameFor obs
-    in
-    case obs.kind of
-        LeafyTree ->
-            leafyTreeTris fr obs.heightM
-
-        PineTree ->
-            pineTreeTris fr obs.heightM
-
-        Bush ->
-            bushTris fr
-
-        FenceSection ->
-            fenceTris fr
-
-        Rock ->
-            rockTris fr obs.radiusM obs.heightM
-
-        Signpost ->
-            signpostTris fr obs.heightM
-
-        HayBale ->
-            hayBaleTris fr obs.heightM
-
-        Cottage ->
-            cottageTris fr
-
-        Barn ->
-            barnTris fr
-
-        Crate ->
-            crateTris fr obs.heightM
-
-        Barrel ->
-            barrelTris fr
-
-        GardenGnome ->
-            gnomeTris fr
-
-        BrickWall ->
-            brickWallTris fr
-
-
-leafyTreeTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-leafyTreeTris fr ht =
-    let
-        k =
-            ht / 4.5
-
-        trunk =
-            brick fr ( 0, 0, 0 ) ( 0.2 * k, 1.9 * k, 0.2 * k ) (ldrawColor 70)
-
-        leafDark =
-            ldrawColor 2
-
-        leafLight =
-            ldrawColor 10
-    in
-    trunk
-        ++ brick fr ( 0, 1.6 * k, 0 ) ( 1.1 * k, 0.96 * k, 1.1 * k ) leafDark
-        ++ brick fr ( 0.1 * k, 2.56 * k, -0.1 * k ) ( 0.95 * k, 0.96 * k, 0.95 * k ) leafLight
-        ++ brick fr ( 0, 3.52 * k, 0 ) ( 0.55 * k, 0.6 * k, 0.55 * k ) leafDark
-        ++ studs fr ( 0, 4.12 * k, 0 ) ( 2, 2 ) (0.5 * k) leafDark
-        ++ studs fr ( 0.1 * k, 3.52 * k, -0.1 * k ) ( 1, 1 ) (0.5 * k) (ldrawColor 4)
-
-
-pineTreeTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-pineTreeTris fr ht =
-    let
-        k =
-            ht / 6.0
-
-        needles =
-            ldrawColor 288
-
-        tier i =
-            let
-                half =
-                    (1.25 - toFloat i * 0.28) * k
-
-                y =
-                    (1.2 + toFloat i * 1.05) * k
-            in
-            brick fr ( 0, y, 0 ) ( half, 1.05 * k, half ) needles
-    in
-    brick fr ( 0, 0, 0 ) ( 0.18 * k, 1.4 * k, 0.18 * k ) (ldrawColor 70)
-        ++ List.concatMap tier (List.range 0 3)
-        ++ brick fr ( 0, 5.4 * k, 0 ) ( 0.18 * k, 0.55 * k, 0.18 * k ) needles
-        ++ studs fr ( 0, 5.95 * k, 0 ) ( 1, 1 ) (0.5 * k) needles
-
-
-bushTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-bushTris fr =
-    brick fr ( 0, 0, 0 ) ( 0.75, 0.5, 0.55 ) (ldrawColor 2)
-        ++ brick fr ( 0.15, 0.5, 0.05 ) ( 0.5, 0.36, 0.4 ) (ldrawColor 10)
-        ++ studs fr ( 0.15, 0.86, 0.05 ) ( 2, 1 ) 0.44 (ldrawColor 10)
-        ++ studs fr ( -0.5, 0.5, 0.3 ) ( 1, 1 ) 0.4 (ldrawColor 14)
-
-
-fenceTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-fenceTris fr =
-    let
-        post lz =
-            brick fr ( 0, 0, lz ) ( 0.09, 1.05, 0.09 ) (ldrawColor 70)
-                ++ studs fr ( 0, 1.05, lz ) ( 1, 1 ) 0.3 (ldrawColor 70)
-
-        rail ly =
-            brick fr ( 0, ly, 0 ) ( 0.05, 0.16, 1.5 ) (ldrawColor 15)
-    in
-    post -1.4 ++ post 1.4 ++ rail 0.35 ++ rail 0.75
-
-
-rockTris : Frame -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-rockTris fr rad ht =
-    let
-        lower =
-            ht * 0.55
-    in
-    brick fr ( 0, 0, 0 ) ( rad, lower, rad * 0.8 ) (ldrawColor 72)
-        ++ brick fr ( rad * 0.15, lower, -(rad * 0.1) ) ( rad * 0.68, ht - lower, rad * 0.56 ) (ldrawColor 71)
-        ++ studs fr ( rad * 0.15, ht, -(rad * 0.1) ) ( 2, 1 ) (rad * 0.55) (ldrawColor 71)
-
-
-signpostTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-signpostTris fr ht =
-    brick fr ( 0, 0, 0 ) ( 0.08, ht, 0.08 ) (ldrawColor 70)
-        ++ brick fr ( 0, ht - 0.62, 0.1 ) ( 0.55, 0.42, 0.05 ) (ldrawColor 14)
-        ++ brick fr ( 0, ht - 0.5, 0.16 ) ( 0.38, 0.16, 0.02 ) (ldrawColor 4)
-        ++ studs fr ( 0, ht, 0 ) ( 1, 1 ) 0.3 (ldrawColor 70)
-
-
-hayBaleTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-hayBaleTris fr ht =
-    let
-        hay =
-            ldrawColor 19
-
-        twine =
-            ldrawColor 28
-
-        bale ( lx, ly, lz ) =
-            brick fr ( lx, ly, lz ) ( 0.7, 0.8, 0.42 ) hay
-                ++ brick fr ( lx, ly + 0.2, lz ) ( 0.71, 0.08, 0.43 ) twine
-                ++ brick fr ( lx, ly + 0.52, lz ) ( 0.71, 0.08, 0.43 ) twine
-                ++ studs fr ( lx, ly + 0.8, lz ) ( 2, 1 ) 0.55 hay
-    in
-    if ht > 1.2 then
-        bale ( 0, 0, -0.44 ) ++ bale ( 0, 0, 0.44 ) ++ bale ( 0.1, 0.8, 0 )
-
-    else
-        bale ( 0, 0, 0 )
-
-
-cottageTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-cottageTris fr =
-    let
-        wall =
-            ldrawColor 15
-
-        roof =
-            ldrawColor 4
-
-        roofStep i =
-            brick fr ( 0, 2.1 + toFloat i * 0.4, 0 ) ( 2.4, 0.4, 1.9 - toFloat i * 0.62 ) roof
-    in
-    brick fr ( 0, 0, 0 ) ( 2.0, 2.1, 1.5 ) wall
-        ++ brick fr ( -0.9, 0, 1.52 ) ( 0.4, 1.3, 0.04 ) (ldrawColor 70)
-        ++ brick fr ( 0.8, 0.9, 1.52 ) ( 0.45, 0.6, 0.04 ) (ldrawColor 1)
-        ++ List.concatMap roofStep (List.range 0 2)
-        ++ brick fr ( 1.2, 2.5, -0.5 ) ( 0.25, 1.6, 0.25 ) (ldrawColor 72)
-        ++ studs fr ( 0, 3.3, 0 ) ( 4, 1 ) 1.0 roof
-
-
-barnTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-barnTris fr =
-    let
-        wall =
-            ldrawColor 320
-
-        roof =
-            ldrawColor 72
-
-        roofStep i =
-            brick fr ( 0, 2.8 + toFloat i * 0.45, 0 ) ( 2.9, 0.45, 2.3 - toFloat i * 0.72 ) roof
-    in
-    brick fr ( 0, 0, 0 ) ( 2.6, 2.8, 2.0 ) wall
-        ++ brick fr ( 0, 0, 2.02 ) ( 1.0, 2.0, 0.04 ) (ldrawColor 15)
-        ++ brick fr ( 0, 0, 2.06 ) ( 0.8, 1.84, 0.04 ) wall
-        ++ List.concatMap roofStep (List.range 0 2)
-        ++ studs fr ( 0, 4.15, 0 ) ( 5, 1 ) 1.0 roof
-
-
-{-| A wooden crate (reddish brown 2 x 2 bricks framed in dark tan), or a stack of
-two with a third beside them.
--}
-crateTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-crateTris fr ht =
-    let
-        wood =
-            ldrawColor 70
-
-        frame =
-            ldrawColor 28
-
-        crate ( lx, ly, lz ) =
-            brick fr ( lx, ly, lz ) ( 0.42, 0.84, 0.42 ) wood
-                ++ brick fr ( lx, ly, lz ) ( 0.45, 0.1, 0.45 ) frame
-                ++ brick fr ( lx, ly + 0.74, lz ) ( 0.45, 0.1, 0.45 ) frame
-                ++ studs fr ( lx, ly + 0.84, lz ) ( 2, 2 ) 0.42 wood
-    in
-    if ht > 1.2 then
-        crate ( -0.2, 0, 0 ) ++ crate ( -0.2, 0.86, 0 ) ++ crate ( 0.5, 0, 0.25 )
-
-    else
-        crate ( 0, 0, 0 )
-
-
-{-| Two blue oil drums (round bricks with grey rims) and a third lying on top.
--}
-barrelTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-barrelTris fr =
-    let
-        drum =
-            ldrawColor 1
-
-        rim =
-            ldrawColor 71
-
-        barrel lx lz =
-            let
-                base =
-                    localPt fr lx 0 lz
-            in
-            cylinderAt base 0.32 0.95 8 drum
-                ++ cylinderAt (Vec3.add base (vec3 0 0.3 0)) 0.335 0.06 8 rim
-                ++ cylinderAt (Vec3.add base (vec3 0 0.65 0)) 0.335 0.06 8 rim
-                ++ cylinderAt (Vec3.add base (vec3 0.12 0.95 0)) 0.08 0.04 6 rim
-    in
-    barrel -0.3 0.0 ++ barrel 0.32 -0.12 ++ studs fr ( 0, 0.95, 0.2 ) ( 1, 1 ) 0.5 drum
-
-
-{-| A garden gnome: black boots, blue trousers, red coat, white beard, light
-nougat face and a tall red hat of stacked bricks. It faces the road.
--}
-gnomeTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-gnomeTris fr =
-    let
-        red =
-            ldrawColor 4
-    in
-    brick fr ( 0, 0, 0 ) ( 0.16, 0.08, 0.12 ) (ldrawColor 0)
-        ++ brick fr ( 0, 0.08, 0 ) ( 0.14, 0.14, 0.1 ) (ldrawColor 1)
-        ++ brick fr ( 0, 0.22, 0 ) ( 0.16, 0.18, 0.12 ) red
-        ++ brick fr ( 0, 0.4, 0 ) ( 0.11, 0.12, 0.09 ) (ldrawColor 78)
-        ++ brick fr ( 0, 0.3, 0.1 ) ( 0.1, 0.16, 0.03 ) (ldrawColor 15)
-        ++ brick fr ( 0, 0.52, 0 ) ( 0.13, 0.08, 0.11 ) red
-        ++ brick fr ( 0, 0.6, 0 ) ( 0.08, 0.1, 0.07 ) red
-        ++ brick fr ( 0, 0.7, -0.02 ) ( 0.04, 0.08, 0.04 ) red
-
-
-{-| A section of brick garden wall along the road: four courses of red and
-dark red bricks in running bond, capped with grey studded plates.
--}
-brickWallTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-brickWallTris fr =
-    let
-        course i =
-            let
-                ly =
-                    toFloat i * 0.24
-
-                shift =
-                    if modBy 2 i == 0 then
-                        0.0
-
-                    else
-                        0.36
-
-                brickAt j =
-                    let
-                        lz =
-                            -1.08 + shift + toFloat j * 0.72
-
-                        col =
-                            if modBy 2 (i + j) == 0 then
-                                ldrawColor 4
-
-                            else
-                                ldrawColor 320
-                    in
-                    if lz > 1.1 then
-                        []
-
-                    else
-                        brick fr ( 0, ly, lz ) ( 0.2, 0.235, 0.35 ) col
-            in
-            List.concatMap brickAt (List.range 0 3)
-    in
-    List.concatMap course (List.range 0 3)
-        ++ brick fr ( 0, 0.96, 0 ) ( 0.24, 0.1, 1.46 ) (ldrawColor 71)
-        ++ studs fr ( 0, 1.06, 0 ) ( 1, 4 ) 0.72 (ldrawColor 71)
-
-
 
 -- ── Brick launch ramps ───────────────────────────────────────────────────────
 
 
 {-| A launch ramp of slope bricks on one lane: rows of red and white slopes
 rising along the road to a yellow-and-black lip with a row of studs on top, a
-grey back face, and grey side slopes down to the road. Every corner height
+grey back face, and grey side slopes down to the road. The slopes are smooth
+(no studs in the brick-look shader), like real slope bricks. Every corner height
 comes from `Track.brickRampLift`, so the bricks match what the wheels feel.
 -}
 buildBrickRampTris : GeneratedTrack -> BrickRamp -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -1088,7 +700,7 @@ buildBrickRampTris track rp =
                     else
                         n0
             in
-            quad a b c d n col
+            smoothQuad a b c d n col
 
         slopeColor k j =
             if j == 0 || j == 4 then
@@ -1136,7 +748,7 @@ buildBrickRampTris track rp =
                             smp =
                                 Track.splineSampleAtS track lipS
                         in
-                        quad b a (topAt lipS d0) (topAt lipS d1) (normalizeXZ smp.tangent) (ldrawColor 72)
+                        smoothQuad b a (topAt lipS d0) (topAt lipS d1) (normalizeXZ smp.tangent) (ldrawColor 72)
                     )
 
         lipStuds =
@@ -1187,83 +799,29 @@ cylinderAt baseCenter rad height segments color =
                 upNorm =
                     vec3 0 1 0
             in
-            [ ( { position = b0, normal = sideNorm, color = color }
-              , { position = b1, normal = sideNorm, color = color }
-              , { position = t1, normal = sideNorm, color = color }
+            [ ( { position = b0, normal = sideNorm, color = color, studs = 0 }
+              , { position = b1, normal = sideNorm, color = color, studs = 0 }
+              , { position = t1, normal = sideNorm, color = color, studs = 0 }
               )
-            , ( { position = b0, normal = sideNorm, color = color }
-              , { position = t1, normal = sideNorm, color = color }
-              , { position = t0, normal = sideNorm, color = color }
+            , ( { position = b0, normal = sideNorm, color = color, studs = 0 }
+              , { position = t1, normal = sideNorm, color = color, studs = 0 }
+              , { position = t0, normal = sideNorm, color = color, studs = 0 }
               )
-            , ( { position = topCenter, normal = upNorm, color = color }
-              , { position = t0, normal = upNorm, color = color }
-              , { position = t1, normal = upNorm, color = color }
+            , ( { position = topCenter, normal = upNorm, color = color, studs = 0 }
+              , { position = t0, normal = upNorm, color = color, studs = 0 }
+              , { position = t1, normal = upNorm, color = color, studs = 0 }
               )
             ]
     in
     List.concatMap step (List.range 0 (segments - 1))
 
 
-boxAt : Vec3 -> Vec3 -> Vec3 -> Float -> Float -> Float -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-boxAt baseCenter xAxis zAxis halfW height halfD color =
-    let
-        pt sx sy sz =
-            baseCenter
-                |> Vec3.add (Vec3.scale (sx * halfW) xAxis)
-                |> Vec3.add (vec3 0 (sy * height) 0)
-                |> Vec3.add (Vec3.scale (sz * halfD) zAxis)
-
-        p000 =
-            pt -1 0 -1
-
-        p100 =
-            pt 1 0 -1
-
-        p110 =
-            pt 1 1 -1
-
-        p010 =
-            pt -1 1 -1
-
-        p001 =
-            pt -1 0 1
-
-        p101 =
-            pt 1 0 1
-
-        p111 =
-            pt 1 1 1
-
-        p011 =
-            pt -1 1 1
-
-        nTop =
-            vec3 0 1 0
-
-        nFront =
-            zAxis
-
-        nBack =
-            Vec3.negate zAxis
-
-        nRight =
-            xAxis
-
-        nLeft =
-            Vec3.negate xAxis
-    in
-    quad p001 p101 p111 p011 nFront color
-        ++ quad p100 p000 p010 p110 nBack color
-        ++ quad p101 p100 p110 p111 nRight color
-        ++ quad p000 p001 p011 p010 nLeft color
-        ++ quad p011 p111 p110 p010 nTop color
-
-
-toTV : CrossVertex -> Vec3 -> TerrainVertex
-toTV cv col =
+toTV : CrossVertex -> Vec3 -> Float -> TerrainVertex
+toTV cv col studs =
     { position = cv.pos
     , normal = cv.normal
     , color = col
+    , studs = studs
     }
 
 
@@ -1274,11 +832,18 @@ quad p0 p1 p2 p3 n col =
     ]
 
 
+{-| A quad of smooth faces (tiles and slopes, no studs).
+-}
+smoothQuad : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+smoothQuad p0 p1 p2 p3 n col =
+    List.map (\( a, b, c ) -> ( { a | studs = 0 }, { b | studs = 0 }, { c | studs = 0 } )) (quad p0 p1 p2 p3 n col)
+
+
 tri : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> ( TerrainVertex, TerrainVertex, TerrainVertex )
 tri a b c n col =
-    ( { position = a, normal = n, color = col }
-    , { position = b, normal = n, color = col }
-    , { position = c, normal = n, color = col }
+    ( { position = a, normal = n, color = col, studs = 1 }
+    , { position = b, normal = n, color = col, studs = 1 }
+    , { position = c, normal = n, color = col, studs = 1 }
     )
 
 
