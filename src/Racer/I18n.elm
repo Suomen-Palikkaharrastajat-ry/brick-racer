@@ -863,10 +863,10 @@ tiltEnabledLabel : Language -> String
 tiltEnabledLabel lang =
     case lang of
         Fi ->
-            "Kallistusohjaus päällä"
+            "Kallistusohjaus päällä (napauta: napit)"
 
         En ->
-            "Tilt Steer On"
+            "Tilt steering on (tap for buttons)"
 
 
 {-| Tilt sensor disabled / enable button label.
@@ -875,7 +875,7 @@ tiltDisabledLabel : Language -> String
 tiltDisabledLabel lang =
     case lang of
         Fi ->
-            "Ota kallistusohjaus käyttöön"
+            "Kallistusohjaus pois (napauta: kallista)"
 
         En ->
-            "Enable Tilt Steer"
+            "Tilt steering off (tap to tilt)"

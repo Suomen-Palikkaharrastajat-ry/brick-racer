@@ -3,6 +3,7 @@ import { bootGame } from './vendor/packages/brick-frame-game/runtime/game-boot.j
 import { createAudioEngine } from './audio.js'
 import { Elm } from './src/Main.elm'
 import { migrateRetiredTrackBestTimes } from './leaderboard-migration.js'
+import { tiltSteerOptions } from './steer-mode.js'
 
 // Drop best times stored for the retired courses (once, before Elm reads them).
 migrateRetiredTrackBestTimes('racer')
@@ -32,13 +33,13 @@ if (window.matchMedia?.('(pointer: coarse)').matches) {
   )
 }
 
-// Tilt steering streams the raw device orientation to Elm, which does its
-// own calibration (`Game.Ports.tiltOrientationReceived`).
+// Tilt steering is the shared calibrated `tilt-steer.js`: on by default on
+// phones, the player's saved choice wins (see `steer-mode.js`).
 bootGame({
   elm: Elm.Main,
   env: import.meta.env,
   storagePrefix: 'racer',
   createAudioEngine,
   playerPrefix: 'Racer ',
-  tiltFormat: 'object',
+  tiltSteer: tiltSteerOptions,
 })

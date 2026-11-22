@@ -199,13 +199,14 @@ type alias TouchState =
     }
 
 
-{-| Device orientation tilt-steering calibration and live angle.
+{-| Tilt steering as reported by the shared `tilt-steer.js`: whether the
+device can tilt-steer, whether it is switched on (on by default on phones, the
+saved choice wins), and the calibrated steering value -1 .. 1.
 -}
 type alias TiltState =
     { enabled : Bool
     , available : Bool
-    , zeroGamma : Maybe Float
-    , gamma : Float
+    , steer : Float
     }
 
 
@@ -316,8 +317,8 @@ type Msg
     | ResumeRace
     | RespawnCheckpoint
     | ToggleTouchUi
-    | RequestTilt
-    | TiltOrientationReceived { available : Bool, gamma : Float, beta : Float }
+    | TiltStatusChanged { available : Bool, enabled : Bool }
+    | TiltSteerChanged Float
     | TouchSteerLeft Bool
     | TouchSteerRight Bool
     | TouchBrake Bool
@@ -406,8 +407,7 @@ init flags =
                 , tilt =
                     { enabled = False
                     , available = False
-                    , zeroGamma = Nothing
-                    , gamma = 0.0
+                    , steer = 0.0
                     }
                 , shareCopiedNotice = False
                 , raceMode = SinglePlayer
@@ -992,45 +992,17 @@ update msg model =
         ToggleTouchUi ->
             ( { model | showTouchControls = not model.showTouchControls }, Cmd.none )
 
-        RequestTilt ->
-            if model.tilt.enabled then
-                let
-                    oldTilt =
-                        model.tilt
-                in
-                ( { model | tilt = { oldTilt | enabled = False, zeroGamma = Nothing } }, Cmd.none )
+        TiltStatusChanged status ->
+            ( { model | tilt = { enabled = status.enabled, available = status.available, steer = 0.0 } }
+            , Cmd.none
+            )
 
-            else
-                let
-                    oldTilt =
-                        model.tilt
-                in
-                ( { model | tilt = { oldTilt | enabled = True, zeroGamma = Nothing } }
-                , GamePorts.requestTiltPermission ()
-                )
-
-        TiltOrientationReceived orient ->
+        TiltSteerChanged value ->
             let
                 oldTilt =
                     model.tilt
-
-                zeroRef =
-                    if orient.available then
-                        Just 0.0
-
-                    else
-                        Nothing
             in
-            ( { model
-                | tilt =
-                    { oldTilt
-                        | available = orient.available
-                        , zeroGamma = zeroRef
-                        , gamma = orient.gamma
-                    }
-              }
-            , Cmd.none
-            )
+            ( { model | tilt = { oldTilt | steer = clamp -1.0 1.0 value } }, Cmd.none )
 
         TouchSteerLeft held ->
             let
@@ -1837,6 +1809,7 @@ startRaceFromDoc title doc vehicle meshes model =
     , Cmd.batch
         [ Ports.playSfx { kind = "countdown", intensity = 0.7 }
         , silenceAudioCmd
+        , GamePorts.calibrateTilt ()
         ]
     )
 
@@ -2080,21 +2053,7 @@ sampleP1Input model =
 
         tiltSteer =
             if model.tilt.enabled && model.tilt.available then
-                let
-                    zero =
-                        Maybe.withDefault 0.0 model.tilt.zeroGamma
-
-                    deltaDeg =
-                        model.tilt.gamma - zero
-
-                    deadZone =
-                        if abs deltaDeg < 3.0 then
-                            0.0
-
-                        else
-                            deltaDeg - 3.0 * (deltaDeg / abs deltaDeg)
-                in
-                clamp -1.0 1.0 (deadZone / 28.0)
+                model.tilt.steer
 
             else
                 0.0
@@ -2623,7 +2582,8 @@ subscriptions model =
         , GamePorts.fileLoadError FileLoadError
         , GamePorts.binaryHashDecoded BinaryHashDecoded
         , GamePorts.hashChanged HashChanged
-        , GamePorts.tiltOrientationReceived TiltOrientationReceived
+        , GamePorts.tiltStatus TiltStatusChanged
+        , GamePorts.tiltSteer TiltSteerChanged
         , GamePorts.multiplayerRoomStateChanged MultiplayerRoomChanged
         , GamePorts.multiplayerError MultiplayerError
         , GamePorts.multiplayerVehicleLoaded MultiplayerVehicleLoaded
@@ -2826,7 +2786,6 @@ view model =
                 , onCycleCamera = CycleCamera
                 , onToggleAudio = ToggleAudioMute
                 , onToggleTouchUi = ToggleTouchUi
-                , onRequestTilt = RequestTilt
                 , onTouchSteerLeft = TouchSteerLeft
                 , onTouchSteerRight = TouchSteerRight
                 , onTouchBrake = TouchBrake

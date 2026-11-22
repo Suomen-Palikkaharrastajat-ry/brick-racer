@@ -306,6 +306,9 @@ view data actions =
                     , button
                         [ Attr.type_ "button"
                         , onClick actions.onStartRace
+
+                        -- Lets tilt-steer.js ask for the iOS tilt permission inside this tap.
+                        , Attr.attribute "data-tilt-start" ""
                         , Tw.classes [ Tw.w_full, Tw.py Th.s3_dot_5, Tw.px Th.s4, Tw.rounded_xl, Tw.font_extrabold, Tw.text_base, Tw.text_simple Th.white ]
                         , Attr.style "cursor" "pointer"
                         , Attr.style "background" "linear-gradient(90deg, #16a34a, #22c55e)"

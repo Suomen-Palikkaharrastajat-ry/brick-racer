@@ -2,6 +2,7 @@ module Racer.HUD exposing
     ( HudActions
     , HudAlert
     , HudViewData
+    , touchPadsVisible
     , viewHudOverlay
     )
 
@@ -74,7 +75,6 @@ type alias HudActions msg =
     , onCycleCamera : msg
     , onToggleAudio : msg
     , onToggleTouchUi : msg
-    , onRequestTilt : msg
     , onTouchSteerLeft : Bool -> msg
     , onTouchSteerRight : Bool -> msg
     , onTouchBrake : Bool -> msg
@@ -98,6 +98,10 @@ viewHudOverlay data actions =
             , Tw.select_none
             ]
         , Attr.style "inset" "0"
+
+        -- A tap on any HUD control may ask for the iOS tilt permission
+        -- (tilt-steer.js) when tilt is on but not yet allowed.
+        , Attr.attribute "data-tilt-start" ""
         ]
         [ viewTopBar data actions
         , viewCenterOverlays data actions
@@ -208,10 +212,86 @@ viewTopBar data actions =
                     RI18n.audioUnmutedLabel lang
                 )
             , hudToolbarBtn actions.onRespawnCheckpoint FeatherIcons.rotateCcw (RI18n.resetCheckpointLabel lang)
-            , hudToolbarBtn actions.onToggleTouchUi FeatherIcons.smartphone "Touch"
+            , if tiltSteering data then
+                text ""
+
+              else
+                hudToolbarBtn actions.onToggleTouchUi FeatherIcons.grid "Touch"
+            , viewTiltToggle data
             , hudToolbarBtn actions.onTogglePause FeatherIcons.pause (RI18n.pauseLabel lang)
             ]
         ]
+
+
+{-| Whether the phone is steering by tilt right now.
+-}
+tiltSteering : HudViewData -> Bool
+tiltSteering data =
+    data.tiltEnabled && data.tiltAvailable
+
+
+{-| Whether the on-screen steering and brake pads are shown: only while the
+player wants touch controls and is not steering by tilt, so tilt play keeps the
+screen clear.
+-}
+touchPadsVisible : { a | showTouchControls : Bool, tiltEnabled : Bool, tiltAvailable : Bool } -> Bool
+touchPadsVisible data =
+    data.showTouchControls && not (data.tiltEnabled && data.tiltAvailable)
+
+
+{-| Small icon-only toolbar toggle for tilt steering (green while on), shown
+only on devices that can tilt. The tap is handled in `tilt-steer.js` (`data-tilt-toggle`) so the iOS
+permission prompt runs inside the tap itself.
+-}
+viewTiltToggle : HudViewData -> Html msg
+viewTiltToggle data =
+    if data.tiltAvailable then
+        let
+            label =
+                if data.tiltEnabled then
+                    RI18n.tiltEnabledLabel data.language
+
+                else
+                    RI18n.tiltDisabledLabel data.language
+        in
+        button
+            [ Attr.type_ "button"
+            , Attr.attribute "data-tilt-toggle" ""
+            , Attr.attribute "aria-pressed"
+                (if data.tiltEnabled then
+                    "true"
+
+                 else
+                    "false"
+                )
+            , Attr.attribute "aria-label" label
+            , Attr.title label
+            , Tw.classes
+                [ Tw.flex
+                , Tw.items_center
+                , Tw.gap Th.s1
+                , Tw.px Th.s2_dot_5
+                , Tw.py Th.s1_dot_5
+                , Tw.rounded_lg
+                , Tw.border
+                , Tw.text_xs
+                , Tw.font_semibold
+                , Tw.text_simple Th.white
+                ]
+            , Attr.style "cursor" "pointer"
+            , Attr.style "background"
+                (if data.tiltEnabled then
+                    "rgba(22, 163, 74, 0.9)"
+
+                 else
+                    "rgba(15, 23, 42, 0.78)"
+                )
+            , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
+            ]
+            [ FeatherIcons.smartphone |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml [] ]
+
+    else
+        text ""
 
 
 hudToolbarBtn : msg -> FeatherIcons.Icon -> String -> Html msg
@@ -375,7 +455,7 @@ viewCrashOverlay lang rec actions =
 viewBottomArea : HudViewData -> HudActions msg -> Html msg
 viewBottomArea data actions =
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
-        [ if data.showTouchControls then
+        [ if touchPadsVisible data then
             viewTouchControls data actions
 
           else
@@ -537,28 +617,7 @@ viewTouchControls data actions =
             , button (Attr.type_ "button" :: holdEvents actions.onTouchSteerRight ++ padStyle data.touchRightHeld) [ text "▶" ]
             ]
         , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2, Tw.items_center ] ]
-            [ button
-                [ Attr.type_ "button"
-                , onClick actions.onRequestTilt
-                , Tw.classes [ Tw.pointer_events_auto, Tw.px Th.s3, Tw.py Th.s2, Tw.rounded_xl, Tw.border, Tw.text_xs, Tw.font_semibold, Tw.text_simple Th.white ]
-                , Attr.style "background"
-                    (if data.tiltEnabled then
-                        "#16a34a"
-
-                     else
-                        "rgba(15, 23, 42, 0.78)"
-                    )
-                , Attr.style "border-color" "rgba(148, 163, 184, 0.35)"
-                ]
-                [ text
-                    (if data.tiltEnabled then
-                        RI18n.tiltEnabledLabel lang
-
-                     else
-                        RI18n.tiltDisabledLabel lang
-                    )
-                ]
-            , button (Attr.type_ "button" :: holdEvents actions.onTouchDrift ++ padStyle data.touchDriftHeld) [ text (RI18n.handbrakeHint lang) ]
+            [ button (Attr.type_ "button" :: holdEvents actions.onTouchDrift ++ padStyle data.touchDriftHeld) [ text (RI18n.handbrakeHint lang) ]
             , button (Attr.type_ "button" :: holdEvents actions.onTouchTuck ++ padStyle data.touchTuckHeld) [ text "▲" ]
             , button (Attr.type_ "button" :: holdEvents actions.onTouchBrake ++ padStyle data.touchBrakeHeld) [ text "■" ]
             ]
