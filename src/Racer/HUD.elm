@@ -1,9 +1,12 @@
 module Racer.HUD exposing
     ( HudActions
     , HudAlert
+    , HudSlots
     , HudViewData
+    , noSlots
     , touchPadsVisible
     , viewHudOverlay
+    , viewHudOverlayWith
     )
 
 {-| Pointer-friendly Tailwind gameplay HUD overlay: timer, checkpoint splits, course progress,
@@ -83,10 +86,35 @@ type alias HudActions msg =
     }
 
 
+{-| Extra controls laid out in the HUD's own column instead of floating over
+it: `belowTopBar` sits under the timer and toolbar, `aboveFooter` above the
+health bar and speedometer. Portrait screens use them for room and player
+badges, which would otherwise land on top of the timer or the health bar.
+-}
+type alias HudSlots msg =
+    { belowTopBar : List (Html msg)
+    , aboveFooter : List (Html msg)
+    }
+
+
+{-| No extra controls.
+-}
+noSlots : HudSlots msg
+noSlots =
+    { belowTopBar = [], aboveFooter = [] }
+
+
 {-| Render the full HUD, overlays, and responsive mobile controls above the race canvas.
 -}
 viewHudOverlay : HudViewData -> HudActions msg -> Html msg
-viewHudOverlay data actions =
+viewHudOverlay =
+    viewHudOverlayWith noSlots
+
+
+{-| `viewHudOverlay` with extra controls stacked into the HUD (`HudSlots`).
+-}
+viewHudOverlayWith : HudSlots msg -> HudViewData -> HudActions msg -> Html msg
+viewHudOverlayWith slots data actions =
     div
         [ Tw.classes
             [ Tw.absolute
@@ -106,10 +134,21 @@ viewHudOverlay data actions =
         -- (tilt-steer.js) when tilt is on but not yet allowed.
         , Attr.attribute "data-tilt-start" ""
         ]
-        [ viewTopBar data actions
+        [ viewTopArea slots.belowTopBar data actions
         , viewCenterOverlays data actions
-        , viewBottomArea data actions
+        , viewBottomArea slots.aboveFooter data actions
         ]
+
+
+viewTopArea : List (Html msg) -> HudViewData -> HudActions msg -> Html msg
+viewTopArea belowTopBar data actions =
+    case belowTopBar of
+        [] ->
+            viewTopBar data actions
+
+        _ ->
+            div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
+                (viewTopBar data actions :: belowTopBar)
 
 
 viewTopBar : HudViewData -> HudActions msg -> Html msg
@@ -466,16 +505,18 @@ viewCrashOverlay lang rec actions =
         ]
 
 
-viewBottomArea : HudViewData -> HudActions msg -> Html msg
-viewBottomArea data actions =
+viewBottomArea : List (Html msg) -> HudViewData -> HudActions msg -> Html msg
+viewBottomArea aboveFooter data actions =
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
-        [ if touchPadsVisible data then
+        ((if touchPadsVisible data then
             viewTouchControls data actions
 
           else
             text ""
-        , viewTelemetryFooter data
-        ]
+         )
+            :: aboveFooter
+            ++ [ viewTelemetryFooter data ]
+        )
 
 
 viewTelemetryFooter : HudViewData -> Html msg

@@ -189,6 +189,34 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         allCars =
             localCar :: remoteCars
 
+        layout =
+            Grid.layoutFor (Grid.orientation width height) (List.length room.players)
+
+        portrait =
+            Grid.orientation width height == Grid.Portrait
+
+        -- In portrait the first row of tiles lies under the timer and toolbar,
+        -- so its badges move into the HUD column, one per grid column.
+        badgesInTiles shape index =
+            not portrait || index >= shape.cols
+
+        firstRowBadges =
+            case ( portrait, layout ) of
+                ( True, Grid.Tiles shape ) ->
+                    [ div
+                        [ Attr.style "display" "grid"
+                        , Attr.style "grid-template-columns" ("repeat(" ++ String.fromInt shape.cols ++ ", minmax(0, 1fr))")
+                        , Tw.classes [ Tw.gap Th.s2, Tw.w_full ]
+                        ]
+                        (Grid.selfFirst .slot room.mySlot room.players
+                            |> List.take shape.cols
+                            |> List.map (\p -> div [ Tw.classes [ Tw.min_w Th.s0 ] ] [ tileBadge inFlowBadge room p ])
+                        )
+                    ]
+
+                _ ->
+                    []
+
         mouseDecoder msgCtor =
             Decode.map2 msgCtor
                 (Decode.field "clientX" Decode.float)
@@ -212,15 +240,28 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" "#0f172a"
         ]
-        [ case Grid.layoutFor (Grid.orientation width height) (List.length room.players) of
-            Grid.Tiles _ ->
-                viewPlayerGrid bundle track allCars props shadowMesh debris physics width height room
+        [ case layout of
+            Grid.Tiles shape ->
+                viewPlayerGrid bundle track allCars props shadowMesh debris physics width height room (badgesInTiles shape)
 
             Grid.SingleView ->
                 Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
-        , roomHeader room multiActions
-        , HUD.viewHudOverlay hudData hudActions
-        , rosterStrip room
+        , if portrait then
+            -- Portrait is too narrow for floating badges beside the timer and
+            -- the health bar: stack them into the HUD column instead.
+            HUD.viewHudOverlayWith
+                { belowTopBar = roomBar room multiActions :: firstRowBadges
+                , aboveFooter = rosterSlot room
+                }
+                hudData
+                hudActions
+
+          else
+            div []
+                [ roomHeader room multiActions
+                , HUD.viewHudOverlay hudData hudActions
+                , rosterStrip room
+                ]
         , case room.status of
             Countdown n ->
                 MultiplayerUI.viewCountdownOverlay { secondsRemaining = n }
@@ -245,33 +286,62 @@ roomHeader room multiActions =
                 }
 
         JoinedPlayer ->
-            div
-                [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.border ]
+            joinerPill
+                [ Tw.classes [ Tw.absolute, Tw.z_30 ]
                 , Attr.style "top" "1rem"
                 , Attr.style "left" "1rem"
-                , Attr.style "background" "rgba(15, 23, 42, 0.88)"
-                , Attr.style "border-color" (Multiplayer.slotColor room.mySlot)
                 ]
-                [ span
-                    [ Tw.classes [ Tw.rounded_full ]
-                    , Attr.style "width" "10px"
-                    , Attr.style "height" "10px"
-                    , Attr.style "background" (Multiplayer.slotColor room.mySlot)
-                    ]
-                    []
-                , span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.text_simple Th.white ] ]
-                    [ text ("P" ++ String.fromInt room.mySlot ++ " • ROOM: " ++ room.roomId) ]
-                , button
-                    [ Attr.type_ "button"
-                    , onClick multiActions.onCopyShareLink
-                    , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_lg, Tw.border ]
-                    , Attr.style "background" "rgba(30, 41, 59, 0.8)"
-                    , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
-                    , Attr.style "color" "#94a3b8"
-                    , Attr.style "cursor" "pointer"
-                    ]
-                    [ text "Copy" ]
-                ]
+                room
+                multiActions
+
+
+{-| `roomHeader` laid out in the HUD column (portrait): the joiner's pill in
+flow under the timer, and the host's commentator bar, whose shared markup
+floats it, pinned back into flow by `.racer-room-bar` (main.css).
+-}
+roomBar : RoomState -> MultiplayerActions msg -> Html msg
+roomBar room multiActions =
+    case room.role of
+        HostCommentator ->
+            div [ Attr.class "racer-room-bar", Tw.classes [ Tw.w_full ] ]
+                [ roomHeader room multiActions ]
+
+        JoinedPlayer ->
+            joinerPill [ Tw.classes [ Tw.self_start, Tw.pointer_events_auto ] ] room multiActions
+
+
+{-| Room badge of a joined player: their colour, slot, the room code and a
+copy-link button. `placement` positions it.
+-}
+joinerPill : List (Html.Attribute msg) -> RoomState -> MultiplayerActions msg -> Html msg
+joinerPill placement room multiActions =
+    div
+        (placement
+            ++ [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.border ]
+               , Attr.style "background" "rgba(15, 23, 42, 0.88)"
+               , Attr.style "border-color" (Multiplayer.slotColor room.mySlot)
+               ]
+        )
+        [ span
+            [ Tw.classes [ Tw.rounded_full ]
+            , Attr.style "width" "10px"
+            , Attr.style "height" "10px"
+            , Attr.style "background" (Multiplayer.slotColor room.mySlot)
+            ]
+            []
+        , span [ Tw.classes [ Tw.text_xs, Tw.font_extrabold, Tw.text_simple Th.white ] ]
+            [ text ("P" ++ String.fromInt room.mySlot ++ " • ROOM: " ++ room.roomId) ]
+        , button
+            [ Attr.type_ "button"
+            , onClick multiActions.onCopyShareLink
+            , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_lg, Tw.border ]
+            , Attr.style "background" "rgba(30, 41, 59, 0.8)"
+            , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
+            , Attr.style "color" "#94a3b8"
+            , Attr.style "cursor" "pointer"
+            ]
+            [ text "Copy" ]
+        ]
 
 
 {-| Who is in the room, shown while the room waits in its lobby.
@@ -292,6 +362,18 @@ rosterStrip room =
             text ""
 
 
+{-| The lobby roster in the HUD column (portrait), above the health bar.
+-}
+rosterSlot : RoomState -> List (Html msg)
+rosterSlot room =
+    case room.status of
+        Lobby ->
+            [ MultiplayerUI.viewRoster room ]
+
+        _ ->
+            []
+
+
 {-| Every player's view in one grid that fills the screen (`Grid.gridShape`),
 the local player's first. Each tile follows one car from behind.
 -}
@@ -306,8 +388,9 @@ viewPlayerGrid :
     -> Int
     -> Int
     -> RoomState
+    -> (Int -> Bool)
     -> Html msg
-viewPlayerGrid bundle track cars props shadowMesh debris physics width height room =
+viewPlayerGrid bundle track cars props shadowMesh debris physics width height room badgeInTile =
     let
         shape =
             Grid.gridShape (Grid.orientation width height) (List.length room.players)
@@ -318,7 +401,7 @@ viewPlayerGrid bundle track cars props shadowMesh debris physics width height ro
         tileH =
             max 120 (height // shape.rows)
 
-        tile p =
+        tile index p =
             let
                 ( yaw, pos ) =
                     if p.slot == room.mySlot then
@@ -333,7 +416,11 @@ viewPlayerGrid bundle track cars props shadowMesh debris physics width height ro
                 , Attr.style "background" "#020617"
                 ]
                 [ Render.renderRaceViewportMulti bundle track cars props shadowMesh debris (tileCamera tileH pos yaw) tileW tileH []
-                , tileBadge room p
+                , if badgeInTile index then
+                    tileBadge overTile room p
+
+                  else
+                    text ""
                 ]
     in
     div
@@ -344,7 +431,7 @@ viewPlayerGrid bundle track cars props shadowMesh debris physics width height ro
         , Attr.style "grid-template-columns" ("repeat(" ++ String.fromInt shape.cols ++ ", minmax(0, 1fr))")
         , Attr.style "grid-template-rows" ("repeat(" ++ String.fromInt shape.rows ++ ", minmax(0, 1fr))")
         ]
-        (List.map tile (Grid.selfFirst .slot room.mySlot room.players))
+        (List.indexedMap tile (Grid.selfFirst .slot room.mySlot room.players))
 
 
 {-| Chase camera for one tile: behind the car at `target`, facing `yaw`.
@@ -364,29 +451,47 @@ tileCamera tileH target yaw =
            )
 
 
-{-| Name, colour and speed of a player, on their tile.
+{-| Tile badge in the top-left corner of its tile.
 -}
-tileBadge : RoomState -> RemotePlayer -> Html msg
-tileBadge room p =
+overTile : List (Html.Attribute msg)
+overTile =
+    [ Tw.classes [ Tw.absolute, Tw.z_20 ]
+    , Attr.style "top" "0.5rem"
+    , Attr.style "left" "0.5rem"
+    ]
+
+
+{-| Tile badge in the HUD column: as wide as its grid column at most, the
+name cut short rather than running into the next badge.
+-}
+inFlowBadge : List (Html.Attribute msg)
+inFlowBadge =
+    [ Tw.classes [ Tw.w_fit, Tw.max_w_full, Tw.overflow_hidden, Tw.whitespace_nowrap ] ]
+
+
+{-| Name, colour and speed of a player, on their tile. `placement` positions it.
+-}
+tileBadge : List (Html.Attribute msg) -> RoomState -> RemotePlayer -> Html msg
+tileBadge placement room p =
     let
         isMe =
             p.slot == room.mySlot
     in
     div
-        [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-        , Attr.style "top" "0.5rem"
-        , Attr.style "left" "0.5rem"
-        , Attr.style "background" "rgba(15, 23, 42, 0.85)"
-        , Attr.style "border-color" (Multiplayer.slotColor p.slot)
-        ]
+        (placement
+            ++ [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
+               , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+               , Attr.style "border-color" (Multiplayer.slotColor p.slot)
+               ]
+        )
         [ span
-            [ Tw.classes [ Tw.rounded_full ]
+            [ Tw.classes [ Tw.rounded_full, Tw.shrink_0 ]
             , Attr.style "width" "8px"
             , Attr.style "height" "8px"
             , Attr.style "background" (Multiplayer.slotColor p.slot)
             ]
             []
-        , span [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.text_simple Th.white ] ]
+        , span [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.text_simple Th.white, Tw.min_w Th.s0, Tw.truncate ] ]
             [ text
                 ("P"
                     ++ String.fromInt p.slot
@@ -400,7 +505,7 @@ tileBadge room p =
                        )
                 )
             ]
-        , span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold ], Attr.style "color" "#38bdf8" ]
+        , span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold, Tw.shrink_0 ], Attr.style "color" "#38bdf8" ]
             [ text (String.fromInt (round (p.speed * 3.6)) ++ " km/h") ]
         , if p.finished then
             span [ Tw.classes [ Tw.text_xs, Tw.font_black ], Attr.style "color" "#4ade80" ]
@@ -503,14 +608,14 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
             , { spec = p1Spec, meshes = p1Meshes, physics = p1Physics }
             ]
 
-        playerBadge label colorStr keyStr =
+        playerBadge placement label colorStr keyStr =
             div
-                [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.items_center, Tw.gap Th.s1_dot_5, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border, Tw.shadow_lg ]
-                , Attr.style "top" "0.75rem"
-                , Attr.style "left" "0.75rem"
-                , Attr.style "background" "rgba(15, 23, 42, 0.82)"
-                , Attr.style "border-color" colorStr
-                ]
+                (placement
+                    ++ [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s1_dot_5, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border, Tw.shadow_lg ]
+                       , Attr.style "background" "rgba(15, 23, 42, 0.82)"
+                       , Attr.style "border-color" colorStr
+                       ]
+                )
                 [ span
                     [ Tw.classes [ Tw.rounded_full ]
                     , Attr.style "width" "10px"
@@ -520,6 +625,31 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                     []
                 , span [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.text_simple Th.white ] ] [ text label ]
                 , span [ Tw.classes [ Tw.text_xs, Tw.font_mono ], Attr.style "color" "#94a3b8" ] [ text ("[" ++ keyStr ++ "]") ]
+                ]
+
+        -- Side by side, each badge floats in its view's top-left corner. Stacked
+        -- (portrait), the halves are too narrow for it beside the timer and
+        -- toolbar, so it goes into the HUD column under them.
+        viewHalf hudData label colorStr keyStr =
+            if isWide then
+                [ playerBadge
+                    [ Tw.classes [ Tw.absolute, Tw.z_20 ]
+                    , Attr.style "top" "0.75rem"
+                    , Attr.style "left" "0.75rem"
+                    ]
+                    label
+                    colorStr
+                    keyStr
+                , HUD.viewHudOverlay hudData hudActions
+                ]
+
+            else
+                [ HUD.viewHudOverlayWith
+                    { belowTopBar = [ playerBadge [ Tw.classes [ Tw.self_start ] ] label colorStr keyStr ]
+                    , aboveFooter = []
+                    }
+                    hudData
+                    hudActions
                 ]
     in
     div
@@ -547,10 +677,9 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                 )
             , Attr.style "border-color" "#f59e0b"
             ]
-            [ Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1Camera p1W p1H []
-            , playerBadge "PLAYER 1" "#38bdf8" "WASD"
-            , HUD.viewHudOverlay p1HudData hudActions
-            ]
+            (Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1Camera p1W p1H []
+                :: viewHalf p1HudData "PLAYER 1" "#38bdf8" "WASD"
+            )
 
         -- Player 2 Viewport + HUD
         , div
@@ -564,8 +693,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                        )
                 )
             ]
-            [ Render.renderRaceViewportMulti bundle track p2FirstCars props shadowMesh debris p2.p2Camera p2W p2H []
-            , playerBadge "PLAYER 2" "#f43f5e" "ARROWS"
-            , HUD.viewHudOverlay p2.p2HudData hudActions
-            ]
+            (Render.renderRaceViewportMulti bundle track p2FirstCars props shadowMesh debris p2.p2Camera p2W p2H []
+                :: viewHalf p2.p2HudData "PLAYER 2" "#f43f5e" "ARROWS"
+            )
         ]

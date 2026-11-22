@@ -87,3 +87,10 @@ body {
     animation: none !important;
   }
 }
+
+/* Portrait online rooms stack the host's commentator bar into the HUD column
+   under the timer (Pages.Race.roomBar). Its shared markup floats it at the top
+   of the screen, so pin it back into the flow here. */
+.racer-room-bar > * {
+  position: static;
+}
