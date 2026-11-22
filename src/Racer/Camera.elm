@@ -1,5 +1,7 @@
 module Racer.Camera exposing
-    ( cycleMode
+    ( chaseDistance
+    , chaseLookAhead
+    , cycleMode
     , initGarageCamera
     , initRaceCamera
     , updateGarageCamera
@@ -77,8 +79,13 @@ initRaceCamera viewportHeight physics spec =
         fwd =
             Physics.forwardVector physics.yaw
 
+        carCenterHeight =
+            max 0.35 (lduToMeters (Vec3.getY spec.boundsMaxLdu))
+
         target =
-            Vec3.add physics.position (Vec3.add (vec3 0 0.55 0) (Vec3.scale 0.65 fwd))
+            physics.position
+                |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08) 0)
+                |> Vec3.add (Vec3.scale chaseLookAhead fwd)
     in
     Camera.init
         |> Camera.setViewportHeight (toFloat (max 1 viewportHeight))
@@ -88,7 +95,7 @@ initRaceCamera viewportHeight physics spec =
                 { c
                     | azimuth = physics.yaw + pi
                     , elevation = 0.28
-                    , distance = clamp 3.4 6.0 (2.7 + radiusM * 2.1)
+                    , distance = chaseDistance radiusM 0.0
                     , target = target
                 }
            )
@@ -143,12 +150,12 @@ updateRaceCamera dt mode physics spec cam =
                     clamp 0.16 0.45 (0.25 + physics.gradeRatio * 0.38)
 
                 desiredDist =
-                    clamp 3.2 7.2 (2.6 + radiusM * 2.0 + speed * 0.05)
+                    chaseDistance radiusM speed
 
                 lookAheadTarget =
                     physics.position
-                        |> Vec3.add (vec3 0 (carCenterHeight * 0.65 + 0.18) 0)
-                        |> Vec3.add (Vec3.scale 0.85 fwd)
+                        |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08) 0)
+                        |> Vec3.add (Vec3.scale chaseLookAhead fwd)
 
                 alpha =
                     clamp 0.0 1.0 (dt * 9.0)
@@ -211,6 +218,50 @@ updateRaceCamera dt mode physics spec cam =
             { baseCam
                 | target = Vec3.add baseCam.target deltaMove
             }
+
+
+{-| Chase camera distance (m) behind its target for a car of bounding radius
+`radiusM` at `speedMps`.
+
+Close enough that the player's own build fills a good part of the view, far
+enough that the whole car stays in frame on a phone. Speed only pulls the
+camera back a little (at most `chaseSpeedPullbackM`), so the car does not
+shrink on fast stretches.
+
+-}
+chaseDistance : Float -> Float -> Float
+chaseDistance radiusM speedMps =
+    let
+        base =
+            clamp 2.4 4.6 (1.6 + radiusM * 1.7)
+
+        pullback =
+            clamp 0.0 chaseSpeedPullbackM (max 0.0 speedMps * 0.012)
+    in
+    base + pullback
+
+
+{-| Most the chase camera backs off with speed (m).
+-}
+chaseSpeedPullbackM : Float
+chaseSpeedPullbackM =
+    0.45
+
+
+{-| Share of the car's height the chase camera aims at (plus a few cm), so
+the car sits in the middle of the view rather than low in it.
+-}
+chaseAimHeight : Float
+chaseAimHeight =
+    0.5
+
+
+{-| How far (m) ahead of the car the chase camera aims. Small, so the car sits
+near the middle of the view instead of low in it.
+-}
+chaseLookAhead : Float
+chaseLookAhead =
+    0.35
 
 
 lerp : Float -> Float -> Float -> Float
