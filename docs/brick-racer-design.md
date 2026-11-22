@@ -372,7 +372,7 @@ Three courses ship out of the box (plus custom `seed` variations):
 | `forest-trail` | **Forest Trail** | ~0.56 km / -175 m | Packed-earth forest track over roots, steep gravel chute through a clearing, log hump. Dense pines, rocks. |
 | `meadow-path` | **Meadow Footpath** | ~0.45 km / -150 m | Narrowest and steepest: grass footpath with a field hump and tussocks. Bushes, rocks, hay. |
 
-The retired long mountain courses' ids (`pine-ridge`, `quarry-switchbacks`, `alpine-glacier`) still parse and map to `farm-lane`, `forest-trail` and `meadow-path`, so old share links and stored best times keep working.
+The retired long mountain courses' ids (`pine-ridge`, `quarry-switchbacks`, `alpine-glacier`) still parse and map to `farm-lane`, `forest-trail` and `meadow-path`, so old share links keep working. Best times stored for those courses are dropped once on load (`leaderboard-migration.js`, guarded by the `palikkakehys.racer.migrations.retiredTracks` flag) so they do not appear as records on the short courses.
 
 #### Chunked WebGL Architecture (`Racer.TerrainMesh`, `Racer.TerrainShader`)
 - Ground and arches are divided into `100 m` track-length chunks (5–6 chunks), built once when entering a track. Each chunk has a static ground mesh and a separate scenery mesh that is rebuilt only when a piece in it is smashed.

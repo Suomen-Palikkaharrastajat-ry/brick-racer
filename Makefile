@@ -76,7 +76,11 @@ elm-test: elm-tailwind-gen ## Run all unit tests
 	elm-test
 
 .PHONY: test
-test: check elm-test ## Run check and racer tests
+test: check elm-test js-test ## Run check and racer tests
+
+.PHONY: js-test
+js-test: ## Run JS unit tests (stored best-time migration)
+	node --test *.test.mjs
 
 .PHONY: elm-check
 elm-check: ## Check Elm formatting (no changes)

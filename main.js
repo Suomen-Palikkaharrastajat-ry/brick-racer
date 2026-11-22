@@ -11,12 +11,16 @@ import {
   setupGameRuntime,
 } from './vendor/packages/brick-frame-game/runtime/game-runtime.js'
 import { Elm } from './src/Main.elm'
+import { migrateRetiredTrackBestTimes } from './leaderboard-migration.js'
 
 const ldrawBase = import.meta.env.VITE_LDRAW_BASE || 'https://catalog.palikkaharrastajat.fi/raw'
 const indicesBase = import.meta.env.VITE_LDRAW_INDICES_BASE || 'https://catalog.palikkaharrastajat.fi/indices'
 
 const coarsePointer =
   typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+
+// Drop best times stored for the retired courses (once, before Elm reads them).
+migrateRetiredTrackBestTimes('racer')
 
 const initialHash = window.location.hash ?? ''
 const savedAudioMuted = readAudioMuted('racer')
