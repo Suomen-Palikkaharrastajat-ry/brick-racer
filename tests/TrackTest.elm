@@ -110,6 +110,8 @@ suite =
                     ()
         , describe "Roadside scenery stays off the roadbed and clear of the start"
             (List.map verifySceneryClearance allTrackIds)
+        , describe "Brick launch ramps stand on one lane and leave a free lane"
+            (List.concatMap (\id -> List.map (verifyBrickRamps id) [ 1, 42, 99, 1234 ]) allTrackIds)
         , test "removeObstacles drops smashed pieces from the list and the collision buckets" <|
             \_ ->
                 let
@@ -246,3 +248,50 @@ pairwiseDecreasing ys =
 
         _ ->
             True
+
+
+verifyBrickRamps : TrackId -> Int -> Test
+verifyBrickRamps id seed =
+    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " has ramps on the road with a free lane, clear of the gates") <|
+        \_ ->
+            let
+                track =
+                    Track.generate (Track.trackConfigFor id seed)
+
+                again =
+                    Track.generate (Track.trackConfigFor id seed)
+
+                badRamps =
+                    List.filter
+                        (\rp ->
+                            let
+                                smp =
+                                    Track.splineSampleAtS track ((rp.startS + rp.endS) * 0.5)
+
+                                hw =
+                                    smp.halfWidth
+
+                                -- Width of road left free on the wider side of the ramp.
+                                freeLane =
+                                    max (hw - (rp.centerOffsetM + rp.halfWidthM)) (rp.centerOffsetM - rp.halfWidthM + hw)
+
+                                nearGate =
+                                    List.any (\cp -> cp.s > rp.startS - 8.0 && cp.s < rp.endS + 26.0) track.checkpoints
+                            in
+                            abs rp.centerOffsetM + rp.halfWidthM > hw || freeLane < 2.5 || nearGate || rp.startS < 40.0
+                        )
+                        track.brickRamps
+
+                lipLift =
+                    List.map
+                        (\rp -> (Track.brickRampLift track (rp.endS - 0.01) rp.centerOffsetM).lift)
+                        track.brickRamps
+            in
+            Expect.all
+                [ \_ -> Expect.atLeast 1 (List.length track.brickRamps)
+                , \_ -> Expect.equal [] badRamps
+                , \_ -> Expect.equal track.brickRamps again.brickRamps
+                , \_ -> Expect.equal True (List.all (\h -> h > 0.6) lipLift)
+                , \_ -> Expect.within (Expect.Absolute 1.0e-9) 0.0 (Track.brickRampLift track 10.0 0.0).lift
+                ]
+                ()

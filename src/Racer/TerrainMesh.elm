@@ -8,7 +8,7 @@ module Racer.TerrainMesh exposing
     )
 
 {-| Chunked WebGL countryside ground (unpaved road, verges and fields), launch
-humps, checkpoint/finish arches, brick-built roadside
+humps, brick launch ramps, checkpoint/finish arches, brick-built roadside
 scenery (trees, bushes, fences, rocks, signposts, hay bales, cottages, barns,
 crates, barrels, garden gnomes, brick walls), and the garage display plinth mesh.
 
@@ -24,7 +24,8 @@ import Racer.TerrainShader exposing (TerrainVertex)
 import Racer.Track as Track
 import Racer.Types
     exposing
-        ( Checkpoint
+        ( BrickRamp
+        , Checkpoint
         , GeneratedTrack
         , ObstacleKind(..)
         , SurfaceType(..)
@@ -255,7 +256,7 @@ buildChunk track chunkSizeM numChunks chunkIdx =
     , boundsCenter = centerSample.center
     , boundsRadius = chunkSizeM * 0.85 + 52.0
     , mesh = WebGL.triangles (ribbonTris ++ gateTris)
-    , sceneryMesh = buildSceneryMesh (sceneryInRange minS maxS track.obstacles)
+    , sceneryMesh = buildSceneryMesh track minS maxS
     }
 
 
@@ -279,7 +280,7 @@ rebuildChunkScenery track s bundle =
             { bundle
                 | chunks =
                     Array.set idx
-                        { chunk | sceneryMesh = buildSceneryMesh (sceneryInRange chunk.minS chunk.maxS track.obstacles) }
+                        { chunk | sceneryMesh = buildSceneryMesh track chunk.minS chunk.maxS }
                         bundle.chunks
             }
 
@@ -287,9 +288,18 @@ rebuildChunkScenery track s bundle =
             bundle
 
 
-buildSceneryMesh : List TrackObstacle -> WebGL.Mesh TerrainVertex
-buildSceneryMesh obstacles =
-    WebGL.triangles (List.concatMap buildSceneryTris obstacles)
+{-| The scenery still standing in `[minS, maxS)` plus the brick launch ramps
+that start there, all in the studded plastic finish.
+-}
+buildSceneryMesh : GeneratedTrack -> Float -> Float -> WebGL.Mesh TerrainVertex
+buildSceneryMesh track minS maxS =
+    let
+        rampTris =
+            track.brickRamps
+                |> List.filter (\rp -> rp.startS >= minS && rp.startS < maxS)
+                |> List.concatMap (buildBrickRampTris track)
+    in
+    WebGL.triangles (List.concatMap buildSceneryTris (sceneryInRange minS maxS track.obstacles) ++ rampTris)
 
 
 buildStartApronTris : GeneratedTrack -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -1018,6 +1028,125 @@ brickWallTris fr =
     List.concatMap course (List.range 0 3)
         ++ brick fr ( 0, 0.96, 0 ) ( 0.24, 0.1, 1.46 ) (ldrawColor 71)
         ++ studs fr ( 0, 1.06, 0 ) ( 1, 4 ) 0.72 (ldrawColor 71)
+
+
+
+-- ── Brick launch ramps ───────────────────────────────────────────────────────
+
+
+{-| A launch ramp of slope bricks on one lane: rows of red and white slopes
+rising along the road to a yellow-and-black lip with a row of studs on top, a
+grey back face, and grey side slopes down to the road. Every corner height
+comes from `Track.brickRampLift`, so the bricks match what the wheels feel.
+-}
+buildBrickRampTris : GeneratedTrack -> BrickRamp -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+buildBrickRampTris track rp =
+    let
+        rows =
+            5
+
+        lenM =
+            rp.endS - rp.startS
+
+        inner =
+            rp.halfWidthM * 0.72
+
+        -- Lateral stations: road edge, top edge, a seam per slope brick, top edge, road edge.
+        lateral =
+            [ -rp.halfWidthM, -inner, -(inner / 3.0), inner / 3.0, inner, rp.halfWidthM ]
+                |> List.map (\d -> rp.centerOffsetM + d)
+
+        -- Just short of the lip, where the lift is at full height.
+        rowS k =
+            rp.startS + lenM * min 0.999 (toFloat k / toFloat rows)
+
+        groundAt sVal d =
+            let
+                smp =
+                    Track.splineSampleAtS track sVal
+
+                ptXZ =
+                    Vec3.add smp.center (Vec3.scale d (normalizeXZ smp.right))
+            in
+            vec3 (Vec3.getX ptXZ) (Track.groundHeightAt track sVal (Vec3.getX ptXZ) (Vec3.getZ ptXZ) + 0.02) (Vec3.getZ ptXZ)
+
+        topAt sVal d =
+            Vec3.add (groundAt sVal d) (vec3 0 (Track.brickRampLift track sVal d).lift 0)
+
+        faceNormal a b c =
+            normalizeSafe (Vec3.cross (Vec3.sub b a) (Vec3.sub c a)) (vec3 0 1 0)
+
+        face a b c d col =
+            let
+                n0 =
+                    faceNormal a b c
+
+                n =
+                    if Vec3.getY n0 < 0.0 then
+                        Vec3.negate n0
+
+                    else
+                        n0
+            in
+            quad a b c d n col
+
+        slopeColor k j =
+            if j == 0 || j == 4 then
+                ldrawColor 71
+
+            else if k == rows - 1 then
+                if modBy 2 j == 0 then
+                    ldrawColor 0
+
+                else
+                    ldrawColor 14
+
+            else if modBy 2 (k + j) == 0 then
+                ldrawColor 4
+
+            else
+                ldrawColor 15
+
+        topQuads =
+            List.range 0 (rows - 1)
+                |> List.concatMap
+                    (\k ->
+                        adjacentPairs lateral
+                            |> List.indexedMap
+                                (\j ( d0, d1 ) ->
+                                    face (topAt (rowS k) d0) (topAt (rowS k) d1) (topAt (rowS (k + 1)) d1) (topAt (rowS (k + 1)) d0) (slopeColor k j)
+                                )
+                            |> List.concat
+                    )
+
+        lipS =
+            rowS rows
+
+        backFace =
+            adjacentPairs lateral
+                |> List.concatMap
+                    (\( d0, d1 ) ->
+                        let
+                            a =
+                                groundAt lipS d0
+
+                            b =
+                                groundAt lipS d1
+
+                            smp =
+                                Track.splineSampleAtS track lipS
+                        in
+                        quad b a (topAt lipS d0) (topAt lipS d1) (normalizeXZ smp.tangent) (ldrawColor 72)
+                    )
+
+        lipStuds =
+            List.range 0 3
+                |> List.concatMap
+                    (\i ->
+                        cylinderAt (topAt (lipS - 0.35) (rp.centerOffsetM + (toFloat i - 1.5) * (inner * 0.6))) 0.13 0.1 6 (ldrawColor 14)
+                    )
+    in
+    topQuads ++ backFace ++ lipStuds
 
 
 cylinderAt : Vec3 -> Float -> Float -> Int -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )

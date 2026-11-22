@@ -408,6 +408,73 @@ suite =
                     , \_ -> Expect.lessThan 5.5 (Physics.breakSpeedFor Racer.Types.Bush)
                     ]
                     ()
+        , test "A brick ramp taken at speed launches the car on an arc and the landing settles it" <|
+            \_ ->
+                let
+                    track =
+                        rampTestTrack
+
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    run =
+                        runRecorded 150 track spec (rampApproach track spec 15.0)
+
+                    heights =
+                        List.map (heightAboveRamp track) run.states
+
+                    airborneSteps =
+                        List.length (List.filter (\st -> st.groundedWheels == 0) run.states)
+
+                    landed =
+                        List.any isLanding run.events
+
+                    crashed =
+                        List.any isCrash run.events
+
+                    final =
+                        List.reverse run.states |> List.head |> Maybe.withDefault (rampApproach track spec 15.0)
+                in
+                Expect.all
+                    [ \_ -> Expect.greaterThan 0.6 (List.maximum heights |> Maybe.withDefault 0.0)
+                    , \_ -> Expect.atLeast 18 airborneSteps
+                    , \_ -> Expect.atMost 90 airborneSteps
+                    , \_ -> Expect.equal True landed
+                    , \_ -> Expect.equal False crashed
+                    , \_ -> Expect.within (Expect.Absolute 0.01) 100.0 final.integrity
+                    , \_ -> Expect.equal 4 final.groundedWheels
+                    , \_ -> Expect.atMost 0.3 (heightAboveRamp track final)
+                    , \_ -> Expect.greaterThan 55.0 final.progressS
+                    , \_ -> Expect.greaterThan 8.0 (Vec3.length final.velocity)
+                    ]
+                    ()
+        , test "A brick ramp flight is deterministic at the fixed timestep" <|
+            \_ ->
+                let
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    a =
+                        simulateSteps 90 rampTestTrack spec neutralInput (rampApproach rampTestTrack spec 15.0)
+
+                    b =
+                        simulateSteps 90 rampTestTrack spec neutralInput (rampApproach rampTestTrack spec 15.0)
+                in
+                Expect.equal a b
+        , test "Driving beside a brick ramp in the free lane stays on the ground" <|
+            \_ ->
+                let
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    beside =
+                        rampApproach rampTestTrack spec 15.0
+                            |> (\st -> { st | position = Vec3.add st.position (vec3 -4.5 0 0) })
+
+                    run =
+                        runRecorded 90 rampTestTrack spec beside
+                in
+                Expect.equal [] (List.filter (\st -> st.groundedWheels == 0) run.states |> List.map .progressS)
         , test "Smashing a crate costs a little speed and no integrity" <|
             \_ ->
                 let
@@ -485,6 +552,85 @@ suite =
                     ]
                     ()
         ]
+
+
+{-| A straight 30 % downhill test road with one brick ramp at 40-46.5 m in its
+middle lane, and a 9 m wide free lane beside it.
+-}
+rampTestTrack : GeneratedTrack
+rampTestTrack =
+    let
+        base =
+            buildFlatTestTrack -0.3 200.0
+    in
+    { base
+        | brickRamps =
+            [ { startS = 40.0, endS = 46.5, lipHeightM = 0.75, centerOffsetM = 0.0, halfWidthM = 1.8 } ]
+    }
+
+
+{-| The car on the road 20 m before the ramp, rolling straight at it.
+-}
+rampApproach : GeneratedTrack -> VehicleSpec -> Float -> PhysicsState
+rampApproach track spec speed =
+    let
+        s0 =
+            Physics.initPhysics track spec
+
+        smp =
+            Track.splineSampleAtS track 20.0
+    in
+    { s0
+        | position = smp.center
+        , velocity = Vec3.scale speed smp.tangent
+        , progressS = 20.0
+    }
+
+
+heightAboveRamp : GeneratedTrack -> PhysicsState -> Float
+heightAboveRamp track st =
+    let
+        g =
+            Track.sampleAt track (Vec3.getX st.position) (Vec3.getZ st.position)
+    in
+    Vec3.getY st.position - g.height - (Track.brickRampLift track g.nearestS g.roadOffsetM).lift
+
+
+runRecorded : Int -> GeneratedTrack -> VehicleSpec -> PhysicsState -> { states : List PhysicsState, events : List Racer.Types.PhysicsEvent }
+runRecorded count track spec start =
+    let
+        go n st acc =
+            if n <= 0 then
+                { states = List.reverse acc.states, events = acc.events }
+
+            else
+                let
+                    ( next, evs ) =
+                        Physics.stepFixed fixedDt track spec neutralInput st
+                in
+                go (n - 1) next { states = next :: acc.states, events = acc.events ++ evs }
+    in
+    go count start { states = [], events = [] }
+
+
+isLanding : Racer.Types.PhysicsEvent -> Bool
+isLanding e =
+    case e of
+        Racer.Types.Landing _ ->
+            True
+
+        _ ->
+            False
+
+
+isCrash : Racer.Types.PhysicsEvent -> Bool
+isCrash e =
+    case e of
+        Racer.Types.Crashed _ ->
+            True
+
+        _ ->
+            False
 
 
 {-| Drive the kart into a piece of scenery at `speed` on flat ground; returns
@@ -637,5 +783,6 @@ buildFlatTestTrack dyDz totalLen =
     , obstacleBuckets = Array.repeat 16 []
     , bucketSizeM = 25.0
     , ramps = []
+    , brickRamps = []
     , washes = []
     }

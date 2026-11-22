@@ -18,6 +18,11 @@ loads and pitch/roll chassis tilt, surface-dependent rolling resistance and late
 tire slip, articulated steering vs fixed-axle weight-shift authority, aerodynamic drag
 with aero tuck, obstacle impulses, structural brick pop-off events, and checkpoint tracking.
 
+Brick launch ramps (`Track.brickRampLift`) are added to the ground under the
+wheel probes. Climbing one gives the car its upward speed, and where the ground
+falls away under the car faster than it can fall (the ramp's lip, the back of a
+hump), the car flies on a ballistic arc until the normal landing code catches it.
+
 -}
 
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
@@ -262,6 +267,10 @@ stepFixed dt track spec input state =
 
         centerTerrain =
             Track.sampleAtHinted state.progressS track (Vec3.getX state.position) (Vec3.getZ state.position)
+                |> withBrickRamps track
+
+        centerRamp =
+            Track.brickRampLift track centerTerrain.nearestS centerTerrain.roadOffsetM
 
         speed =
             Vec3.length state.velocity
@@ -318,6 +327,7 @@ stepFixed dt track spec input state =
 
                 smp =
                     Track.sampleAtHinted centerTerrain.nearestS track (Vec3.getX worldPt) (Vec3.getZ worldPt)
+                        |> withBrickRamps track
 
                 -- Vertical offset of chassis corner due to pitch/roll
                 cornerY =
@@ -597,8 +607,27 @@ stepFixed dt track spec input state =
         rawNextYVel =
             Vec3.getY state.velocity - gravityAccel * dt
 
-        prevVy =
-            Vec3.getY state.velocity
+        -- Vertical speed the ground under the car adds while climbing a brick
+        -- ramp: its rise per meter of arc length times the speed along the road.
+        rampSlopeVy =
+            if centerRamp.grade > 0.0 then
+                let
+                    tanX =
+                        Vec3.getX centerTerrain.nearestTangent
+
+                    tanZ =
+                        Vec3.getZ centerTerrain.nearestTangent
+
+                    horizTanLen =
+                        max 0.25 (sqrt (tanX * tanX + tanZ * tanZ))
+
+                    vAlong =
+                        (Vec3.getX state.velocity * tanX + Vec3.getZ state.velocity * tanZ) / horizTanLen
+                in
+                max 0.0 vAlong * centerRamp.grade / horizTanLen
+
+            else
+                0.0
 
         ( finalPosY, finalVelY, landingImpact ) =
             let
@@ -608,7 +637,7 @@ stepFixed dt track spec input state =
             if predictedY <= minAvgHeight then
                 let
                     terrainSlopeVy =
-                        vFwd * Vec3.getY centerTerrain.nearestTangent
+                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy
 
                     penetration =
                         minAvgHeight - predictedY
@@ -638,14 +667,16 @@ stepFixed dt track spec input state =
                 in
                 ( smoothY, bounceVy, landEv )
 
-            else if isGroundedNow && maxCompression > -0.05 && rawNextYVel <= 0.6 then
-                -- Stay planted smoothly along continuous downward curved hills unless cresting hard
+            else if isGroundedNow && maxCompression > -0.05 && rawNextYVel <= 0.6 && predictedY - minAvgHeight <= groundFallAwayM then
+                -- Stay planted smoothly along continuous downward curved hills unless cresting hard.
+                -- Where the ground drops away faster than the car can fall (a ramp lip), it
+                -- takes off instead: see the ballistic branch below.
                 let
                     terrainFollowY =
                         Vec3.getY state.position + (minAvgHeight - Vec3.getY state.position) * min 1.0 (dt * 32.0)
 
                     terrainSlopeVy =
-                        vFwd * Vec3.getY centerTerrain.nearestTangent
+                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy
                 in
                 ( max minAvgHeight terrainFollowY, terrainSlopeVy, [] )
 
@@ -843,6 +874,30 @@ stepFixed dt track spec input state =
             }
     in
     ( nextState, allEvents )
+
+
+{-| How far (m) the ground may drop below the car's free-fall path in one step
+before the car stops following it and flies. Smooth hills never drop this fast;
+the vertical back face of a brick ramp does.
+-}
+groundFallAwayM : Float
+groundFallAwayM =
+    0.1
+
+
+{-| Add the brick ramps standing on the road to a ground sample's height.
+-}
+withBrickRamps : GeneratedTrack -> Racer.Types.TerrainSample -> Racer.Types.TerrainSample
+withBrickRamps track smp =
+    let
+        ramp =
+            Track.brickRampLift track smp.nearestS smp.roadOffsetM
+    in
+    if ramp.lift > 0.0 then
+        { smp | height = smp.height + ramp.lift }
+
+    else
+        smp
 
 
 {-| Horizontal forward unit vector `(sin yaw, 0, cos yaw)` at vehicle heading `yaw` radians.

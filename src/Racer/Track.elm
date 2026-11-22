@@ -1,5 +1,7 @@
 module Racer.Track exposing
-    ( fieldUndulation
+    ( RampLift
+    , brickRampLift
+    , fieldUndulation
     , generate
     , groundHeightAt
     , obstaclesNear
@@ -21,7 +23,9 @@ Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads:
   - `MeadowPath`: narrow, steepest grass footpath with a field hump and tussocks.
 
 Each course is lined with brick-built scenery (trees, bushes, fences, rocks,
-signposts, hay bales, cottages and barns) that the racer can smash apart.
+signposts, hay bales, cottages, barns, crates, barrels, garden gnomes and brick
+wall sections) that the racer can smash apart, and has a few brick-built launch
+ramps on one lane of the road (`brickRamps`, see `brickRampLift`).
 
 Exposes continuous `sampleAt` / `sampleAtHinted` heightmap + finite-difference surface
 normal queries and O(1) spatial-bucketed `obstaclesNear` collision lookups.
@@ -32,7 +36,8 @@ import Array exposing (Array)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Types
     exposing
-        ( Checkpoint
+        ( BrickRamp
+        , Checkpoint
         , ControlPoint
         , GeneratedTrack
         , ObstacleKind(..)
@@ -161,6 +166,7 @@ generate config =
             , obstacleBuckets = Array.repeat bucketCount []
             , bucketSizeM = bucketSizeM
             , ramps = ramps
+            , brickRamps = []
             , washes = washes
             }
 
@@ -169,6 +175,7 @@ generate config =
     in
     { bareTrack
         | obstacles = obstacles
+        , brickRamps = placeBrickRamps bareTrack
         , obstacleBuckets = bucketObstacles bucketSizeM bucketCount obstacles
     }
 
@@ -1200,6 +1207,142 @@ generateScenery track =
     in
     List.reverse final.acc
         |> List.sortBy .s
+
+
+{-| How high a brick ramp lifts the ground at one point, and how fast that lift
+grows per meter of arc length (`grade`), so the car can climb it with the right
+vertical speed.
+-}
+type alias RampLift =
+    { lift : Float
+    , grade : Float
+    }
+
+
+{-| Extra height of the brick ramps at arc length `s` and signed road offset
+`signedD` (as in `TerrainSample.roadOffsetM`). Zero away from a ramp.
+
+The ramps are not part of the ground heightfield: the ground mesh stays flat
+under them and `Racer.TerrainMesh` draws their bricks with this same lift, while
+`Racer.Physics` adds it to its wheel probes.
+
+-}
+brickRampLift : GeneratedTrack -> Float -> Float -> RampLift
+brickRampLift track s signedD =
+    List.foldl
+        (\rp acc ->
+            if s >= rp.startS && s < rp.endS then
+                let
+                    lenM =
+                        max 0.5 (rp.endS - rp.startS)
+
+                    lat =
+                        brickRampLateral rp signedD
+                in
+                if lat <= 0.0 then
+                    acc
+
+                else
+                    { lift = acc.lift + rp.lipHeightM * lat * (s - rp.startS) / lenM
+                    , grade = acc.grade + rp.lipHeightM * lat / lenM
+                    }
+
+            else
+                acc
+        )
+        { lift = 0.0, grade = 0.0 }
+        track.brickRamps
+
+
+{-| Full height over the middle of the ramp, falling in a straight line to the
+road over its outer quarter on each side.
+-}
+brickRampLateral : BrickRamp -> Float -> Float
+brickRampLateral rp signedD =
+    let
+        fromEdge =
+            rp.halfWidthM - abs (signedD - rp.centerOffsetM)
+    in
+    clamp 0.0 1.0 (fromEdge / max 0.05 (rp.halfWidthM * 0.28))
+
+
+{-| Put a few brick launch ramps on the course, seeded by the course seed.
+
+Each one stands on straight, unbanked road away from the start, the checkpoint
+arches, the finish, the humps and the rough patches, with a clear landing after
+it. It covers one lane only (about 40 % of the road width), on a seeded side, so
+there is always a free lane beside it.
+
+-}
+placeBrickRamps : GeneratedTrack -> List BrickRamp
+placeBrickRamps track =
+    let
+        rng0 =
+            Random.initialSeed (track.config.seed * 7919 + 413)
+
+        ( rolls, _ ) =
+            Random.step (Random.list 8 (Random.float 0.0 1.0)) rng0
+
+        roll i =
+            List.drop i rolls |> List.head |> Maybe.withDefault 0.5
+
+        lengthM =
+            6.5
+
+        lipHeightM =
+            0.75
+
+        landingM =
+            18.0
+
+        candidates =
+            [ 0.15, 0.36, 0.6, 0.86 ]
+                |> List.indexedMap
+                    (\i frac ->
+                        { startS = track.finishS * frac + (roll (2 * i) - 0.5) * 8.0
+                        , side =
+                            if roll (2 * i + 1) < 0.5 then
+                                -1.0
+
+                            else
+                                1.0
+                        }
+                    )
+
+        clearOf zoneStart zoneEnd c =
+            c.startS + lengthM + landingM < zoneStart - 6.0 || c.startS > zoneEnd + 6.0
+
+        straightEnough c =
+            List.range 0 (round ((lengthM + landingM) / 3.0))
+                |> List.all
+                    (\k ->
+                        abs (splineSampleAtS track (c.startS + toFloat k * 3.0)).bankingRad < 0.06
+                    )
+
+        usable c =
+            (c.startS > 40.0)
+                && (c.startS + lengthM + landingM < track.finishS - 8.0)
+                && List.all (\cp -> clearOf (cp.s - 8.0) (cp.s + 8.0) c) track.checkpoints
+                && List.all (\rp -> clearOf rp.startS rp.endS c) track.ramps
+                && List.all (\w -> clearOf w.startS w.endS c) track.washes
+                && straightEnough c
+
+        toRamp c =
+            let
+                hw =
+                    (splineSampleAtS track (c.startS + lengthM * 0.5)).halfWidth
+            in
+            { startS = c.startS
+            , endS = c.startS + lengthM
+            , lipHeightM = lipHeightM
+            , centerOffsetM = c.side * hw * 0.42
+            , halfWidthM = hw * 0.4
+            }
+    in
+    candidates
+        |> List.filter usable
+        |> List.take 3
+        |> List.map toRamp
 
 
 bucketObstacles : Float -> Int -> List TrackObstacle -> Array (List TrackObstacle)

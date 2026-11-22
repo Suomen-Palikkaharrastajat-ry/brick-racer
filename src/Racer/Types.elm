@@ -1,5 +1,6 @@
 module Racer.Types exposing
-    ( CameraMode(..)
+    ( BrickRamp
+    , CameraMode(..)
     , Checkpoint
     , ControlPoint
     , CrashReason(..)
@@ -271,6 +272,25 @@ type alias RampZone =
     }
 
 
+{-| Brick-built launch ramp of slope bricks standing on one lane of the road.
+
+It rises in a straight line from the road surface at `startS` to `lipHeightM` at
+`endS`, where it ends in a vertical back face, so a car taken over it at speed
+leaves the ground. `centerOffsetM` is its lateral offset from the road center
+(signed like `roadOffsetM`); it only covers part of the road, so the other lane
+stays free and the ramp never blocks the route. Its outer quarter on each side
+slopes down to the road like a row of side slopes.
+
+-}
+type alias BrickRamp =
+    { startS : Float
+    , endS : Float
+    , lipHeightM : Float
+    , centerOffsetM : Float
+    , halfWidthM : Float
+    }
+
+
 {-| Washboard / cobble ripple zone.
 -}
 type alias WashZone =
@@ -297,6 +317,7 @@ type alias GeneratedTrack =
     , obstacleBuckets : Array (List TrackObstacle)
     , bucketSizeM : Float
     , ramps : List RampZone
+    , brickRamps : List BrickRamp
     , washes : List WashZone
     }
 
