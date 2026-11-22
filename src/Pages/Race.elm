@@ -319,14 +319,17 @@ viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics d
                             GameCamera.chasePosition p.position fwd 9.0 3.2
 
                         cam =
-                            { eye = camEye
-                            , target = p.position
-                            , up = vec3 0 1 0
-                            , fov = 50.0
-                            , near = 0.1
-                            , far = 800.0
-                            , sceneRadius = 400.0
-                            }
+                            Camera.init
+                                |> Camera.setViewportHeight (toFloat (max 1 qH))
+                                |> Camera.setSceneRadius 450.0
+                                |> (\c ->
+                                        { c
+                                            | azimuth = yawRad + pi
+                                            , elevation = 0.28
+                                            , distance = 5.0
+                                            , target = p.position
+                                        }
+                                   )
                     in
                     div
                         [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.overflow_hidden, Tw.border ]
