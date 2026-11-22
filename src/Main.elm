@@ -16,6 +16,8 @@ import Browser.Dom as Dom
 import Browser.Events
 import Dict exposing (Dict)
 import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
+import Game.PartLoading as PartLoading
+import Game.Ports as GamePorts
 import Html exposing (Html)
 import Http
 import I18n exposing (Language(..))
@@ -23,7 +25,7 @@ import Json.Decode as Decode exposing (Decoder)
 import LDraw.Catalog as Catalog exposing (PartIndex)
 import LDraw.Document as Document exposing (Document)
 import LDraw.Parser as Parser
-import LDraw.Resolve as Resolve exposing (PartCache, PartStatus(..), ResolverConfig)
+import LDraw.Resolve as Resolve exposing (PartCache, ResolverConfig)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Pages.Garage as Garage
 import Pages.Menu as Menu
@@ -353,7 +355,7 @@ init flags =
                 En
 
         resolverCfg =
-            Resolve.resolverConfig flags.ldrawBase (nonEmptyMaybe flags.ldrawFallbackBase)
+            PartLoading.resolverFromFlags flags
 
         parsedInit =
             Ingest.parseHash flags.initialHash
@@ -541,7 +543,7 @@ update msg model =
                             "fi"
             in
             ( { model | language = nextLang }
-            , Ports.storeLanguage code
+            , GamePorts.storeLanguage code
             )
 
         ToggleAudioMute ->
@@ -556,7 +558,7 @@ update msg model =
                     raceAudioCmd nextModel
             in
             ( nextModel
-            , Cmd.batch [ Ports.setAudioMuted nextMuted, audioCmd ]
+            , Cmd.batch [ GamePorts.setAudioMuted nextMuted, audioCmd ]
             )
 
         ToggleRaceMode ->
@@ -582,7 +584,7 @@ update msg model =
                             ""
             in
             ( model
-            , Ports.createMultiplayerRoom
+            , GamePorts.createMultiplayerRoom
                 { roomId = ""
                 , courseId = Racer.Types.trackIdToString model.trackId
                 , name = "Host Commentator"
@@ -601,7 +603,7 @@ update msg model =
                             ""
             in
             ( model
-            , Ports.joinMultiplayerRoom
+            , GamePorts.joinMultiplayerRoom
                 { roomId = ""
                 , name = "Racer"
                 , vehicleHash = vHash
@@ -609,7 +611,7 @@ update msg model =
             )
 
         StartMultiplayerCountdown ->
-            ( model, Ports.startMultiplayerCountdown () )
+            ( model, GamePorts.startMultiplayerCountdown () )
 
         CopyMultiplayerLink ->
             let
@@ -621,7 +623,7 @@ update msg model =
                         Nothing ->
                             ""
             in
-            ( model, Ports.copyShareUrl roomArg )
+            ( model, GamePorts.copyShareUrl roomArg )
 
         MultiplayerRoomChanged rawJson ->
             case Decode.decodeValue Multiplayer.decodeRoomState rawJson of
@@ -641,7 +643,7 @@ update msg model =
 
                                 shareCmd =
                                     if room.role == JoinedPlayer then
-                                        Ports.setMultiplayerVehicle (Ingest.encodeRaceHash model.trackId model.seed garage.document)
+                                        GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash model.trackId model.seed garage.document)
 
                                     else
                                         Cmd.none
@@ -650,7 +652,7 @@ update msg model =
                             , Cmd.batch
                                 [ enterCmd
                                 , shareCmd
-                                , Ports.setUrlHash ("#room=" ++ room.roomId)
+                                , GamePorts.setUrlHash ("#room=" ++ room.roomId)
                                 ]
                             )
 
@@ -688,7 +690,7 @@ update msg model =
 
                     Err Ingest.InvalidBinaryPayload ->
                         ( { model | pendingBinaryPaste = Just trimmed }
-                        , Ports.decodeBinaryHash trimmed
+                        , GamePorts.decodeBinaryHash trimmed
                         )
 
                     Err _ ->
@@ -759,7 +761,7 @@ update msg model =
                         ( model, Cmd.none )
 
         RequestFileUpload ->
-            ( model, Ports.requestFileUpload () )
+            ( model, GamePorts.requestFileUpload () )
 
         SelectPreset preset ->
             let
@@ -782,7 +784,7 @@ update msg model =
             case updatedModel.page of
                 LoadGaragePage garage ->
                     ( updatedModel
-                    , Ports.setUrlHash (Ingest.encodeRaceHash updatedModel.trackId updatedModel.seed garage.document)
+                    , GamePorts.setUrlHash (Ingest.encodeRaceHash updatedModel.trackId updatedModel.seed garage.document)
                     )
 
                 _ ->
@@ -812,7 +814,7 @@ update msg model =
                 , shareCopiedNotice = False
                 , multiplayer = Nothing
               }
-            , Cmd.batch [ silenceAudioCmd, Ports.leaveMultiplayerRoom () ]
+            , Cmd.batch [ silenceAudioCmd, GamePorts.leaveMultiplayerRoom () ]
             )
 
         CopyShareLink ->
@@ -826,15 +828,15 @@ update msg model =
                             Ingest.encodeRaceHash model.trackId model.seed doc
                     in
                     ( { model | shareCopiedNotice = True }
-                    , Cmd.batch [ Ports.setUrlHash hashStr, Ports.copyShareUrl hashStr ]
+                    , Cmd.batch [ GamePorts.setUrlHash hashStr, GamePorts.copyShareUrl hashStr ]
                     )
 
         OpenQrScanner ->
-            ( model, Ports.openQrScanner () )
+            ( model, GamePorts.openQrScanner () )
 
         QrCodeScanned scannedHash ->
             ( { model | pendingBinaryPaste = Just scannedHash }
-            , Ports.decodeBinaryHash scannedHash
+            , GamePorts.decodeBinaryHash scannedHash
             )
 
         QrScannerError _ ->
@@ -863,14 +865,14 @@ update msg model =
                         ( nextModel, cmd ) =
                             enterGarageFromRaceOrResults race.document race.title race.vehicle race.meshes cleanModel
                     in
-                    ( nextModel, Cmd.batch [ cmd, Ports.leaveMultiplayerRoom () ] )
+                    ( nextModel, Cmd.batch [ cmd, GamePorts.leaveMultiplayerRoom () ] )
 
                 FinishLeaderboardPage res ->
                     let
                         ( nextModel, cmd ) =
                             enterGarageFromRaceOrResults res.document res.title res.vehicle res.meshes cleanModel
                     in
-                    ( nextModel, Cmd.batch [ cmd, Ports.leaveMultiplayerRoom () ] )
+                    ( nextModel, Cmd.batch [ cmd, GamePorts.leaveMultiplayerRoom () ] )
 
                 _ ->
                     ( model, Cmd.none )
@@ -993,7 +995,7 @@ update msg model =
                         model.tilt
                 in
                 ( { model | tilt = { oldTilt | enabled = True, zeroGamma = Nothing } }
-                , Ports.requestTiltPermission ()
+                , GamePorts.requestTiltPermission ()
                 )
 
         TiltOrientationReceived orient ->
@@ -1196,7 +1198,7 @@ stepFrame deltaMs model =
                                             _ ->
                                                 p.progressS >= (race.track.totalLengthM - 5.0)
                                 in
-                                Ports.sendMultiplayerTelemetry
+                                GamePorts.sendMultiplayerTelemetry
                                     { pos = [ Vec3.getX p.position, Vec3.getY p.position, Vec3.getZ p.position ]
                                     , rot = [ p.pitch, p.yaw, p.roll ]
                                     , speed = spd
@@ -1531,7 +1533,7 @@ processPhysicsEvents events extraCmds race model =
         , Cmd.batch
             ([ Ports.playSfx { kind = "finish", intensity = 1.0 }
              , silenceAudioCmd
-             , Ports.saveLeaderboard (Leaderboard.encodeLeaderboard nextLb)
+             , GamePorts.saveLeaderboard (Leaderboard.encodeLeaderboard nextLb)
              ]
                 ++ extraCmds
             )
@@ -1676,7 +1678,7 @@ loadDocumentIntoGarage suggestedTitle doc maybeTrack maybeSeed syncHash model =
 
         hashCmd =
             if syncHash then
-                Ports.setUrlHash (Ingest.encodeRaceHash nextTrackId nextSeed doc)
+                GamePorts.setUrlHash (Ingest.encodeRaceHash nextTrackId nextSeed doc)
 
             else
                 Cmd.none
@@ -1913,66 +1915,11 @@ reanalyzeActiveVehicle model =
             model
 
 
-reachablePartStats : Document -> PartCache -> { needed : List String, total : Int, settled : Int, inFlight : Int }
+{-| Parts of a build still to fetch, and how far the rest has loaded.
+-}
+reachablePartStats : Document -> PartCache -> PartLoading.PartProgress
 reachablePartStats doc cache =
-    let
-        subfileDict =
-            Document.subfiles doc
-                |> Dict.fromList
-
-        seedNames =
-            (Document.mainPlacements doc |> List.map .part)
-                ++ (Document.subfiles doc |> List.concatMap (\( _, lines ) -> Resolve.pendingParts lines Dict.empty))
-
-        step frontier visited neededAcc totalAcc settledAcc inFlightAcc =
-            case frontier of
-                [] ->
-                    { needed = List.reverse neededAcc
-                    , total = totalAcc
-                    , settled = settledAcc
-                    , inFlight = inFlightAcc
-                    }
-
-                rawName :: rest ->
-                    let
-                        name =
-                            String.toLower (String.replace "\\" "/" (String.trim rawName))
-                    in
-                    if String.isEmpty name || Set.member name visited then
-                        step rest visited neededAcc totalAcc settledAcc inFlightAcc
-
-                    else
-                        let
-                            nextVisited =
-                                Set.insert name visited
-                        in
-                        case Dict.get name subfileDict of
-                            Just subLines ->
-                                let
-                                    subRefs =
-                                        Resolve.pendingParts subLines Dict.empty
-                                in
-                                step (subRefs ++ rest) nextVisited neededAcc totalAcc settledAcc inFlightAcc
-
-                            Nothing ->
-                                case Dict.get name cache of
-                                    Nothing ->
-                                        step rest nextVisited (name :: neededAcc) (totalAcc + 1) settledAcc inFlightAcc
-
-                                    Just Loading ->
-                                        step rest nextVisited neededAcc (totalAcc + 1) settledAcc (inFlightAcc + 1)
-
-                                    Just (Failed _) ->
-                                        step rest nextVisited neededAcc (totalAcc + 1) (settledAcc + 1) inFlightAcc
-
-                                    Just (Loaded lines) ->
-                                        let
-                                            subRefs =
-                                                Resolve.pendingParts lines Dict.empty
-                                        in
-                                        step (subRefs ++ rest) nextVisited neededAcc (totalAcc + 1) (settledAcc + 1) inFlightAcc
-    in
-    step seedNames Set.empty [] 0 0 0
+    PartLoading.progress (PartLoading.mainAndSubfileParts doc) doc cache
 
 
 {-| Build another player's car from the race hash they shared, once per
@@ -2062,11 +2009,7 @@ remoteCarLook model id =
 
 fetchPartsCmd : ResolverConfig -> List String -> Cmd Msg
 fetchPartsCmd config names =
-    if List.isEmpty names then
-        Cmd.none
-
-    else
-        Cmd.batch (List.map (\n -> Resolve.fetchPart config n PartFetched) names)
+    PartLoading.fetchParts config PartFetched names
 
 
 samplePlayerInput : Model -> InputState
@@ -2643,17 +2586,17 @@ subscriptions model =
     in
     Sub.batch
         [ animSub
-        , Ports.viewportResized ViewportResized
-        , Ports.fileContentReceived FileContentReceived
-        , Ports.fileLoadError FileLoadError
-        , Ports.binaryHashDecoded BinaryHashDecoded
-        , Ports.hashChanged HashChanged
-        , Ports.tiltOrientationReceived TiltOrientationReceived
-        , Ports.multiplayerRoomStateChanged MultiplayerRoomChanged
-        , Ports.multiplayerError MultiplayerError
-        , Ports.multiplayerVehicleLoaded MultiplayerVehicleLoaded
-        , Ports.qrCodeScanned QrCodeScanned
-        , Ports.qrScannerError QrScannerError
+        , GamePorts.viewportResized ViewportResized
+        , GamePorts.fileContentReceived FileContentReceived
+        , GamePorts.fileLoadError FileLoadError
+        , GamePorts.binaryHashDecoded BinaryHashDecoded
+        , GamePorts.hashChanged HashChanged
+        , GamePorts.tiltOrientationReceived TiltOrientationReceived
+        , GamePorts.multiplayerRoomStateChanged MultiplayerRoomChanged
+        , GamePorts.multiplayerError MultiplayerError
+        , GamePorts.multiplayerVehicleLoaded MultiplayerVehicleLoaded
+        , GamePorts.qrCodeScanned QrCodeScanned
+        , GamePorts.qrScannerError QrScannerError
         , Browser.Events.onVisibilityChange VisibilityChanged
         , Browser.Events.onKeyDown (Decode.map KeyDown keyEventDecoder)
         , Browser.Events.onKeyUp (Decode.map KeyUp (Decode.field "key" Decode.string))

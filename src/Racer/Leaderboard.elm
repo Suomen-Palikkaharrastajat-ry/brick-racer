@@ -45,7 +45,7 @@ decodeLeaderboard rawJson =
             empty
 
 
-{-| Serialize leaderboard to JSON string for `Ports.saveLeaderboard`.
+{-| Serialize leaderboard to JSON string for `Game.Ports.saveLeaderboard`.
 -}
 encodeLeaderboard : Leaderboard -> String
 encodeLeaderboard lb =
@@ -105,51 +105,12 @@ formatRaceTime seconds =
 -}
 formatSplitDelta : Float -> String
 formatSplitDelta delta =
-    let
-        signStr =
-            if delta <= 0.0 then
-                "-"
-
-            else
-                "+"
-
-        absCentis =
-            round (abs delta * 100.0)
-
-        whole =
-            absCentis // 100
-
-        frac =
-            modBy 100 absCentis
-    in
-    signStr ++ String.fromInt whole ++ "." ++ pad2 frac ++ " s"
+    GameLB.formatDeltaSeconds delta
 
 
 keepTopPerTrack : Int -> List LeaderboardEntry -> List LeaderboardEntry
 keepTopPerTrack maxPerTrack entries =
-    let
-        step e ( counts, kept ) =
-            let
-                c =
-                    List.filter (\x -> x.trackId == e.trackId) kept |> List.length
-            in
-            if c < maxPerTrack then
-                ( counts, kept ++ [ e ] )
-
-            else
-                ( counts, kept )
-    in
-    List.foldl step ( (), [] ) entries
-        |> Tuple.second
-
-
-pad2 : Int -> String
-pad2 n =
-    if n < 10 then
-        "0" ++ String.fromInt n
-
-    else
-        String.fromInt n
+    GameLB.keepTopPer .trackId maxPerTrack entries
 
 
 encodeEntry : LeaderboardEntry -> Encode.Value
