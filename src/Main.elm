@@ -276,6 +276,9 @@ type Msg
     | RandomSeed
     | BackToMenu
     | CopyShareLink
+    | OpenQrScanner
+    | QrCodeScanned String
+    | QrScannerError String
     | GarageToRace
     | InspectInGarage
     | RestartRace
@@ -784,6 +787,15 @@ update msg model =
                     ( { model | shareCopiedNotice = True }
                     , Cmd.batch [ Ports.setUrlHash hashStr, Ports.copyShareUrl hashStr ]
                     )
+
+        OpenQrScanner ->
+            ( model, Ports.openQrScanner () )
+
+        QrCodeScanned scannedHash ->
+            ( model, Ports.decodeBinaryHash scannedHash )
+
+        QrScannerError _ ->
+            ( model, Cmd.none )
 
         GarageToRace ->
             case model.page of
@@ -2324,6 +2336,8 @@ subscriptions model =
         , Ports.tiltOrientationReceived TiltOrientationReceived
         , Ports.multiplayerRoomStateChanged MultiplayerRoomChanged
         , Ports.multiplayerError MultiplayerError
+        , Ports.qrCodeScanned QrCodeScanned
+        , Ports.qrScannerError QrScannerError
         , Browser.Events.onVisibilityChange VisibilityChanged
         , Browser.Events.onKeyDown (Decode.map KeyDown keyEventDecoder)
         , Browser.Events.onKeyUp (Decode.map KeyUp (Decode.field "key" Decode.string))
@@ -2411,6 +2425,7 @@ view model =
                 , onJoinMultiplayer = JoinMultiplayer
                 , onSelectTrack = SelectTrack
                 , onCopyShareLink = CopyShareLink
+                , onOpenQrScanner = OpenQrScanner
                 , onToggleRaceMode = ToggleRaceMode
                 , onMouseDown = CamMouseDown
                 , onMouseMove = CamMouseMove

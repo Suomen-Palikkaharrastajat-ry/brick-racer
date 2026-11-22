@@ -12,7 +12,11 @@ port module Ports exposing
     , leaveMultiplayerRoom
     , multiplayerError
     , multiplayerRoomStateChanged
+    , openQrScanner
+    , closeQrScanner
     , playSfx
+    , qrCodeScanned
+    , qrScannerError
     , requestFileUpload
     , requestGeometryFlatten
     , requestTiltPermission
@@ -179,3 +183,23 @@ port multiplayerRoomStateChanged : (Json.Decode.Value -> msg) -> Sub msg
 {-| Multiplayer error notification.
 -}
 port multiplayerError : (String -> msg) -> Sub msg
+
+
+{-| Open camera QR scanner modal to capture a soapbox racer model.
+-}
+port openQrScanner : () -> Cmd msg
+
+
+{-| Close camera QR scanner modal.
+-}
+port closeQrScanner : () -> Cmd msg
+
+
+{-| QR code scanned payload containing a `#b/...` hash.
+-}
+port qrCodeScanned : (String -> msg) -> Sub msg
+
+
+{-| QR scanner error or permission denied message.
+-}
+port qrScannerError : (String -> msg) -> Sub msg

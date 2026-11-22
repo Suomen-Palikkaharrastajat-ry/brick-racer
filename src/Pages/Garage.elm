@@ -61,6 +61,7 @@ type alias GarageActions msg =
     , onJoinMultiplayer : msg
     , onSelectTrack : TrackId -> msg
     , onCopyShareLink : msg
+    , onOpenQrScanner : msg
     , onToggleRaceMode : msg
     , onMouseDown : Float -> Float -> msg
     , onMouseMove : Float -> Float -> msg
@@ -161,6 +162,17 @@ view data actions =
             ]
             [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.gap Th.s2 ] ]
                 [ Button.secondary actions.onBackToMenu (RI18n.backToMenuLabel lang)
+                , button
+                    [ Attr.type_ "button"
+                    , onClick actions.onOpenQrScanner
+                    , Attr.title "Scan Brick Play QR code with camera"
+                    , Tw.classes [ Tw.px Th.s3, Tw.py Th.s2, Tw.rounded_xl, Tw.font_bold, Tw.text_xs, Tw.border ]
+                    , Attr.style "cursor" "pointer"
+                    , Attr.style "background" "rgba(14, 165, 233, 0.22)"
+                    , Attr.style "border-color" "#38bdf8"
+                    , Attr.style "color" "#7dd3fc"
+                    ]
+                    [ text "📷 Scan QR" ]
                 , Button.secondary actions.onCopyShareLink (RI18n.shareRaceUrlButton lang)
                 ]
             , if data.shareCopiedNotice then
