@@ -1438,7 +1438,7 @@ stepRaceFrame dt race model =
                                         ( p2NextSubphase, crashSfx ) =
                                             case p2Crash of
                                                 Just r ->
-                                                    ( CrashRecoveryPhase 2.2 r
+                                                    ( CrashRecoveryPhase (crashRecoverySeconds r) r
                                                     , [ Ports.playSfx { kind = "impact", intensity = 1.0 } ]
                                                     )
 
@@ -1457,6 +1457,19 @@ stepRaceFrame dt race model =
                                     , List.filter isScenerySmash p2Events
                                     )
 
+                -- Player 2's car breaking into bricks shows in the shared debris.
+                ( p2WreckPieces, debrisSeedAfterP2 ) =
+                    case ( race.player2, nextP2 ) of
+                        ( Just before, Just after ) ->
+                            if before.subPhase == ActiveDriving && after.subPhase == CrashRecoveryPhase (crashRecoverySeconds StructuralCollapse) StructuralCollapse then
+                                spawnWreckDebris race.debrisSeed after.physics after.vehicle after.meshes.debrisColors
+
+                            else
+                                ( [], race.debrisSeed )
+
+                        _ ->
+                            ( [], race.debrisSeed )
+
                 baseRace =
                     { race
                         | physics = nextPhysics
@@ -1464,7 +1477,8 @@ stepRaceFrame dt race model =
                         , elapsedTime = nextElapsed
                         , topSpeedKmh = nextTopSpeed
                         , hudAlert = nextAlert
-                        , debris = steppedDebris
+                        , debris = List.take maxDebrisPieces (p2WreckPieces ++ steppedDebris)
+                        , debrisSeed = debrisSeedAfterP2
                         , shake = decayedShake
                         , camera = applyShake decayedShake nextElapsed nextCam
                         , player2 = nextP2
@@ -1590,8 +1604,24 @@ processPhysicsEvents events extraCmds race model =
                         , Ports.playSfx { kind = "checkpoint", intensity = 0.9 } :: cmdAcc
                         )
 
+                    Crashed StructuralCollapse ->
+                        -- Out of health: the car breaks apart into its bricks and is
+                        -- rebuilt at the last checkpoint once the overlay has told the player.
+                        let
+                            ( pieces, nextSeed ) =
+                                spawnWreckDebris rAcc.debrisSeed rAcc.physics rAcc.vehicle rAcc.meshes.debrisColors
+                        in
+                        ( { rAcc
+                            | subPhase = CrashRecoveryPhase (crashRecoverySeconds StructuralCollapse) StructuralCollapse
+                            , debris = List.take maxDebrisPieces (pieces ++ rAcc.debris)
+                            , debrisSeed = nextSeed
+                            , shake = 1.0
+                          }
+                        , Ports.playSfx { kind = "smash", intensity = 1.0 } :: Ports.playSfx { kind = "impact", intensity = 1.0 } :: cmdAcc
+                        )
+
                     Crashed reason ->
-                        ( { rAcc | subPhase = CrashRecoveryPhase 2.2 reason }
+                        ( { rAcc | subPhase = CrashRecoveryPhase (crashRecoverySeconds reason) reason }
                         , Ports.playSfx { kind = "impact", intensity = 1.0 } :: cmdAcc
                         )
 
@@ -2265,6 +2295,105 @@ spawnDebrisBurst seed origin groundS palette =
             Random.list 4 genPiece
     in
     Random.step genList (Random.initialSeed seed)
+        |> Tuple.mapSecond (\s -> Tuple.first (Random.step (Random.int 1 999999) s))
+
+
+{-| Seconds a crash keeps the car out before it is put back at the last
+checkpoint. A wreck (out of health) lasts longer: the car has broken into
+bricks and the player is told so before it is rebuilt.
+-}
+crashRecoverySeconds : CrashReason -> Float
+crashRecoverySeconds reason =
+    case reason of
+        StructuralCollapse ->
+            4.0
+
+        _ ->
+            2.2
+
+
+{-| Break the whole car apart into loose bricks: pieces the size of 1x2 to
+2x4 bricks in the car's own colours, scattered from inside its bounding box
+and thrown up and outward.
+-}
+spawnWreckDebris : Int -> PhysicsState -> VehicleSpec -> List { r : Float, g : Float, b : Float } -> ( List DebrisPiece, Int )
+spawnWreckDebris seed physics spec palette =
+    let
+        palArray =
+            if List.isEmpty palette then
+                [ { r = 0.85, g = 0.16, b = 0.16 }, { r = 0.95, g = 0.78, b = 0.12 } ]
+
+            else
+                palette
+
+        lo =
+            Vec3.scale (1.0 / 160.0) spec.boundsMinLdu
+
+        hi =
+            Vec3.scale (1.0 / 160.0) spec.boundsMaxLdu
+
+        fwd =
+            Physics.forwardVector physics.yaw
+
+        right =
+            Physics.rightVector physics.yaw
+
+        carVel =
+            Vec3.scale 0.45 physics.velocity
+
+        pieceCount =
+            clamp 10 36 spec.placementCount
+
+        brickSizes =
+            [ vec3 0.125 0.075 0.25, vec3 0.25 0.075 0.25, vec3 0.25 0.075 0.5, vec3 0.125 0.075 0.125 ]
+
+        genPiece =
+            Random.map5
+                (\( fx, fy, fz ) ( vx, vz, vy ) spin sizeIdx colIdx ->
+                    let
+                        localX =
+                            Vec3.getX lo + fx * (Vec3.getX hi - Vec3.getX lo)
+
+                        localZ =
+                            Vec3.getZ lo + fz * (Vec3.getZ hi - Vec3.getZ lo)
+
+                        height =
+                            0.1 + fy * max 0.2 (abs (Vec3.getY hi - Vec3.getY lo))
+
+                        origin =
+                            physics.position
+                                |> Vec3.add (Vec3.scale localX right)
+                                |> Vec3.add (Vec3.scale -localZ fwd)
+                                |> Vec3.add (vec3 0 height 0)
+
+                        col =
+                            palArray
+                                |> List.drop (modBy (List.length palArray) colIdx)
+                                |> List.head
+                                |> Maybe.withDefault { r = 0.85, g = 0.16, b = 0.16 }
+                    in
+                    { position = origin
+                    , velocity = Vec3.add carVel (vec3 vx vy vz)
+                    , rotation = vx * 0.5
+                    , spinRate = spin
+                    , size =
+                        brickSizes
+                            |> List.drop (modBy (List.length brickSizes) sizeIdx)
+                            |> List.head
+                            |> Maybe.withDefault (vec3 0.25 0.075 0.25)
+                    , color = vec3 col.r col.g col.b
+                    , age = 0.0
+                    , lifetime = 4.2
+                    , groundS = physics.progressS
+                    }
+                )
+                (Random.map3 (\a b c -> ( a, b, c )) (Random.float 0 1) (Random.float 0 1) (Random.float 0 1))
+                (Random.map3 (\a b c -> ( a, b, c )) (Random.float -3.5 3.5) (Random.float -3.5 3.5) (Random.float 1.8 5.5))
+                (Random.float -9.0 9.0)
+                (Random.int 0 3)
+                (Random.int 0 99)
+    in
+    Random.step (Random.list pieceCount genPiece) (Random.initialSeed seed)
         |> Tuple.mapSecond (\s -> Tuple.first (Random.step (Random.int 1 999999) s))
 
 

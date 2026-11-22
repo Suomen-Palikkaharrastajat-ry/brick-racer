@@ -1,7 +1,8 @@
 module PlayFeelTest exposing (suite)
 
 {-| Tests for the phone play fixes: tilt steering clears the touch pads, the
-chase camera keeps the car big and whole in view.
+chase camera keeps the car big and whole in view, the ground leads back to the
+road, and the car's health wears down fairly until it breaks into bricks.
 -}
 
 import Dict
@@ -17,7 +18,7 @@ import Racer.Ingest as Ingest
 import Racer.Physics as Physics
 import Racer.Render as Render
 import Racer.Track as Track
-import Racer.Types exposing (CameraMode(..), GeneratedTrack, TrackId(..), VehicleSpec, lduToMeters)
+import Racer.Types exposing (CameraMode(..), CrashReason(..), GeneratedTrack, PhysicsEvent(..), PhysicsState, TrackId(..), VehicleSpec, lduToMeters)
 import Render.Camera as Camera
 import Test exposing (Test, describe, test)
 
@@ -147,6 +148,30 @@ pointsSlopingAway track =
             List.concatMap (\side -> List.filterMap (check s side) [ 1.0, 3.0, 6.0, 9.0, 12.0 ]) [ -1.0, 1.0 ]
         )
         stations
+
+
+{-| The car dropped onto the start of the farm lane from the air, falling at
+`fallSpeed` m/s, with `health` left. Returns the state and events after one step.
+-}
+landFrom : Float -> Float -> ( PhysicsState, List PhysicsEvent )
+landFrom fallSpeed health =
+    let
+        spec =
+            presetSpec "turntable-kart"
+
+        start =
+            Physics.initPhysics farmLane spec
+
+        airborne =
+            { start
+                | position = Vec3.add start.position (vec3 0 0.05 0)
+                , velocity = vec3 0 -fallSpeed 0
+                , groundedWheels = 0
+                , airborneTime = 0.8
+                , integrity = health
+            }
+    in
+    Physics.stepFixed (1 / 60) farmLane spec { steer = 0, brake = 0, handbrake = False, aeroTuck = 0, leanX = 0 } airborne
 
 
 screenHeightShare : List ( Float, Float ) -> Float
@@ -299,5 +324,54 @@ suite =
                         , \_ -> Expect.equal after.position (run (60 * 12) stranded).position
                         ]
                         ()
+            ]
+        , describe "Car health"
+            [ test "small bumps cost nothing" <|
+                \_ ->
+                    ( Physics.obstacleImpactDamage 4.5, Physics.landingDamage 6.0 )
+                        |> Expect.equal ( 0, 0 )
+            , test "a handful of moderate knocks leaves most of the health" <|
+                \_ ->
+                    (Physics.maxHealth - 5 * Physics.obstacleImpactDamage 6.5)
+                        |> Expect.atLeast (Physics.maxHealth * 0.6)
+            , test "one hard crash does not wreck a healthy car" <|
+                \_ ->
+                    Physics.obstacleImpactDamage 30
+                        |> Expect.lessThan (Physics.maxHealth / 2)
+            , test "three hard crashes break the car apart" <|
+                \_ ->
+                    (3 * Physics.obstacleImpactDamage 16)
+                        |> Expect.atLeast Physics.maxHealth
+            , test "damage grows with the impact speed" <|
+                \_ ->
+                    List.map (\v -> ( Physics.obstacleImpactDamage (toFloat v), Physics.landingDamage (toFloat v) )) (List.range 0 30)
+                        |> (\ds -> List.map2 (\( a, b ) ( c, d ) -> a <= c && b <= d) ds (List.drop 1 ds))
+                        |> List.all identity
+                        |> Expect.equal True
+            , test "a soft landing keeps full health" <|
+                \_ ->
+                    landFrom 3.0 Physics.maxHealth
+                        |> Tuple.first
+                        |> .integrity
+                        |> Expect.within (Expect.Absolute 1.0e-9) Physics.maxHealth
+            , test "a hard landing costs health" <|
+                \_ ->
+                    landFrom 13.0 Physics.maxHealth
+                        |> Tuple.first
+                        |> .integrity
+                        |> Expect.all [ Expect.lessThan 90.0, Expect.greaterThan 60.0 ]
+            , test "a hard landing on the last bit of health wrecks the car" <|
+                \_ ->
+                    landFrom 13.0 10.0
+                        |> Tuple.second
+                        |> List.member (Crashed StructuralCollapse)
+                        |> Expect.equal True
+            , test "the rebuilt car is back at full health" <|
+                \_ ->
+                    landFrom 13.0 10.0
+                        |> Tuple.first
+                        |> Physics.respawnAtCheckpoint
+                        |> .integrity
+                        |> Expect.within (Expect.Absolute 1.0e-9) Physics.maxHealth
             ]
         ]

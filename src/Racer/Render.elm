@@ -411,8 +411,12 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
             in
             TerrainShader.shadowEntity shadowMat shadowMesh camera safeW safeH clearance :: carEntities
 
+        -- A car out of health has broken apart into its bricks (now debris):
+        -- draw nothing for it until it is rebuilt.
         carsEntities =
-            List.concatMap renderOneCar cars
+            cars
+                |> List.filter (\car -> car.physics.integrity > 0.0)
+                |> List.concatMap renderOneCar
 
         debrisEntities =
             Scenery.debrisEntities propView props debris

@@ -25,6 +25,7 @@ module Racer.I18n exposing
     , garageWheelsLabel
     , goBanner
     , handbrakeHint
+    , healthLabel
     , inspectCarButton
     , menuSubtitle
     , menuTitle
@@ -55,6 +56,7 @@ module Racer.I18n exposing
     , warningOffTrack
     , warningScraping
     , warningTipping
+    , wreckedHint
     )
 
 {-| Bilingual (`En` / `Fi`) copy for Brick Racer menus, garage diagnostics, HUD, and overlays.
@@ -748,10 +750,10 @@ crashReasonText : Language -> CrashReason -> String
 crashReasonText lang reason =
     case ( lang, reason ) of
         ( Fi, StructuralCollapse ) ->
-            "Palikat levisivät törmäyksessä!"
+            "Romuttui! Auto hajosi palikoiksi."
 
         ( En, StructuralCollapse ) ->
-            "Chassis Collapsed!"
+            "Wrecked! Your car broke into bricks."
 
         ( Fi, RolloverTumble ) ->
             "Mäkiauto kierähti ympäri!"
@@ -776,6 +778,30 @@ recoveryHint lang =
 
         En ->
             "Recovering to last checkpoint (press R to skip)..."
+
+
+{-| Shown under the wreck headline while the broken car is rebuilt.
+-}
+wreckedHint : Language -> String
+wreckedHint lang =
+    case lang of
+        Fi ->
+            "Liikaa kolhuja. Auto kootaan uudelleen viimeisimmällä tarkistuspisteellä..."
+
+        En ->
+            "Too many crashes. Rebuilding your car at the last checkpoint..."
+
+
+{-| HUD label of the car's health bar.
+-}
+healthLabel : Language -> String
+healthLabel lang =
+    case lang of
+        Fi ->
+            "KUNTO"
+
+        En ->
+            "HEALTH"
 
 
 {-| Finish overlay headline.

@@ -19,7 +19,7 @@ import Json.Decode as Decode
 import Math.Vector3 as Vec3
 import Racer.I18n as RI18n
 import Racer.Leaderboard as Leaderboard
-import Racer.Types exposing (CameraMode(..), CrashReason, PhysicsState)
+import Racer.Types exposing (CameraMode(..), CrashReason(..), PhysicsState)
 import Tailwind as Tw
 import Tailwind.Breakpoints as Bp
 import Tailwind.Theme as Th
@@ -445,7 +445,18 @@ viewCrashOverlay lang rec actions =
             [ div [ Tw.classes [ Tw.text_n2xl, Tw.font_extrabold ], Attr.style "color" "#f87171" ]
                 [ text (RI18n.crashReasonText lang rec.reason) ]
             , div [ Tw.classes [ Tw.text_sm ], Attr.style "color" "#e2e8f0" ]
-                [ text (RI18n.recoveryHint lang ++ " (" ++ String.fromFloat (toFloat (round (max 0 rec.timer * 10)) / 10.0) ++ "s)") ]
+                [ text
+                    ((if rec.reason == StructuralCollapse then
+                        RI18n.wreckedHint lang
+
+                      else
+                        RI18n.recoveryHint lang
+                     )
+                        ++ " ("
+                        ++ String.fromFloat (toFloat (round (max 0 rec.timer * 10)) / 10.0)
+                        ++ "s)"
+                    )
+                ]
             , div [ Tw.classes [ Tw.flex, Tw.justify_center ] ]
                 [ Button.primaryOnDark actions.onRespawnCheckpoint (RI18n.resetCheckpointLabel lang) ]
             ]
@@ -477,17 +488,10 @@ viewTelemetryFooter data =
             round (data.physics.gradeRatio * 100.0)
 
         integrityPct =
-            clamp 0 100 (round data.physics.integrity)
+            healthPercent data.physics.integrity
 
         integrityColor =
-            if integrityPct > 65 then
-                "#22c55e"
-
-            else if integrityPct > 30 then
-                "#f59e0b"
-
-            else
-                "#ef4444"
+            healthColor integrityPct
 
         surfaceBadge =
             if data.physics.groundedWheels == 0 then
@@ -506,8 +510,11 @@ viewTelemetryFooter data =
             , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
             ]
             [ div [ Tw.classes [ Tw.flex, Tw.justify_between, Tw.text_xs, Tw.mb Th.s1 ], Attr.style "color" "#e2e8f0" ]
-                [ span [ Tw.classes [ Tw.font_semibold ] ] [ text "INTEGRITY" ]
-                , span [ Tw.classes [ Tw.tabular_nums, Tw.font_bold ] ] [ text (String.fromInt integrityPct ++ "%") ]
+                [ span [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s1, Tw.font_semibold ] ]
+                    [ FeatherIcons.heart |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [ Attr.style "color" integrityColor ]
+                    , text (RI18n.healthLabel lang)
+                    ]
+                , span [ Tw.classes [ Tw.tabular_nums, Tw.font_bold ], Attr.style "color" integrityColor ] [ text (String.fromInt integrityPct ++ "%") ]
                 ]
             , div
                 [ Tw.classes [ Tw.w_full, Tw.h Th.s2, Tw.rounded_full, Tw.overflow_hidden ]
@@ -564,6 +571,28 @@ viewTelemetryFooter data =
                 ]
             ]
         ]
+
+
+{-| Car health as a whole percentage, 0 .. 100.
+-}
+healthPercent : Float -> Int
+healthPercent integrity =
+    clamp 0 100 (round integrity)
+
+
+{-| Health bar colour: green while healthy, amber when worn, red when one or
+two more hard crashes will break the car apart.
+-}
+healthColor : Int -> String
+healthColor pct =
+    if pct > 65 then
+        "#22c55e"
+
+    else if pct > 30 then
+        "#f59e0b"
+
+    else
+        "#ef4444"
 
 
 hazardChip : String -> String -> Html msg

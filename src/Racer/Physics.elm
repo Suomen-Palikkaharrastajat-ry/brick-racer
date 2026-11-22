@@ -3,6 +3,9 @@ module Racer.Physics exposing
     , forwardVector
     , initPhysics
     , initPhysicsWithOffset
+    , landingDamage
+    , maxHealth
+    , obstacleImpactDamage
     , recoveryTowSpeed
     , respawnAtCheckpoint
     , rightVector
@@ -100,7 +103,7 @@ initPhysics track spec =
     , groundedWheels = wheelCount
     , airborneTime = 0.0
     , surfaceUnderCar = terrain.surface
-    , integrity = 100.0
+    , integrity = maxHealth
     , chassisScraping = spec.groundClearanceLdu < -0.5
     , offTrack = False
     , highSpeedBonus = False
@@ -169,7 +172,7 @@ respawnAtCheckpoint state =
         , suspensionCompressions = List.map (\_ -> 0.0) state.suspensionCompressions
         , groundedWheels = max 1 (List.length state.wheelSpinAngles)
         , airborneTime = 0.0
-        , integrity = 100.0
+        , integrity = maxHealth
         , nextPopThreshold = 80.0
         , rolloverTimer = 0.0
         , progressS = state.checkpointAnchor.s
@@ -630,7 +633,7 @@ stepFixed dt track spec input state =
             else
                 0.0
 
-        ( finalPosY, finalVelY, landingImpact ) =
+        vertical =
             let
                 predictedY =
                     Vec3.getY state.position + rawNextYVel * dt
@@ -666,7 +669,16 @@ stepFixed dt track spec input state =
                     smoothY =
                         Vec3.getY state.position + (targetY - Vec3.getY state.position) * min 1.0 (dt * 36.0)
                 in
-                ( smoothY, bounceVy, landEv )
+                { y = smoothY
+                , vy = bounceVy
+                , landing = landEv
+                , landingDamage =
+                    if prevWasAirborne then
+                        landingDamage impactVel
+
+                    else
+                        0.0
+                }
 
             else if isGroundedNow && maxCompression > -0.05 && rawNextYVel <= 0.6 && predictedY - minAvgHeight <= groundFallAwayM then
                 -- Stay planted smoothly along continuous downward curved hills unless cresting hard.
@@ -679,10 +691,19 @@ stepFixed dt track spec input state =
                     terrainSlopeVy =
                         vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy
                 in
-                ( max minAvgHeight terrainFollowY, terrainSlopeVy, [] )
+                { y = max minAvgHeight terrainFollowY, vy = terrainSlopeVy, landing = [], landingDamage = 0.0 }
 
             else
-                ( predictedY, rawNextYVel, [] )
+                { y = predictedY, vy = rawNextYVel, landing = [], landingDamage = 0.0 }
+
+        finalPosY =
+            vertical.y
+
+        finalVelY =
+            vertical.vy
+
+        landingImpact =
+            vertical.landing
 
         -- Recovery tow: a slow car stranded out in the field is eased back
         -- toward the nearest point of the road. Off on the road itself.
@@ -806,7 +827,7 @@ stepFixed dt track spec input state =
             obsRes.cooldown
 
         totalDamage =
-            obsRes.damage + wallRes.damage
+            obsRes.damage + wallRes.damage + vertical.landingDamage
 
         nextIntegrity =
             max 0.0 (state.integrity - totalDamage)
@@ -1145,6 +1166,40 @@ sceneryMassFactor kind =
             0.36
 
 
+{-| Full health (structural integrity) of a fresh or rebuilt car. At 0 the car
+breaks apart into its bricks (`Crashed StructuralCollapse`).
+-}
+maxHealth : Float
+maxHealth =
+    100.0
+
+
+{-| Health lost bouncing off scenery that does not break (a tree, a cottage)
+at `impactSpeed` m/s into it. Bumps up to 5 m/s are free, so brushing past
+things never wears the car down; a full-speed head-on hit costs about a third.
+-}
+obstacleImpactDamage : Float -> Float
+obstacleImpactDamage impactSpeed =
+    if impactSpeed > 5.0 then
+        clamp 4.0 35.0 ((impactSpeed - 5.0) * 3.2)
+
+    else
+        0.0
+
+
+{-| Health lost landing from the air at `impactVel` m/s into the ground. Small
+hops and the brick ramps' normal landings are free; dropping in from high up
+costs up to 30.
+-}
+landingDamage : Float -> Float
+landingDamage impactVel =
+    if impactVel > 7.0 then
+        clamp 3.0 30.0 ((impactVel - 7.0) * 4.0)
+
+    else
+        0.0
+
+
 {-| Structural integrity a smash always costs, on top of the speed-dependent
 damage of the heavy pieces: an oil drum dents the bodywork, a ceramic gnome
 chips it, a brick wall knocks bricks off.
@@ -1299,8 +1354,8 @@ resolveObstacles obsList halfTrack spec _ cooldown pos vel =
                                 vec3 nextVx (Vec3.getY acc.vel * 0.85) nextVz
 
                             dmg =
-                                if impactSpeed > 4.5 && acc.cooldown <= 0.0 then
-                                    clamp 5.0 42.0 ((impactSpeed - 4.5) * 3.8)
+                                if acc.cooldown <= 0.0 then
+                                    obstacleImpactDamage impactSpeed
 
                                 else
                                     0.0
