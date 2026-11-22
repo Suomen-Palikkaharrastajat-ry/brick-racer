@@ -118,6 +118,14 @@ export function createAudioEngine(initialMuted = false) {
         engine.playTone(950, 0.05, 0, 'square', 0.14)
         engine.playTone(620, 0.07, 0.03, 'triangle', 0.16)
         break
+      case 'smash':
+        // Brick build shattering: a thud plus a quick cascade of plastic clacks
+        engine.playTone(140, 0.12, 0, 'sawtooth', 0.2 * intensity)
+        engine.playTone(1180, 0.04, 0.0, 'square', 0.12 * intensity)
+        engine.playTone(860, 0.05, 0.05, 'triangle', 0.14 * intensity)
+        engine.playTone(1320, 0.04, 0.1, 'square', 0.1 * intensity)
+        engine.playTone(700, 0.06, 0.16, 'triangle', 0.1 * intensity)
+        break
       case 'impact':
         engine.playTone(110, 0.18, 0, 'sawtooth', 0.26 * intensity)
         engine.playTone(740, 0.06, 0.01, 'triangle', 0.18 * intensity)

@@ -38,7 +38,11 @@ type alias TerrainVertex =
     }
 
 
-{-| Ballistic brick particle detached from damaged or loose parts.
+{-| Ballistic brick particle knocked off the racer or out of smashed scenery.
+
+`groundS` is the track arc length near which the piece lands on the terrain
+(a negative value means it never lands and just falls).
+
 -}
 type alias DebrisPiece =
     { position : Vec3
@@ -49,6 +53,7 @@ type alias DebrisPiece =
     , color : Vec3
     , age : Float
     , lifetime : Float
+    , groundS : Float
     }
 
 
@@ -230,10 +235,14 @@ shadowEntity modelMat mesh camera width height heightAboveGround =
 debrisEntity : WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> DebrisPiece -> WebGL.Entity
 debrisEntity cubeMesh trackId camera width height piece =
     let
+        -- Shrink away over the last half second instead of popping out.
+        fade =
+            clamp 0.0 1.0 ((piece.lifetime - piece.age) / 0.5)
+
         rotMat =
             Mat4.mul
                 (Mat4.makeRotate piece.rotation (vec3 1 0.7 0.4))
-                (Mat4.makeScale piece.size)
+                (Mat4.makeScale (Vec3.scale fade piece.size))
 
         modelMat =
             Mat4.mul (Mat4.makeTranslate piece.position) rotMat
@@ -320,7 +329,49 @@ buildUnitCubeMesh =
             ++ quad f00 f10 n10 n00 (vec3 0 -1 0)
             ++ quad n10 f10 f11 n11 (vec3 1 0 0)
             ++ quad f00 n00 n01 f01 (vec3 -1 0 0)
+            ++ unitStud -0.25
+            ++ unitStud 0.25
         )
+
+
+{-| Elliptical stud on top of the unit debris brick at local x = `cx`, sized so a
+2x1 brick scaled by its `size` gets round studs.
+-}
+unitStud : Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+unitStud cx =
+    let
+        segments =
+            6
+
+        w =
+            vec3 1 1 1
+
+        top =
+            0.78
+
+        step i =
+            let
+                a0 =
+                    2.0 * pi * toFloat i / toFloat segments
+
+                a1 =
+                    2.0 * pi * toFloat (i + 1) / toFloat segments
+
+                rim a y =
+                    vec3 (cx + 0.16 * cos a) y (0.32 * sin a)
+
+                sideN =
+                    Vec3.normalize (vec3 (cos ((a0 + a1) * 0.5)) 0 (sin ((a0 + a1) * 0.5)))
+
+                v p n =
+                    { position = p, normal = n, color = w }
+            in
+            [ ( v (rim a0 0.5) sideN, v (rim a1 top) sideN, v (rim a1 0.5) sideN )
+            , ( v (rim a0 0.5) sideN, v (rim a0 top) sideN, v (rim a1 top) sideN )
+            , ( v (vec3 cx top 0) (vec3 0 1 0), v (rim a1 top) (vec3 0 1 0), v (rim a0 top) (vec3 0 1 0) )
+            ]
+    in
+    List.concatMap step (List.range 0 (segments - 1))
 
 
 {-| Flat disc-approximated dark shadow quad centered at origin (`1 m × 1 m` before scaling).

@@ -42,6 +42,7 @@ module Racer.I18n exposing
     , seedLabel
     , shareRaceUrlButton
     , shareUrlCopiedNotice
+    , smashBanner
     , splitLabel
     , startRaceButton
     , steeringMechName
@@ -97,6 +98,18 @@ coursesHeading lang =
 
         En ->
             "Countryside Courses"
+
+
+{-| Short banner when the racer smashes a piece of roadside scenery.
+-}
+smashBanner : Language -> String
+smashBanner lang =
+    case lang of
+        Fi ->
+            "Kräsh!"
+
+        En ->
+            "Smash!"
 
 
 {-| Track title per course ID.

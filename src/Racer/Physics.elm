@@ -1,5 +1,6 @@
 module Racer.Physics exposing
-    ( forwardVector
+    ( breakSpeedFor
+    , forwardVector
     , initPhysics
     , initPhysicsWithOffset
     , respawnAtCheckpoint
@@ -26,6 +27,7 @@ import Racer.Types
         ( CrashReason(..)
         , GeneratedTrack
         , InputState
+        , ObstacleKind(..)
         , PhysicsEvent(..)
         , PhysicsState
         , SteeringMechanism(..)
@@ -209,8 +211,27 @@ runSubsteps steps acc track spec input state eventsAcc =
         let
             ( nextState, stepEvents ) =
                 stepFixed fixedDt track spec input state
+
+            -- Smashed scenery is gone for the rest of this frame's substeps too;
+            -- the caller removes it from the race track for later frames.
+            remainingTrack =
+                Track.removeObstacles (smashedIds stepEvents) track
         in
-        runSubsteps (steps + 1) (acc - fixedDt) track spec input nextState (List.reverse stepEvents ++ eventsAcc)
+        runSubsteps (steps + 1) (acc - fixedDt) remainingTrack spec input nextState (List.reverse stepEvents ++ eventsAcc)
+
+
+smashedIds : List PhysicsEvent -> List Int
+smashedIds events =
+    List.filterMap
+        (\ev ->
+            case ev of
+                ScenerySmashed { obstacleId } ->
+                    Just obstacleId
+
+                _ ->
+                    Nothing
+        )
+        events
 
 
 {-| Advance vehicle simulation by one deterministic fixed timestep `dt` seconds.
@@ -911,6 +932,74 @@ type alias WallRes =
     }
 
 
+{-| Minimum impact speed (m/s) at which a scenery piece shatters instead of
+bouncing the racer off. Light pieces break on any real knock; trees, rocks and
+buildings need a fast hit.
+-}
+breakSpeedFor : ObstacleKind -> Float
+breakSpeedFor kind =
+    case kind of
+        Bush ->
+            1.0
+
+        FenceSection ->
+            1.5
+
+        Signpost ->
+            1.5
+
+        HayBale ->
+            2.0
+
+        LeafyTree ->
+            4.0
+
+        PineTree ->
+            4.0
+
+        Rock ->
+            5.5
+
+        Cottage ->
+            7.0
+
+        Barn ->
+            7.5
+
+
+{-| Fraction of the racer's speed soaked up when ploughing through a piece.
+-}
+sceneryMassFactor : ObstacleKind -> Float
+sceneryMassFactor kind =
+    case kind of
+        Bush ->
+            0.06
+
+        FenceSection ->
+            0.12
+
+        Signpost ->
+            0.06
+
+        HayBale ->
+            0.2
+
+        LeafyTree ->
+            0.3
+
+        PineTree ->
+            0.3
+
+        Rock ->
+            0.4
+
+        Cottage ->
+            0.45
+
+        Barn ->
+            0.5
+
+
 resolveObstacles :
     List TrackObstacle
     -> Float
@@ -975,12 +1064,58 @@ resolveObstacles obsList halfTrack spec _ cooldown pos vel =
 
                         vn =
                             Vec3.getX acc.vel * nx + Vec3.getZ acc.vel * nz
-                    in
-                    if vn < 0.0 then
-                        let
-                            impactSpeed =
-                                -vn
 
+                        impactSpeed =
+                            -vn
+
+                        impactEvent =
+                            if impactSpeed > 1.8 && acc.cooldown <= 0.0 then
+                                [ Impact { impulse = clamp 0.1 1.0 (impactSpeed / 16.0), scrape = False } ]
+
+                            else
+                                []
+
+                        nextCd =
+                            if List.isEmpty impactEvent then
+                                acc.cooldown
+
+                            else
+                                0.22
+                    in
+                    if vn < 0.0 && impactSpeed >= breakSpeedFor obs.kind then
+                        -- Smash: the piece shatters, the racer ploughs on, slowed by its mass.
+                        let
+                            massFactor =
+                                sceneryMassFactor obs.kind
+
+                            keep =
+                                1.0 - massFactor
+
+                            newVel =
+                                vec3 (Vec3.getX acc.vel * keep) (Vec3.getY acc.vel) (Vec3.getZ acc.vel * keep)
+
+                            dmg =
+                                if massFactor >= 0.3 && impactSpeed > 8.0 then
+                                    clamp 0.0 25.0 ((impactSpeed - 8.0) * 2.5)
+
+                                else
+                                    0.0
+
+                            horizDir =
+                                normalizeSafe (vec3 (Vec3.getX acc.vel) 0 (Vec3.getZ acc.vel)) (vec3 -nx 0 -nz)
+                        in
+                        { pos = acc.pos
+                        , vel = newVel
+                        , damage = acc.damage + dmg
+                        , events =
+                            acc.events
+                                ++ impactEvent
+                                ++ [ ScenerySmashed { obstacleId = obs.id, impactSpeed = impactSpeed, direction = horizDir } ]
+                        , cooldown = nextCd
+                        }
+
+                    else if vn < 0.0 then
+                        let
                             restitution =
                                 0.32
 
@@ -1002,25 +1137,11 @@ resolveObstacles obsList halfTrack spec _ cooldown pos vel =
 
                                 else
                                     0.0
-
-                            ev =
-                                if impactSpeed > 1.8 && acc.cooldown <= 0.0 then
-                                    [ Impact { impulse = clamp 0.1 1.0 (impactSpeed / 16.0), scrape = False } ]
-
-                                else
-                                    []
-
-                            nextCd =
-                                if List.isEmpty ev then
-                                    acc.cooldown
-
-                                else
-                                    0.22
                         in
                         { pos = pushedPos
                         , vel = newVel
                         , damage = acc.damage + dmg
-                        , events = acc.events ++ ev
+                        , events = acc.events ++ impactEvent
                         , cooldown = nextCd
                         }
 

@@ -54,6 +54,7 @@ import Racer.Types
         , PresetBuild
         , RaceMode(..)
         , TrackId(..)
+        , TrackObstacle
         , VehicleSpec
         )
 import Random
@@ -133,6 +134,7 @@ type alias RaceState =
     , camera : Camera
     , debris : List DebrisPiece
     , debrisSeed : Int
+    , shake : Float
     , player2 : Maybe PlayerTwoState
     , multiplayer : Maybe RoomState
     }
@@ -1191,7 +1193,10 @@ stepRaceFrame dt race model =
                     )
 
         steppedDebris =
-            stepDebrisParticles dt race.debris
+            stepDebrisParticles dt race.track race.debris
+
+        decayedShake =
+            race.shake * max 0.0 (1.0 - dt * 5.0)
     in
     case race.subPhase of
         CountdownPhase rem lastBeep ->
@@ -1241,6 +1246,7 @@ stepRaceFrame dt race model =
                         | subPhase = nextSubPhase
                         , hudAlert = nextAlert
                         , debris = steppedDebris
+                        , shake = decayedShake
                         , camera = nextCam
                         , player2 = nextP2
                     }
@@ -1273,6 +1279,7 @@ stepRaceFrame dt race model =
                             , subPhase = ActiveDriving
                             , hudAlert = nextAlert
                             , debris = steppedDebris
+                            , shake = 0.0
                             , camera = resetCam
                         }
 
@@ -1288,7 +1295,8 @@ stepRaceFrame dt race model =
                             | subPhase = CrashRecoveryPhase nextRem reason
                             , hudAlert = nextAlert
                             , debris = steppedDebris
-                            , camera = nextCam
+                            , shake = decayedShake
+                            , camera = applyShake decayedShake nextRem nextCam
                         }
 
                     nextModel =
@@ -1316,15 +1324,15 @@ stepRaceFrame dt race model =
                 nextCam =
                     RacerCamera.updateRaceCamera dt race.cameraMode nextPhysics race.vehicle race.camera
 
-                ( nextP2, p2Sfx ) =
+                ( nextP2, p2Sfx, p2Smashes ) =
                     case race.player2 of
                         Nothing ->
-                            ( Nothing, [] )
+                            ( Nothing, [], [] )
 
                         Just p2 ->
                             case p2.subPhase of
                                 CountdownPhase _ _ ->
-                                    ( Just { p2 | subPhase = ActiveDriving }, [] )
+                                    ( Just { p2 | subPhase = ActiveDriving }, [], [] )
 
                                 CrashRecoveryPhase p2Rem p2Reason ->
                                     let
@@ -1360,6 +1368,7 @@ stepRaceFrame dt race model =
                                                 , camera = p2ResetCam
                                             }
                                         , []
+                                        , []
                                         )
 
                                     else
@@ -1368,6 +1377,7 @@ stepRaceFrame dt race model =
                                                 | subPhase = CrashRecoveryPhase p2NextRem p2Reason
                                                 , camera = p2Cam
                                             }
+                                        , []
                                         , []
                                         )
 
@@ -1420,6 +1430,7 @@ stepRaceFrame dt race model =
                                             , camera = p2Cam
                                         }
                                     , crashSfx
+                                    , List.filter isScenerySmash p2Events
                                     )
 
                 baseRace =
@@ -1430,11 +1441,12 @@ stepRaceFrame dt race model =
                         , topSpeedKmh = nextTopSpeed
                         , hudAlert = nextAlert
                         , debris = steppedDebris
-                        , camera = nextCam
+                        , shake = decayedShake
+                        , camera = applyShake decayedShake nextElapsed nextCam
                         , player2 = nextP2
                     }
             in
-            processPhysicsEvents events p2Sfx baseRace model
+            processPhysicsEvents (events ++ p2Smashes) p2Sfx baseRace model
 
 
 processPhysicsEvents : List PhysicsEvent -> List (Cmd Msg) -> RaceState -> Model -> ( Model, Cmd Msg )
@@ -1511,14 +1523,17 @@ processPhysicsEvents events extraCmds race model =
                     BrickDetached _ ->
                         let
                             ( spawned, nextSeed ) =
-                                spawnDebrisBurst rAcc.debrisSeed rAcc.physics.position rAcc.meshes.debrisColors
+                                spawnDebrisBurst rAcc.debrisSeed rAcc.physics.position rAcc.physics.progressS rAcc.meshes.debrisColors
                         in
                         ( { rAcc
-                            | debris = List.take 48 (spawned ++ rAcc.debris)
+                            | debris = List.take maxDebrisPieces (spawned ++ rAcc.debris)
                             , debrisSeed = nextSeed
                           }
                         , Ports.playSfx { kind = "pop", intensity = 0.85 } :: cmdAcc
                         )
+
+                    ScenerySmashed smash ->
+                        smashScenery model.language smash ( rAcc, cmdAcc )
 
                     CheckpointCrossed { index } ->
                         let
@@ -1753,6 +1768,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , camera = cam
             , debris = []
             , debrisSeed = max 1 (modelWithTrack.seed * 73 + vehicle.placementCount)
+            , shake = 0.0
             , player2 = maybeP2
             , multiplayer = model.multiplayer
             }
@@ -2073,8 +2089,20 @@ sampleP2Input model =
     }
 
 
-stepDebrisParticles : Float -> List DebrisPiece -> List DebrisPiece
-stepDebrisParticles dt pieces =
+{-| Hard cap on live debris bricks (racer pop-offs + smashed scenery). The oldest
+pieces are dropped first, and all pieces share one GPU brick mesh, so a crash
+stays cheap on phones.
+-}
+maxDebrisPieces : Int
+maxDebrisPieces =
+    72
+
+
+{-| Integrate tumbling debris bricks: gravity, a few damped bounces on the
+terrain, ground friction, and expiry after their short lifetime.
+-}
+stepDebrisParticles : Float -> GeneratedTrack -> List DebrisPiece -> List DebrisPiece
+stepDebrisParticles dt track pieces =
     pieces
         |> List.filterMap
             (\p ->
@@ -2087,24 +2115,56 @@ stepDebrisParticles dt pieces =
 
                 else
                     let
-                        nextVel =
+                        fallVel =
                             Vec3.add p.velocity (vec3 0 (-9.81 * dt) 0)
 
-                        nextPos =
-                            Vec3.add p.position (Vec3.scale dt nextVel)
+                        movedPos =
+                            Vec3.add p.position (Vec3.scale dt fallVel)
+
+                        halfHeight =
+                            Vec3.getY p.size * 0.5
+
+                        groundY =
+                            if p.groundS < 0.0 then
+                                -1.0e9
+
+                            else
+                                Track.groundHeightAt track p.groundS (Vec3.getX movedPos) (Vec3.getZ movedPos) + halfHeight
                     in
-                    Just
-                        { p
-                            | position = nextPos
-                            , velocity = nextVel
-                            , rotation = p.rotation + p.spinRate * dt
-                            , age = nextAge
-                        }
+                    if Vec3.getY movedPos <= groundY then
+                        let
+                            vy =
+                                Vec3.getY fallVel
+
+                            bounceVy =
+                                if vy < -1.2 then
+                                    -vy * 0.32
+
+                                else
+                                    0.0
+                        in
+                        Just
+                            { p
+                                | position = vec3 (Vec3.getX movedPos) groundY (Vec3.getZ movedPos)
+                                , velocity = vec3 (Vec3.getX fallVel * 0.8) bounceVy (Vec3.getZ fallVel * 0.8)
+                                , rotation = p.rotation + p.spinRate * dt
+                                , spinRate = p.spinRate * 0.75
+                                , age = nextAge
+                            }
+
+                    else
+                        Just
+                            { p
+                                | position = movedPos
+                                , velocity = fallVel
+                                , rotation = p.rotation + p.spinRate * dt
+                                , age = nextAge
+                            }
             )
 
 
-spawnDebrisBurst : Int -> Vec3 -> List { r : Float, g : Float, b : Float } -> ( List DebrisPiece, Int )
-spawnDebrisBurst seed origin palette =
+spawnDebrisBurst : Int -> Vec3 -> Float -> List { r : Float, g : Float, b : Float } -> ( List DebrisPiece, Int )
+spawnDebrisBurst seed origin groundS palette =
     let
         palArray =
             if List.isEmpty palette then
@@ -2134,6 +2194,7 @@ spawnDebrisBurst seed origin palette =
                     , color = vec3 col.r col.g col.b
                     , age = 0.0
                     , lifetime = 2.4
+                    , groundS = groundS
                     }
                 )
                 (Random.float -4.8 4.8)
@@ -2147,6 +2208,134 @@ spawnDebrisBurst seed origin palette =
     in
     Random.step genList (Random.initialSeed seed)
         |> Tuple.mapSecond (\s -> Tuple.first (Random.step (Random.int 1 999999) s))
+
+
+{-| Shatter one scenery piece into loose bricks thrown along the racer's heading.
+-}
+spawnSceneryDebris : Int -> TrackObstacle -> Float -> Vec3 -> ( List DebrisPiece, Int )
+spawnSceneryDebris seed obs impactSpeed direction =
+    let
+        style =
+            TerrainMesh.sceneryDebrisStyle obs.kind
+
+        colors =
+            if List.isEmpty style.colors then
+                [ vec3 0.5 0.5 0.5 ]
+
+            else
+                style.colors
+
+        throw =
+            clamp 2.0 14.0 impactSpeed
+
+        genPiece =
+            Random.map5
+                (\( ox, oz, oy ) ( fwdMul, side ) up ( spin, life ) colIdx ->
+                    let
+                        sideDir =
+                            vec3 -(Vec3.getZ direction) 0 (Vec3.getX direction)
+
+                        vel =
+                            Vec3.scale (throw * fwdMul) direction
+                                |> Vec3.add (Vec3.scale side sideDir)
+                                |> Vec3.add (vec3 0 up 0)
+                    in
+                    { position =
+                        Vec3.add obs.position
+                            (vec3 (ox * obs.radiusM) (oy * obs.heightM + 0.15) (oz * obs.radiusM))
+                    , velocity = vel
+                    , rotation = ox * 3.0
+                    , spinRate = spin
+                    , size = Vec3.scale style.scale (vec3 0.5 0.24 0.25)
+                    , color =
+                        colors
+                            |> List.drop (modBy (List.length colors) colIdx)
+                            |> List.head
+                            |> Maybe.withDefault (vec3 0.5 0.5 0.5)
+                    , age = 0.0
+                    , lifetime = life
+                    , groundS = obs.s
+                    }
+                )
+                (Random.map3 (\a b c -> ( a, b, c )) (Random.float -0.8 0.8) (Random.float -0.8 0.8) (Random.float 0.0 1.0))
+                (Random.map2 Tuple.pair (Random.float 0.3 0.85) (Random.float -2.6 2.6))
+                (Random.float 2.0 5.5)
+                (Random.map2 Tuple.pair (Random.float -12.0 12.0) (Random.float 3.2 4.4))
+                (Random.int 0 99)
+    in
+    Random.step (Random.list style.count genPiece) (Random.initialSeed seed)
+        |> Tuple.mapSecond (\s -> Tuple.first (Random.step (Random.int 1 999999) s))
+
+
+{-| Remove a smashed scenery piece from the race track, rebuild just its chunk's
+scenery mesh, scatter its bricks, and give a short camera shake, pop sound and
+banner. Ignores pieces that are already gone (e.g. hit by both players).
+-}
+smashScenery :
+    Language
+    -> { obstacleId : Int, impactSpeed : Float, direction : Vec3 }
+    -> ( RaceState, List (Cmd Msg) )
+    -> ( RaceState, List (Cmd Msg) )
+smashScenery lang smash ( race, cmds ) =
+    case List.filter (\o -> o.id == smash.obstacleId) race.track.obstacles |> List.head of
+        Nothing ->
+            ( race, cmds )
+
+        Just obs ->
+            let
+                nextTrack =
+                    Track.removeObstacles [ obs.id ] race.track
+
+                ( pieces, nextSeed ) =
+                    spawnSceneryDebris race.debrisSeed obs smash.impactSpeed smash.direction
+
+                alert =
+                    case race.hudAlert of
+                        Just existing ->
+                            Just existing
+
+                        Nothing ->
+                            Just { title = RI18n.smashBanner lang, subtitle = Nothing, positive = True, timer = 0.7 }
+            in
+            ( { race
+                | track = nextTrack
+                , bundle = TerrainMesh.rebuildChunkScenery nextTrack obs.s race.bundle
+                , debris = List.take maxDebrisPieces (pieces ++ race.debris)
+                , debrisSeed = nextSeed
+                , shake = min 1.0 (race.shake + 0.3 + smash.impactSpeed / 30.0)
+                , hudAlert = alert
+              }
+            , Ports.playSfx { kind = "smash", intensity = clamp 0.3 1.0 (smash.impactSpeed / 14.0) } :: cmds
+            )
+
+
+isScenerySmash : PhysicsEvent -> Bool
+isScenerySmash ev =
+    case ev of
+        ScenerySmashed _ ->
+            True
+
+        _ ->
+            False
+
+
+{-| Jitter the camera target by a decaying `shake` amount (0–1) for crash feedback.
+-}
+applyShake : Float -> Float -> Camera -> Camera
+applyShake shake t cam =
+    if shake < 0.01 then
+        cam
+
+    else
+        let
+            amp =
+                shake * 0.14
+        in
+        { cam
+            | target =
+                Vec3.add cam.target
+                    (vec3 (amp * sin (t * 53.0)) (amp * 0.6 * sin (t * 71.0)) (amp * cos (t * 61.0)))
+        }
 
 
 applyViewportSize : Int -> Int -> Model -> Model

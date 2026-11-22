@@ -432,6 +432,7 @@ type PhysicsEvent
     | Landing { impulse : Float }
     | CheckpointCrossed { index : Int, splitTimeS : Float }
     | BrickDetached { remainingIntegrity : Float }
+    | ScenerySmashed { obstacleId : Int, impactSpeed : Float, direction : Vec3 }
     | Crashed CrashReason
     | FinishedRace
 

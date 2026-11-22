@@ -4,6 +4,7 @@ module Racer.TerrainMesh exposing
     , buildGaragePlinthMesh
     , buildTrackRenderBundle
     , rebuildChunkScenery
+    , sceneryDebrisStyle
     )
 
 {-| Chunked WebGL countryside ground (unpaved road, verges and fields), launch
@@ -664,6 +665,40 @@ studs fr ( lx, ly, lz ) ( nx, nz ) spacing col =
                             cylinderAt (localPt fr (lx + ox) ly (lz + oz)) (spacing * 0.28) (spacing * 0.18) 6 col
                         )
             )
+
+
+{-| How a smashed scenery piece breaks up: the brick colors it is built from,
+how many loose bricks fly off (kept small for mobile), and their size scale.
+-}
+sceneryDebrisStyle : ObstacleKind -> { colors : List Vec3, count : Int, scale : Float }
+sceneryDebrisStyle kind =
+    case kind of
+        LeafyTree ->
+            { colors = [ ldrawColor 2, ldrawColor 10, ldrawColor 2, ldrawColor 70 ], count = 10, scale = 1.0 }
+
+        PineTree ->
+            { colors = [ ldrawColor 288, ldrawColor 288, ldrawColor 70 ], count = 9, scale = 1.0 }
+
+        Bush ->
+            { colors = [ ldrawColor 2, ldrawColor 10, ldrawColor 14 ], count = 6, scale = 0.75 }
+
+        FenceSection ->
+            { colors = [ ldrawColor 15, ldrawColor 15, ldrawColor 70 ], count = 6, scale = 0.8 }
+
+        Rock ->
+            { colors = [ ldrawColor 71, ldrawColor 72 ], count = 7, scale = 1.0 }
+
+        Signpost ->
+            { colors = [ ldrawColor 14, ldrawColor 70, ldrawColor 4 ], count = 4, scale = 0.7 }
+
+        HayBale ->
+            { colors = [ ldrawColor 19, ldrawColor 19, ldrawColor 28 ], count = 6, scale = 1.0 }
+
+        Cottage ->
+            { colors = [ ldrawColor 15, ldrawColor 15, ldrawColor 4, ldrawColor 4, ldrawColor 1 ], count = 14, scale = 1.3 }
+
+        Barn ->
+            { colors = [ ldrawColor 320, ldrawColor 320, ldrawColor 72, ldrawColor 15 ], count = 14, scale = 1.3 }
 
 
 buildSceneryTris : TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )

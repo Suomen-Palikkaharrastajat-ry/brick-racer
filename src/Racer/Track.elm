@@ -2,6 +2,7 @@ module Racer.Track exposing
     ( fieldUndulation
     , generate
     , obstaclesNear
+    , groundHeightAt
     , removeObstacles
     , sampleAt
     , sampleAtHinted
@@ -259,6 +260,14 @@ sampleAtHinted hintS track worldX worldZ =
     , nearestTangent = proj.tangent
     , halfWidthM = proj.halfWidth
     }
+
+
+{-| Cheap ground height at world (x, z) near arc length `hintS` (no normal or
+surface), used to land tumbling debris on the terrain.
+-}
+groundHeightAt : GeneratedTrack -> Float -> Float -> Float -> Float
+groundHeightAt track hintS worldX worldZ =
+    heightWithProjection track (findClosestSplineProjection hintS track worldX worldZ) worldX worldZ
 
 
 {-| Fetch obstacles inside spatial buckets overlapping `[sCenter - windowM, sCenter + windowM]`.

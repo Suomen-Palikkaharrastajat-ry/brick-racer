@@ -297,7 +297,7 @@ suite =
                     , \_ -> Expect.within (Expect.Absolute 1.0e-6) 0.0 (Vec3.length recovered.velocity)
                     ]
                     ()
-        , test "High-speed obstacle collision reduces structural integrity and emits Impact" <|
+        , test "High-speed rock collision smashes it, reduces structural integrity and emits Impact" <|
             \_ ->
                 let
                     baseTrack =
@@ -352,6 +352,61 @@ suite =
                     , \_ -> Expect.lessThan 100.0 sAfter.integrity
                     ]
                     ()
+        , test "Ploughing into a bush smashes it, keeps most speed and costs no integrity" <|
+            \_ ->
+                let
+                    bush =
+                        sceneryAt Racer.Types.Bush 20.0
+
+                    track =
+                        trackWithScenery bush
+
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    s0 =
+                        Physics.initPhysics track spec
+
+                    sFast =
+                        { s0 | position = vec3 0.0 0.0 18.6, velocity = vec3 0.0 0.0 9.0, progressS = 18.6 }
+
+                    ( sAfter, events ) =
+                        Physics.stepFrame (fixedDt * 4.0) 0.0 track spec neutralInput sFast
+                            |> (\( _, st, evs ) -> ( st, evs ))
+                in
+                Expect.all
+                    [ \_ -> Expect.equal [ 7 ] (smashedIds events)
+                    , \_ -> Expect.greaterThan 7.5 (Vec3.getZ sAfter.velocity)
+                    , \_ -> Expect.within (Expect.Absolute 0.01) 100.0 sAfter.integrity
+                    ]
+                    ()
+        , test "A slow nudge against a rock bounces off without breaking it" <|
+            \_ ->
+                let
+                    rock =
+                        sceneryAt Racer.Types.Rock 20.0
+
+                    track =
+                        trackWithScenery rock
+
+                    spec =
+                        loadSpec "turntable-kart"
+
+                    s0 =
+                        Physics.initPhysics track spec
+
+                    sSlow =
+                        { s0 | position = vec3 0.0 0.0 18.9, velocity = vec3 0.0 0.0 3.0, progressS = 18.9 }
+
+                    ( sAfter, events ) =
+                        Physics.stepFixed fixedDt track spec neutralInput sSlow
+                in
+                Expect.all
+                    [ \_ -> Expect.equal [] (smashedIds events)
+                    , \_ -> Expect.lessThan 0.0 (Vec3.getZ sAfter.velocity)
+                    , \_ -> Expect.lessThan 5.5 (Physics.breakSpeedFor Racer.Types.Bush)
+                    ]
+                    ()
         , test "Two-player split-screen starting grid offsets players laterally by 3.6 meters" <|
             \_ ->
                 let
@@ -388,6 +443,44 @@ suite =
                     ]
                     ()
         ]
+
+
+sceneryAt : Racer.Types.ObstacleKind -> Float -> Racer.Types.TrackObstacle
+sceneryAt kind z =
+    { id = 7
+    , kind = kind
+    , s = z
+    , position = vec3 0.0 0.0 z
+    , radiusM = 0.8
+    , heightM = 1.0
+    , yaw = 0.0
+    }
+
+
+trackWithScenery : Racer.Types.TrackObstacle -> GeneratedTrack
+trackWithScenery obs =
+    let
+        baseTrack =
+            buildFlatTestTrack 0.0 200.0
+    in
+    { baseTrack
+        | obstacles = [ obs ]
+        , obstacleBuckets = Array.fromList [ [ obs ], [], [], [], [], [], [], [] ]
+    }
+
+
+smashedIds : List Racer.Types.PhysicsEvent -> List Int
+smashedIds events =
+    List.filterMap
+        (\e ->
+            case e of
+                Racer.Types.ScenerySmashed { obstacleId } ->
+                    Just obstacleId
+
+                _ ->
+                    Nothing
+        )
+        events
 
 
 neutralInput : InputState
