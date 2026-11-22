@@ -7,6 +7,7 @@ Supports single-player full-bleed racing and dual-player local split-screen driv
 import FeatherIcons
 import Game.Camera as GameCamera
 import Game.Multiplayer as Multiplayer exposing (RemotePlayer, Role(..), RoomState, RoomStatus(..))
+import Game.MultiplayerUI as MultiplayerUI
 import Html exposing (Html, button, div, span, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick)
@@ -219,17 +220,7 @@ viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics
         , HUD.viewHudOverlay hudData hudActions
         , case room.status of
             Countdown n ->
-                div
-                    [ Tw.classes [ Tw.absolute, Tw.inset_0, Tw.z_50, Tw.flex, Tw.flex_col, Tw.items_center, Tw.justify_center, Tw.pointer_events_none ]
-                    , Attr.style "background" "rgba(0, 0, 0, 0.65)"
-                    ]
-                    [ div
-                        [ Tw.classes [ Tw.text_9xl, Tw.font_black, Tw.font_mono ]
-                        , Attr.style "color" "#fbbf24"
-                        , Attr.style "text-shadow" "0 0 30px rgba(245, 158, 11, 0.6)"
-                        ]
-                        [ text (if n > 0 then String.fromInt n else "GO!") ]
-                    ]
+                MultiplayerUI.viewCountdownOverlay { secondsRemaining = n }
 
             _ ->
                 text ""
@@ -401,76 +392,15 @@ viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics d
             ]
 
         -- Top Commentator Header
-        , div
-            [ Tw.classes [ Tw.absolute, Tw.z_30, Tw.flex, Tw.items_center, Tw.gap Th.s3, Tw.px Th.s4, Tw.py Th.s2, Tw.rounded_2xl, Tw.border ]
-            , Attr.style "top" "0.75rem"
-            , Attr.style "left" "50%"
-            , Attr.style "transform" "translateX(-50%)"
-            , Attr.style "background" "rgba(15, 23, 42, 0.92)"
-            , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
-            , Attr.style "box-shadow" "0 20px 25px -5px rgba(0, 0, 0, 0.5)"
-            ]
-            [ span
-                [ Tw.classes [ Tw.font_mono, Tw.font_extrabold, Tw.text_xs, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-                , Attr.style "color" "#38bdf8"
-                , Attr.style "background" "rgba(14, 165, 233, 0.12)"
-                , Attr.style "border-color" "rgba(56, 189, 248, 0.3)"
-                ]
-                [ text ("ROOM: " ++ room.roomId) ]
-            , button
-                [ Attr.type_ "button"
-                , onClick multiActions.onCopyShareLink
-                , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s3, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-                , Attr.style "cursor" "pointer"
-                , Attr.style "background" "rgba(30, 41, 59, 0.85)"
-                , Attr.style "border-color" "rgba(148, 163, 184, 0.3)"
-                , Attr.style "color" "#f1f5f9"
-                ]
-                [ text "Copy Link" ]
-            , if room.status == Lobby then
-                button
-                    [ Attr.type_ "button"
-                    , onClick multiActions.onStartCountdown
-                    , Tw.classes [ Tw.text_xs, Tw.font_black, Tw.px Th.s4, Tw.py Th.s1_dot_5, Tw.rounded_lg, Tw.text_simple Th.white ]
-                    , Attr.style "cursor" "pointer"
-                    , Attr.style "background" "linear-gradient(90deg, #16a34a, #22c55e)"
-                    ]
-                    [ text "START RACE" ]
-
-              else
-                span
-                    [ Tw.classes [ Tw.text_xs, Tw.font_black, Tw.uppercase, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-                    , Attr.style "color" "#f59e0b"
-                    , Attr.style "background" "rgba(245, 158, 11, 0.12)"
-                    , Attr.style "border-color" "rgba(245, 158, 11, 0.3)"
-                    ]
-                    [ text (Multiplayer.statusToString room.status) ]
-            , button
-                [ Attr.type_ "button"
-                , onClick hudActions.onGoGarage
-                , Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-                , Attr.style "cursor" "pointer"
-                , Attr.style "background" "rgba(30, 41, 59, 0.8)"
-                , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
-                , Attr.style "color" "#94a3b8"
-                ]
-                [ text "Exit" ]
-            ]
-
-        -- Synchronized Countdown Overlay
+        , MultiplayerUI.viewCommentatorHeader
+            { room = room
+            , startLabel = "START RACE"
+            , onCopyShareLink = multiActions.onCopyShareLink
+            , onStartCountdown = multiActions.onStartCountdown
+            }
         , case room.status of
             Countdown n ->
-                div
-                    [ Tw.classes [ Tw.absolute, Tw.inset_0, Tw.z_50, Tw.flex, Tw.flex_col, Tw.items_center, Tw.justify_center, Tw.pointer_events_none ]
-                    , Attr.style "background" "rgba(0, 0, 0, 0.65)"
-                    ]
-                    [ div
-                        [ Tw.classes [ Tw.text_9xl, Tw.font_black, Tw.font_mono ]
-                        , Attr.style "color" "#fbbf24"
-                        , Attr.style "text-shadow" "0 0 30px rgba(245, 158, 11, 0.6)"
-                        ]
-                        [ text (if n > 0 then String.fromInt n else "GO!") ]
-                    ]
+                MultiplayerUI.viewCountdownOverlay { secondsRemaining = n }
 
             _ ->
                 text ""

@@ -1,11 +1,14 @@
 /**
  * Procedural Web Audio synthesizer for Brick Racer.
- * Zero external sound assets: builds wind bandpass noise, ground-coupled
+ * Extends BaseAudioEngine with wind bandpass noise, ground-coupled
  * wheel rumble & axle clatter, chassis scrape rasp, impact thuds, and chimes.
  */
+
+import { BaseAudioEngine } from './vendor/packages/brick-frame-game/runtime/audio-engine.js'
+
 export function createAudioEngine(initialMuted = false) {
-  let ctx = null
-  let masterGain = null
+  const engine = new BaseAudioEngine(initialMuted)
+
   let windGainNode = null
   let windFilter = null
   let rumbleGainNode = null
@@ -14,42 +17,8 @@ export function createAudioEngine(initialMuted = false) {
   let clatterOsc = null
   let scrapeGainNode = null
   let scrapeOsc = null
-  let muted = Boolean(initialMuted)
-  let unlocked = false
 
-  function ensureContext() {
-    if (typeof window === 'undefined') return null
-    const AudioCtx = window.AudioContext || window.webkitAudioContext
-    if (!AudioCtx) return null
-    if (ctx) {
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {})
-      }
-      return ctx
-    }
-
-    ctx = new AudioCtx()
-
-    masterGain = ctx.createGain()
-    masterGain.gain.value = muted ? 0 : 0.45
-    masterGain.connect(ctx.destination)
-
-    // Shared 2-second pink-ish noise buffer
-    const sampleRate = ctx.sampleRate
-    const bufferLen = sampleRate * 2
-    const noiseBuffer = ctx.createBuffer(1, bufferLen, sampleRate)
-    const data = noiseBuffer.getChannelData(0)
-    let b0 = 0
-    let b1 = 0
-    let b2 = 0
-    for (let i = 0; i < bufferLen; i++) {
-      const white = Math.random() * 2 - 1
-      b0 = 0.99765 * b0 + white * 0.099046
-      b1 = 0.963 * b1 + white * 0.2965164
-      b2 = 0.57 * b2 + white * 1.0526913
-      data[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + white * 0.1848) * 0.16))
-    }
-
+  engine.initContinuousLoops = function (ctx, noiseBuffer, masterGain) {
     // 1. Wind bandpass loop
     const windSrc = ctx.createBufferSource()
     windSrc.buffer = noiseBuffer
@@ -98,104 +67,66 @@ export function createAudioEngine(initialMuted = false) {
     scrapeOsc.connect(scrapeGainNode)
     scrapeGainNode.connect(masterGain)
     scrapeOsc.start()
-
-    unlocked = true
-    return ctx
   }
 
-  function unlock() {
-    ensureContext()
-  }
-
-  function setMuted(nextMuted) {
-    muted = Boolean(nextMuted)
-    if (ctx && masterGain) {
-      masterGain.gain.setTargetAtTime(muted ? 0 : 0.45, ctx.currentTime, 0.04)
-    }
-  }
-
-  function updateContinuous(state) {
-    if (!unlocked || !ctx || !state) return
-    const now = ctx.currentTime
-    const active = Boolean(state.active) && !muted
+  engine.updateContinuous = function (state) {
+    if (!engine.unlocked || !engine.ctx || !state) return
+    const now = engine.ctx.currentTime
+    const active = Boolean(state.active) && !engine.muted
     const targetWind = active ? Math.max(0, Math.min(0.6, state.windGain || 0)) : 0
     const targetRumble = active ? Math.max(0, Math.min(0.6, state.rumbleGain || 0)) : 0
     const targetClatter = active ? Math.max(0, Math.min(0.25, state.clatterGain || 0)) : 0
     const targetScrape = active ? Math.max(0, Math.min(0.18, state.scrapeGain || 0)) : 0
 
-    windGainNode.gain.setTargetAtTime(targetWind, now, 0.05)
-    windFilter.frequency.setTargetAtTime(Math.max(120, Math.min(2600, state.windHz || 300)), now, 0.06)
+    windGainNode?.gain.setTargetAtTime(targetWind, now, 0.05)
+    windFilter?.frequency.setTargetAtTime(Math.max(120, Math.min(2600, state.windHz || 300)), now, 0.06)
 
-    rumbleGainNode.gain.setTargetAtTime(targetRumble, now, 0.04)
-    rumbleFilter.frequency.setTargetAtTime(Math.max(60, Math.min(600, state.rumbleHz || 120)), now, 0.05)
+    rumbleGainNode?.gain.setTargetAtTime(targetRumble, now, 0.04)
+    rumbleFilter?.frequency.setTargetAtTime(Math.max(60, Math.min(600, state.rumbleHz || 120)), now, 0.05)
 
-    clatterGainNode.gain.setTargetAtTime(targetClatter, now, 0.04)
-    clatterOsc.frequency.setTargetAtTime(Math.max(18, Math.min(180, (state.rumbleHz || 80) * 0.45)), now, 0.05)
+    clatterGainNode?.gain.setTargetAtTime(targetClatter, now, 0.04)
+    clatterOsc?.frequency.setTargetAtTime(Math.max(18, Math.min(180, (state.rumbleHz || 80) * 0.45)), now, 0.05)
 
-    scrapeGainNode.gain.setTargetAtTime(targetScrape, now, 0.03)
+    scrapeGainNode?.gain.setTargetAtTime(targetScrape, now, 0.03)
   }
 
-  function playTone(freq, duration, delay = 0, type = 'triangle', peak = 0.25) {
-    const c = ensureContext()
-    if (!c || muted) return
-    const t = c.currentTime + delay
-    const osc = c.createOscillator()
-    const g = c.createGain()
-    osc.type = type
-    osc.frequency.setValueAtTime(freq, t)
-    g.gain.setValueAtTime(0.0001, t)
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.015)
-    g.gain.exponentialRampToValueAtTime(0.0001, t + duration)
-    osc.connect(g)
-    g.connect(masterGain)
-    osc.start(t)
-    osc.stop(t + duration + 0.02)
-  }
-
-  function playSfx(event) {
-    if (!event || muted) return
-    const c = ensureContext()
-    if (!c) return
+  engine.playSfx = function (event) {
+    if (!event || engine.muted) return
     const intensity = Math.max(0.1, Math.min(1.0, Number(event.intensity) || 0.5))
 
     switch (event.kind) {
       case 'countdown':
-        playTone(440, 0.18, 0, 'sine', 0.22)
+        engine.playTone(440, 0.18, 0, 'sine', 0.22)
         break
       case 'go':
-        playTone(880, 0.32, 0, 'triangle', 0.28)
+        engine.playTone(880, 0.32, 0, 'triangle', 0.28)
         break
       case 'checkpoint':
-        playTone(587.33, 0.14, 0, 'triangle', 0.2)
-        playTone(880, 0.22, 0.1, 'triangle', 0.22)
+        engine.playTone(587.33, 0.14, 0, 'triangle', 0.2)
+        engine.playTone(880, 0.22, 0.1, 'triangle', 0.22)
         break
       case 'finish':
-        playTone(523.25, 0.16, 0, 'triangle', 0.22)
-        playTone(659.25, 0.16, 0.11, 'triangle', 0.22)
-        playTone(783.99, 0.18, 0.22, 'triangle', 0.24)
-        playTone(1046.5, 0.45, 0.34, 'triangle', 0.28)
+        engine.playTone(523.25, 0.16, 0, 'triangle', 0.22)
+        engine.playTone(659.25, 0.16, 0.11, 'triangle', 0.22)
+        engine.playTone(783.99, 0.18, 0.22, 'triangle', 0.24)
+        engine.playTone(1046.5, 0.45, 0.34, 'triangle', 0.28)
         break
       case 'landing':
-        playTone(90 + intensity * 30, 0.16, 0, 'sine', 0.32 * intensity)
+        engine.playTone(90 + intensity * 30, 0.16, 0, 'sine', 0.32 * intensity)
         break
       case 'pop':
-        playTone(950, 0.05, 0, 'square', 0.14)
-        playTone(620, 0.07, 0.03, 'triangle', 0.16)
+        engine.playTone(950, 0.05, 0, 'square', 0.14)
+        engine.playTone(620, 0.07, 0.03, 'triangle', 0.16)
         break
       case 'impact':
-        playTone(110, 0.18, 0, 'sawtooth', 0.26 * intensity)
-        playTone(740, 0.06, 0.01, 'triangle', 0.18 * intensity)
-        playTone(510, 0.07, 0.04, 'triangle', 0.14 * intensity)
+        engine.playTone(110, 0.18, 0, 'sawtooth', 0.26 * intensity)
+        engine.playTone(740, 0.06, 0.01, 'triangle', 0.18 * intensity)
+        engine.playTone(510, 0.07, 0.04, 'triangle', 0.14 * intensity)
         break
       default:
         break
     }
   }
 
-  return {
-    unlock,
-    setMuted,
-    updateContinuous,
-    playSfx,
-  }
+  return engine
 }
