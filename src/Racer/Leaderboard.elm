@@ -13,6 +13,7 @@ module Racer.Leaderboard exposing
 {-| Local per-track personal best and leaderboard persistence codecs.
 -}
 
+import Game.Leaderboard as GameLB
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Racer.Types exposing (LeaderboardEntry, TrackId(..), trackIdFromString, trackIdToString)
@@ -97,26 +98,7 @@ entriesForTrack id lb =
 -}
 formatRaceTime : Float -> String
 formatRaceTime seconds =
-    let
-        clamped =
-            max 0.0 seconds
-
-        totalCentis =
-            round (clamped * 100.0)
-
-        mins =
-            totalCentis // 6000
-
-        remCentis =
-            modBy 6000 totalCentis
-
-        secs =
-            remCentis // 100
-
-        centis =
-            modBy 100 remCentis
-    in
-    pad2 mins ++ ":" ++ pad2 secs ++ "." ++ pad2 centis
+    GameLB.formatRaceTime seconds
 
 
 {-| Format checkpoint/PB delta seconds with sign (`-0.62 s` or `+0.41 s`).

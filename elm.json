@@ -8,6 +8,7 @@
         "vendor/packages/brick-frame-simulation/src",
         "vendor/packages/brick-frame-data/src",
         "vendor/packages/brick-frame-ui/src",
+        "vendor/packages/brick-frame-game/src",
         "src",
         "tests",
         "packages/design-tokens/src",
