@@ -43,12 +43,12 @@ ingestSuite =
                                 Document.empty
 
                     encoded =
-                        Ingest.encodeRaceHash QuarrySwitchbacks 4242 doc
+                        Ingest.encodeRaceHash ForestTrail 4242 doc
                 in
                 case Ingest.decodeRaceInput Nothing encoded of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just QuarrySwitchbacks) decoded.trackId
+                            [ \_ -> Expect.equal (Just ForestTrail) decoded.trackId
                             , \_ -> Expect.equal (Just 4242) decoded.seed
                             , \_ -> Expect.equal (List.length (Document.mainPlacements doc)) (List.length (Document.mainPlacements decoded.document))
                             ]
@@ -63,7 +63,7 @@ ingestSuite =
                         Document.parse "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat"
 
                     raceHash =
-                        Ingest.encodeRaceHash AlpineGlacier 99 doc
+                        Ingest.encodeRaceHash MeadowPath 99 doc
 
                     fullUrl =
                         "https://catalog.palikkaharrastajat.fi/racer/" ++ raceHash
@@ -71,7 +71,7 @@ ingestSuite =
                 case Ingest.decodeRaceInput Nothing fullUrl of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just AlpineGlacier) decoded.trackId
+                            [ \_ -> Expect.equal (Just MeadowPath) decoded.trackId
                             , \_ -> Expect.equal (Just 99) decoded.seed
                             , \_ -> Expect.equal 1 (List.length (Document.mainPlacements decoded.document))
                             ]
@@ -79,7 +79,7 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed to decode full URL: " ++ Debug.toString err)
-        , test "decodes viewer #model=...&parts=...&free=1 hash alongside track=" <|
+        , test "decodes viewer #model=...&parts=...&free=1 hash alongside a legacy track= id" <|
             \_ ->
                 let
                     url =
@@ -88,7 +88,7 @@ ingestSuite =
                 case Ingest.decodeRaceInput Nothing url of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just PineRidge) decoded.trackId
+                            [ \_ -> Expect.equal (Just FarmLane) decoded.trackId
                             , \_ -> Expect.equal (Just 7) decoded.seed
                             , \_ -> Expect.equal 1 (List.length (Document.mainPlacements decoded.document))
                             ]

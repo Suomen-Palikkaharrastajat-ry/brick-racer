@@ -143,7 +143,7 @@ viewMultiplayerSinglePlayer bundle track spec meshes cubeMesh shadowMesh physics
                                 , suspensionCompressions = [ 0, 0, 0, 0 ]
                                 , groundedWheels = 4
                                 , airborneTime = 0.0
-                                , surfaceUnderCar = AsphaltTrack
+                                , surfaceUnderCar = DirtRoad
                                 , integrity = 1.0
                                 , chassisScraping = False
                                 , offTrack = False
@@ -279,7 +279,7 @@ viewFourPlayerSplitScreen bundle track spec meshes cubeMesh shadowMesh physics d
                             , suspensionCompressions = [ 0, 0, 0, 0 ]
                             , groundedWheels = 4
                             , airborneTime = 0.0
-                            , surfaceUnderCar = AsphaltTrack
+                            , surfaceUnderCar = DirtRoad
                             , integrity = 1.0
                             , chassisScraping = False
                             , offTrack = False

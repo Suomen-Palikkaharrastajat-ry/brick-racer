@@ -3,11 +3,17 @@ module Racer.TerrainMesh exposing
     , TrackRenderBundle
     , buildGaragePlinthMesh
     , buildTrackRenderBundle
+    , rebuildChunkScenery
     )
 
-{-| Chunked WebGL terrain, roadbed ribbon, brick apex curbs, launch ramps,
-checkpoint/finish arches, authentic brick-built pine trees, faceted boulders,
-chicane barriers, bollards, and garage display plinth meshes.
+{-| Chunked WebGL countryside ground (unpaved road, verges and fields), launch
+humps, checkpoint/finish arches, brick-built roadside scenery (trees, bushes,
+fences, rocks, signposts, hay bales, cottages, barns), and the garage display
+plinth mesh.
+
+Each chunk keeps its scenery in a separate mesh so smashed pieces can be removed
+by rebuilding only that small mesh.
+
 -}
 
 import Array exposing (Array)
@@ -20,6 +26,7 @@ import Racer.Types
         ( Checkpoint
         , GeneratedTrack
         , ObstacleKind(..)
+        , SurfaceType(..)
         , TrackId(..)
         , TrackObstacle
         , TrackSample
@@ -27,7 +34,8 @@ import Racer.Types
 import WebGL
 
 
-{-| One spatial `100 m` slice of terrain, roadbed, and static trackside geometry.
+{-| One spatial `100 m` slice of ground and arches (`mesh`) plus the brick-built
+scenery still standing in it (`sceneryMesh`).
 -}
 type alias TrackChunk =
     { chunkIndex : Int
@@ -36,6 +44,7 @@ type alias TrackChunk =
     , boundsCenter : Vec3
     , boundsRadius : Float
     , mesh : WebGL.Mesh TerrainVertex
+    , sceneryMesh : WebGL.Mesh TerrainVertex
     }
 
 
@@ -49,7 +58,7 @@ type alias TrackRenderBundle =
     }
 
 
-{-| Resolve official LDraw color code to RGB vector.
+{-| Resolve an LDraw color code to an RGB vector.
 -}
 ldrawColor : Int -> Vec3
 ldrawColor code =
@@ -83,7 +92,7 @@ buildTrackRenderBundle track =
     }
 
 
-{-| Circular display plinth with tarmac & red/white LEGO curb blocks with studs for Garage inspection.
+{-| Circular display plinth with red/white studded curb blocks for Garage inspection.
 -}
 buildGaragePlinthMesh : WebGL.Mesh TerrainVertex
 buildGaragePlinthMesh =
@@ -236,14 +245,6 @@ buildChunk track chunkSizeM numChunks chunkIdx =
             in
             startGate ++ cpGates
 
-        obstacleTris =
-            track.obstacles
-                |> List.filter (\o -> o.s >= minS && o.s < maxS)
-                |> List.concatMap (buildObstacleTris track.config.id)
-
-        allTris =
-            ribbonTris ++ gateTris ++ obstacleTris
-
         centerSample =
             Track.splineSampleAtS track ((minS + maxS) * 0.5)
     in
@@ -252,8 +253,42 @@ buildChunk track chunkSizeM numChunks chunkIdx =
     , maxS = maxS
     , boundsCenter = centerSample.center
     , boundsRadius = chunkSizeM * 0.85 + 52.0
-    , mesh = WebGL.triangles allTris
+    , mesh = WebGL.triangles (ribbonTris ++ gateTris)
+    , sceneryMesh = buildSceneryMesh (sceneryInRange minS maxS track.obstacles)
     }
+
+
+sceneryInRange : Float -> Float -> List TrackObstacle -> List TrackObstacle
+sceneryInRange minS maxS obstacles =
+    List.filter (\o -> o.s >= minS && o.s < maxS) obstacles
+
+
+{-| Rebuild only the scenery mesh of the chunk that holds arc length `s`, after
+pieces there were smashed and removed from `track.obstacles`. The ground mesh is
+left untouched, so this stays cheap enough to run mid-race.
+-}
+rebuildChunkScenery : GeneratedTrack -> Float -> TrackRenderBundle -> TrackRenderBundle
+rebuildChunkScenery track s bundle =
+    let
+        idx =
+            clamp 0 (Array.length bundle.chunks - 1) (floor (s / bundle.chunkSizeM))
+    in
+    case Array.get idx bundle.chunks of
+        Just chunk ->
+            { bundle
+                | chunks =
+                    Array.set idx
+                        { chunk | sceneryMesh = buildSceneryMesh (sceneryInRange chunk.minS chunk.maxS track.obstacles) }
+                        bundle.chunks
+            }
+
+        Nothing ->
+            bundle
+
+
+buildSceneryMesh : List TrackObstacle -> WebGL.Mesh TerrainVertex
+buildSceneryMesh obstacles =
+    WebGL.triangles (List.concatMap buildSceneryTris obstacles)
 
 
 buildStartApronTris : GeneratedTrack -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -282,8 +317,8 @@ buildStartApronTris track =
                 rowZero =
                     sampleCrossSectionVertices track s0
             in
-            stitchCrossSections track.config.id -2 False rowBack2 rowBack1
-                ++ stitchCrossSections track.config.id -1 False rowBack1 rowZero
+            stitchCrossSections track.config.id s0.surface -2 rowBack2 rowBack1
+                ++ stitchCrossSections track.config.id s0.surface -1 rowBack1 rowZero
 
 
 buildStripBetweenSamples : GeneratedTrack -> Int -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -296,11 +331,8 @@ buildStripBetweenSamples track idx =
 
                 row1 =
                     sampleCrossSectionVertices track s1
-
-                stepIsDash =
-                    idx >= 2 && modBy 4 idx < 2
             in
-            stitchCrossSections track.config.id idx stepIsDash row0 row1
+            stitchCrossSections track.config.id s0.surface idx row0 row1
 
         _ ->
             []
@@ -313,24 +345,32 @@ type alias CrossVertex =
     }
 
 
+{-| Cross-section stations from the far field on the left to the far field on the
+right: field, field, field, verge, road edge, wheel track, center strip, wheel
+track, road edge, verge, field, field, field. The ground follows the smooth
+heightfield (no terracing, no raised curbs): it is an unpaved country road.
+-}
 sampleCrossSectionVertices : GeneratedTrack -> TrackSample -> List CrossVertex
 sampleCrossSectionVertices track smp =
     let
         hw =
             smp.halfWidth
 
+        strip =
+            min 0.45 (hw * 0.12)
+
         stations =
             [ -(hw + 38.0)
             , -(hw + 18.0)
             , -(hw + 7.5)
-            , -(hw + 3.5)
-            , -(hw + 0.45)
-            , -hw
-            , -0.11
-            , 0.11
-            , hw
-            , hw + 0.45
-            , hw + 3.5
+            , -(hw + 2.5)
+            , -(hw + 0.6)
+            , -(hw - 0.5)
+            , -strip
+            , strip
+            , hw - 0.5
+            , hw + 0.6
+            , hw + 2.5
             , hw + 7.5
             , hw + 18.0
             , hw + 38.0
@@ -346,34 +386,8 @@ sampleCrossSectionVertices track smp =
 
                 q =
                     Track.sampleAtHinted smp.s track (Vec3.getX ptXZ) (Vec3.getZ ptXZ)
-
-                absD =
-                    abs d
-
-                adjustedHeight =
-                    if absD >= hw - 0.02 && absD <= hw + 0.46 then
-                        -- Raised LEGO curb plate (1 plate = 0.04m above roadbed)
-                        q.height + 0.04
-
-                    else if absD >= hw + 7.5 then
-                        -- Discrete LEGO brick layer terracing (0.30m = 2 LEGO bricks step)
-                        toFloat (round (q.height / 0.3)) * 0.3
-
-                    else if absD > hw + 3.5 then
-                        -- Smooth blend from gravel shoulder edge into terraced slopes
-                        let
-                            terraceY =
-                                toFloat (round (q.height / 0.3)) * 0.3
-
-                            t =
-                                (absD - (hw + 3.5)) / 4.0
-                        in
-                        q.height * (1.0 - t) + terraceY * t
-
-                    else
-                        q.height
             in
-            { pos = vec3 (Vec3.getX ptXZ) adjustedHeight (Vec3.getZ ptXZ)
+            { pos = vec3 (Vec3.getX ptXZ) q.height (Vec3.getZ ptXZ)
             , normal = q.normal
             , dFrac = d
             }
@@ -383,12 +397,12 @@ sampleCrossSectionVertices track smp =
 
 stitchCrossSections :
     TrackId
+    -> SurfaceType
     -> Int
-    -> Bool
     -> List CrossVertex
     -> List CrossVertex
     -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-stitchCrossSections trackId segIdx dashOn r0 r1 =
+stitchCrossSections trackId surface segIdx r0 r1 =
     let
         pairs0 =
             adjacentPairs r0
@@ -399,7 +413,7 @@ stitchCrossSections trackId segIdx dashOn r0 r1 =
         stepBand bandIdx ( ( a0, b0 ), ( a1, b1 ) ) =
             let
                 col =
-                    bandColor trackId segIdx dashOn bandIdx
+                    bandColor trackId surface segIdx bandIdx
             in
             [ ( toTV a0 col, toTV b0 col, toTV b1 col )
             , ( toTV a0 col, toTV b1 col, toTV a1 col )
@@ -410,104 +424,121 @@ stitchCrossSections trackId segIdx dashOn r0 r1 =
         |> List.concat
 
 
-bandColor : TrackId -> Int -> Bool -> Int -> Vec3
-bandColor trackId segIdx dashOn bandIdx =
+{-| Cheap deterministic per-segment shade jitter in [-1, 1] for patchy unpaved ground.
+-}
+patchNoise : Int -> Int -> Float
+patchNoise segIdx bandIdx =
     let
-        curbRed =
-            ldrawColor 4
-
-        curbWhite =
-            ldrawColor 15
-
-        curb =
-            if modBy 2 segIdx == 0 then
-                curbRed
-
-            else
-                curbWhite
-
-        roadBase =
-            vec3 0.24 0.26 0.29
-
-        centerMark =
-            if dashOn then
-                ldrawColor 14
-
-            else
-                roadBase
-
-        gravelCol =
-            case trackId of
-                QuarrySwitchbacks ->
-                    vec3 0.58 0.5 0.41
-
-                AlpineGlacier ->
-                    vec3 0.62 0.68 0.75
-
-                PineRidge ->
-                    vec3 0.56 0.49 0.39
-
-        grassInner =
-            case trackId of
-                PineRidge ->
-                    ldrawColor 2
-
-                QuarrySwitchbacks ->
-                    ldrawColor 378
-
-                AlpineGlacier ->
-                    vec3 0.34 0.52 0.42
-
-        cliffOuter =
-            case trackId of
-                PineRidge ->
-                    ldrawColor 288
-
-                QuarrySwitchbacks ->
-                    ldrawColor 72
-
-                AlpineGlacier ->
-                    ldrawColor 15
+        h =
+            modBy 997 (segIdx * 131 + bandIdx * 71 + (segIdx // 3) * 17)
     in
-    case bandIdx of
-        0 ->
-            cliffOuter
+    toFloat h / 498.5 - 1.0
 
-        1 ->
-            grassInner
 
-        2 ->
-            grassInner
+roadColors : SurfaceType -> { road : Vec3, edge : Vec3, center : Vec3 }
+roadColors surface =
+    case surface of
+        DirtRoad ->
+            { road = vec3 0.56 0.41 0.26, edge = vec3 0.5 0.44 0.27, center = vec3 0.42 0.54 0.25 }
 
-        3 ->
-            gravelCol
+        GravelRoad ->
+            { road = vec3 0.67 0.63 0.55, edge = vec3 0.6 0.58 0.46, center = vec3 0.58 0.57 0.45 }
 
-        4 ->
-            curb
+        ForestTrack ->
+            { road = vec3 0.42 0.31 0.2, edge = vec3 0.36 0.33 0.2, center = vec3 0.38 0.34 0.2 }
 
-        5 ->
-            roadBase
+        GrassPath ->
+            { road = vec3 0.7 0.63 0.42, edge = vec3 0.56 0.6 0.34, center = vec3 0.5 0.62 0.3 }
 
-        6 ->
-            centerMark
+        RoughVerge ->
+            { road = vec3 0.46 0.56 0.28, edge = vec3 0.46 0.56 0.28, center = vec3 0.46 0.56 0.28 }
 
-        7 ->
-            roadBase
+        MeadowGrass ->
+            { road = vec3 0.42 0.62 0.26, edge = vec3 0.42 0.62 0.26, center = vec3 0.42 0.62 0.26 }
 
-        8 ->
-            curb
 
-        9 ->
-            gravelCol
+fieldColors : TrackId -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
+fieldColors trackId segIdx =
+    case trackId of
+        FarmLane ->
+            { verge = vec3 0.5 0.6 0.28
+            , near = vec3 0.42 0.62 0.26
+            , far =
+                -- Alternating crop strips: ripening grain and pasture
+                if modBy 10 (segIdx + 1000) < 5 then
+                    vec3 0.78 0.66 0.32
 
-        10 ->
-            grassInner
+                else
+                    vec3 0.46 0.64 0.27
+            }
 
-        11 ->
-            grassInner
+        ForestTrail ->
+            { verge = vec3 0.36 0.46 0.22
+            , near = vec3 0.27 0.43 0.2
+            , far = vec3 0.2 0.34 0.17
+            }
 
-        _ ->
-            cliffOuter
+        MeadowPath ->
+            { verge = vec3 0.55 0.66 0.3
+            , near = vec3 0.48 0.68 0.28
+            , far = vec3 0.6 0.7 0.33
+            }
+
+
+bandColor : TrackId -> SurfaceType -> Int -> Int -> Vec3
+bandColor trackId surface segIdx bandIdx =
+    let
+        road =
+            roadColors surface
+
+        field =
+            fieldColors trackId segIdx
+
+        base =
+            case bandIdx of
+                0 ->
+                    field.far
+
+                1 ->
+                    field.near
+
+                2 ->
+                    field.near
+
+                3 ->
+                    field.verge
+
+                4 ->
+                    road.edge
+
+                5 ->
+                    road.road
+
+                6 ->
+                    road.center
+
+                7 ->
+                    road.road
+
+                8 ->
+                    road.edge
+
+                9 ->
+                    field.verge
+
+                10 ->
+                    field.near
+
+                11 ->
+                    field.near
+
+                _ ->
+                    field.far
+
+        jitter =
+            1.0 + 0.07 * patchNoise segIdx bandIdx
+    in
+    Vec3.scale jitter base
 
 
 buildCheckpointTris : GeneratedTrack -> Checkpoint -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -575,362 +606,248 @@ buildArchTris smp isFinish isStart =
     leftPost ++ rightPost ++ crossBeam
 
 
-buildObstacleTris : TrackId -> TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildObstacleTris trackId obs =
+
+-- ── Brick-built scenery ──────────────────────────────────────────────────────
+--
+-- Every scenery piece is assembled from axis-aligned bricks (in the piece's own
+-- yaw frame) with round studs on top, so it reads as a brick build and so the
+-- same bricks can fly apart as debris when the racer smashes into it.
+
+
+type alias Frame =
+    { origin : Vec3
+    , right : Vec3
+    , fwd : Vec3
+    }
+
+
+frameFor : TrackObstacle -> Frame
+frameFor obs =
+    { origin = obs.position
+    , right = vec3 (cos obs.yaw) 0 -(sin obs.yaw)
+    , fwd = vec3 (sin obs.yaw) 0 (cos obs.yaw)
+    }
+
+
+localPt : Frame -> Float -> Float -> Float -> Vec3
+localPt fr lx ly lz =
+    fr.origin
+        |> Vec3.add (Vec3.scale lx fr.right)
+        |> Vec3.add (vec3 0 ly 0)
+        |> Vec3.add (Vec3.scale lz fr.fwd)
+
+
+{-| One brick: centered at local (lx, lz), bottom at ly, half-extents (hx, hz), height h.
+-}
+brick : Frame -> ( Float, Float, Float ) -> ( Float, Float, Float ) -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+brick fr ( lx, ly, lz ) ( hx, h, hz ) col =
+    boxAt (localPt fr lx ly lz) fr.right fr.fwd hx h hz col
+
+
+{-| A grid of `nx` × `nz` studs centered on local (lx, lz) at height ly.
+-}
+studs : Frame -> ( Float, Float, Float ) -> ( Int, Int ) -> Float -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+studs fr ( lx, ly, lz ) ( nx, nz ) spacing col =
+    List.range 0 (nx - 1)
+        |> List.concatMap
+            (\i ->
+                List.range 0 (nz - 1)
+                    |> List.concatMap
+                        (\k ->
+                            let
+                                ox =
+                                    (toFloat i - toFloat (nx - 1) * 0.5) * spacing
+
+                                oz =
+                                    (toFloat k - toFloat (nz - 1) * 0.5) * spacing
+                            in
+                            cylinderAt (localPt fr (lx + ox) ly (lz + oz)) (spacing * 0.28) (spacing * 0.18) 6 col
+                        )
+            )
+
+
+buildSceneryTris : TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+buildSceneryTris obs =
     let
-        base =
-            obs.position
+        fr =
+            frameFor obs
     in
     case obs.kind of
+        LeafyTree ->
+            leafyTreeTris fr obs.heightM
+
         PineTree ->
-            buildLegoPineTree trackId base obs.radiusM obs.heightM
+            pineTreeTris fr obs.heightM
 
-        Boulder ->
-            buildLegoBoulder trackId base obs.radiusM obs.heightM
+        Bush ->
+            bushTris fr
 
-        ChicaneBlock ->
-            buildLegoChicaneBlock trackId base obs.radiusM obs.heightM
+        FenceSection ->
+            fenceTris fr
 
-        BarrierPost ->
-            buildLegoBarrierPost trackId base obs.radiusM obs.heightM
+        Rock ->
+            rockTris fr obs.radiusM obs.heightM
+
+        Signpost ->
+            signpostTris fr obs.heightM
+
+        HayBale ->
+            hayBaleTris fr obs.heightM
+
+        Cottage ->
+            cottageTris fr
+
+        Barn ->
+            barnTris fr
 
 
-buildLegoPineTree : TrackId -> Vec3 -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildLegoPineTree trackId base rad ht =
+leafyTreeTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+leafyTreeTris fr ht =
     let
-        trunkCol =
-            ldrawColor 70
-
-        ( foliageBaseCol, foliageTopCol, snowCap ) =
-            case trackId of
-                AlpineGlacier ->
-                    ( ldrawColor 288, ldrawColor 288, True )
-
-                QuarrySwitchbacks ->
-                    ( ldrawColor 378, ldrawColor 288, False )
-
-                PineRidge ->
-                    ( ldrawColor 288, ldrawColor 2, False )
-
-        trunkRadius =
-            max 0.12 (rad * 0.22)
-
-        trunkHeight =
-            ht * 0.28
+        k =
+            ht / 4.5
 
         trunk =
-            cylinderAt base trunkRadius trunkHeight 8 trunkCol
+            brick fr ( 0, 0, 0 ) ( 0.2 * k, 1.9 * k, 0.2 * k ) (ldrawColor 70)
 
-        tier0 =
-            pineTierAt (Vec3.add base (vec3 0 (ht * 0.22) 0)) (rad * 1.05) (ht * 0.28) 0.0 foliageBaseCol
+        leafDark =
+            ldrawColor 2
 
-        tier1 =
-            pineTierAt (Vec3.add base (vec3 0 (ht * 0.44) 0)) (rad * 0.82) (ht * 0.26) 0.39 foliageBaseCol
-
-        tier2 =
-            pineTierAt (Vec3.add base (vec3 0 (ht * 0.64) 0)) (rad * 0.58) (ht * 0.24) 0.78 foliageTopCol
-
-        tier3 =
-            let
-                tCol =
-                    if snowCap then
-                        ldrawColor 15
-
-                    else
-                        foliageTopCol
-            in
-            pineTierAt (Vec3.add base (vec3 0 (ht * 0.8) 0)) (rad * 0.36) (ht * 0.2) 1.18 tCol
-
-        apexY =
-            ht * 0.96
-
-        apexPos =
-            Vec3.add base (vec3 0 apexY 0)
-
-        apexCol =
-            if snowCap then
-                ldrawColor 15
-
-            else
-                foliageTopCol
-
-        topStud =
-            cylinderAt apexPos 0.045 0.035 8 apexCol
+        leafLight =
+            ldrawColor 10
     in
-    trunk ++ tier0 ++ tier1 ++ tier2 ++ tier3 ++ topStud
+    trunk
+        ++ brick fr ( 0, 1.6 * k, 0 ) ( 1.1 * k, 0.96 * k, 1.1 * k ) leafDark
+        ++ brick fr ( 0.1 * k, 2.56 * k, -0.1 * k ) ( 0.95 * k, 0.96 * k, 0.95 * k ) leafLight
+        ++ brick fr ( 0, 3.52 * k, 0 ) ( 0.55 * k, 0.6 * k, 0.55 * k ) leafDark
+        ++ studs fr ( 0, 4.12 * k, 0 ) ( 2, 2 ) (0.5 * k) leafDark
+        ++ studs fr ( 0.1 * k, 3.52 * k, -0.1 * k ) ( 1, 1 ) (0.5 * k) (ldrawColor 4)
 
 
-pineTierAt : Vec3 -> Float -> Float -> Float -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-pineTierAt tierBase rOut hTier rotAngle col =
+pineTreeTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+pineTreeTris fr ht =
     let
-        numBoughs =
-            8
+        k =
+            ht / 6.0
 
-        rIn =
-            rOut * 0.55
+        needles =
+            ldrawColor 288
 
-        apex =
-            Vec3.add tierBase (vec3 0 hTier 0)
-
-        undersideCenter =
-            tierBase
-
-        bough i =
+        tier i =
             let
-                aMid =
-                    rotAngle + 2.0 * pi * toFloat i / toFloat numBoughs
-
-                aLeft =
-                    aMid - pi / toFloat numBoughs
-
-                aRight =
-                    aMid + pi / toFloat numBoughs
-
-                tip =
-                    Vec3.add tierBase (vec3 (rOut * cos aMid) 0 (rOut * sin aMid))
-
-                leftInner =
-                    Vec3.add tierBase (vec3 (rIn * cos aLeft) 0 (rIn * sin aLeft))
-
-                rightInner =
-                    Vec3.add tierBase (vec3 (rIn * cos aRight) 0 (rIn * sin aRight))
-
-                face1 =
-                    triWithComputedNormal leftInner tip apex col
-
-                face2 =
-                    triWithComputedNormal tip rightInner apex col
-
-                under1 =
-                    triWithComputedNormal undersideCenter tip leftInner col
-
-                under2 =
-                    triWithComputedNormal undersideCenter rightInner tip col
-            in
-            [ face1, face2, under1, under2 ]
-    in
-    List.concatMap bough (List.range 0 (numBoughs - 1))
-
-
-buildLegoBoulder : TrackId -> Vec3 -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildLegoBoulder trackId base rad ht =
-    let
-        ( darkRock, lightRock, snowCap ) =
-            case trackId of
-                AlpineGlacier ->
-                    ( ldrawColor 72, vec3 0.58 0.64 0.72, True )
-
-                QuarrySwitchbacks ->
-                    ( ldrawColor 70, ldrawColor 72, False )
-
-                PineRidge ->
-                    ( ldrawColor 72, ldrawColor 71, False )
-
-        y1 =
-            ht * 0.42
-
-        y2 =
-            ht * 0.76
-
-        y3 =
-            ht
-
-        tier0 =
-            facetedRockTier base 0.0 y1 rad (rad * 0.85) 6 darkRock
-
-        tier1 =
-            facetedRockTier (Vec3.add base (vec3 0 y1 0)) 0.0 (y2 - y1) (rad * 0.85) (rad * 0.55) 6 lightRock
-
-        topCol =
-            if snowCap then
-                ldrawColor 15
-
-            else
-                lightRock
-
-        tier2 =
-            facetedRockTier (Vec3.add base (vec3 0 y2 0)) 0.0 (y3 - y2) (rad * 0.55) (rad * 0.28) 6 topCol
-
-        stud0 =
-            cylinderAt (Vec3.add base (vec3 (rad * 0.15) y2 (rad * 0.12))) 0.045 0.03 6 topCol
-
-        stud1 =
-            cylinderAt (Vec3.add base (vec3 -(rad * 0.12) y2 -(rad * 0.1))) 0.045 0.03 6 topCol
-
-        studTop =
-            cylinderAt (Vec3.add base (vec3 0 y3 0)) 0.045 0.03 6 topCol
-    in
-    tier0 ++ tier1 ++ tier2 ++ stud0 ++ stud1 ++ studTop
-
-
-facetedRockTier : Vec3 -> Float -> Float -> Float -> Float -> Int -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-facetedRockTier basePt yLow yHigh rBot rTop sides col =
-    let
-        step i =
-            let
-                a0 =
-                    2.0 * pi * toFloat i / toFloat sides
-
-                a1 =
-                    2.0 * pi * toFloat (i + 1) / toFloat sides
-
-                p0Bot =
-                    Vec3.add basePt (vec3 (rBot * cos a0) yLow (rBot * sin a0))
-
-                p1Bot =
-                    Vec3.add basePt (vec3 (rBot * cos a1) yLow (rBot * sin a1))
-
-                p0Top =
-                    Vec3.add basePt (vec3 (rTop * cos a0) yHigh (rTop * sin a0))
-
-                p1Top =
-                    Vec3.add basePt (vec3 (rTop * cos a1) yHigh (rTop * sin a1))
-
-                cTop =
-                    Vec3.add basePt (vec3 0 yHigh 0)
-            in
-            [ triWithComputedNormal p0Bot p1Bot p1Top col
-            , triWithComputedNormal p0Bot p1Top p0Top col
-            , triWithComputedNormal cTop p0Top p1Top col
-            ]
-    in
-    List.concatMap step (List.range 0 (sides - 1))
-
-
-buildLegoChicaneBlock : TrackId -> Vec3 -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildLegoChicaneBlock trackId base rad ht =
-    let
-        xAxis =
-            vec3 1 0 0
-
-        zAxis =
-            vec3 0 0 1
-
-        halfW =
-            rad
-
-        halfD =
-            max 0.2 (rad * 0.55)
-
-        numCourses =
-            3
-
-        courseH =
-            ht / toFloat numCourses
-
-        col1 =
-            case trackId of
-                AlpineGlacier ->
-                    ldrawColor 1
-
-                _ ->
-                    ldrawColor 4
-
-        col2 =
-            ldrawColor 15
-
-        buildCourse i =
-            let
-                cCol =
-                    if modBy 2 i == 0 then
-                        col1
-
-                    else
-                        col2
-
-                yOffset =
-                    toFloat i * courseH
-
-                courseBase =
-                    Vec3.add base (vec3 0 yOffset 0)
-            in
-            boxAt courseBase xAxis zAxis halfW courseH halfD cCol
-
-        courses =
-            List.concatMap buildCourse (List.range 0 (numCourses - 1))
-
-        studY =
-            ht
-
-        studSpacing =
-            0.125
-
-        studCols =
-            max 2 (floor (halfW / studSpacing))
-
-        studRow =
-            List.range -studCols studCols
-                |> List.concatMap
-                    (\c ->
-                        let
-                            xPos =
-                                toFloat c * studSpacing
-
-                            sPos1 =
-                                Vec3.add base (vec3 xPos studY (halfD * 0.45))
-
-                            sPos2 =
-                                Vec3.add base (vec3 xPos studY -(halfD * 0.45))
-
-                            topCol =
-                                if modBy 2 (numCourses - 1) == 0 then
-                                    col1
-
-                                else
-                                    col2
-                        in
-                        cylinderAt sPos1 0.038 0.025 6 topCol
-                            ++ cylinderAt sPos2 0.038 0.025 6 topCol
-                    )
-    in
-    courses ++ studRow
-
-
-buildLegoBarrierPost : TrackId -> Vec3 -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-buildLegoBarrierPost _ base rad ht =
-    let
-        col1 =
-            ldrawColor 191
-
-        col2 =
-            ldrawColor 15
-
-        r =
-            max 0.14 (rad * 0.45)
-
-        numBands =
-            4
-
-        bandH =
-            ht / toFloat numBands
-
-        buildBand i =
-            let
-                bCol =
-                    if modBy 2 i == 0 then
-                        col1
-
-                    else
-                        col2
+                half =
+                    (1.25 - toFloat i * 0.28) * k
 
                 y =
-                    toFloat i * bandH
-
-                bandBase =
-                    Vec3.add base (vec3 0 y 0)
+                    (1.2 + toFloat i * 1.05) * k
             in
-            cylinderAt bandBase r bandH 8 bCol
-
-        bands =
-            List.concatMap buildBand (List.range 0 (numBands - 1))
-
-        basePlate =
-            cylinderAt base (r * 1.5) (ht * 0.08) 8 (ldrawColor 72)
-
-        topStud =
-            cylinderAt (Vec3.add base (vec3 0 ht 0)) (r * 0.6) 0.035 8 col1
+            brick fr ( 0, y, 0 ) ( half, 1.05 * k, half ) needles
     in
-    basePlate ++ bands ++ topStud
+    brick fr ( 0, 0, 0 ) ( 0.18 * k, 1.4 * k, 0.18 * k ) (ldrawColor 70)
+        ++ List.concatMap tier (List.range 0 3)
+        ++ brick fr ( 0, 5.4 * k, 0 ) ( 0.18 * k, 0.55 * k, 0.18 * k ) needles
+        ++ studs fr ( 0, 5.95 * k, 0 ) ( 1, 1 ) (0.5 * k) needles
+
+
+bushTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+bushTris fr =
+    brick fr ( 0, 0, 0 ) ( 0.75, 0.5, 0.55 ) (ldrawColor 2)
+        ++ brick fr ( 0.15, 0.5, 0.05 ) ( 0.5, 0.36, 0.4 ) (ldrawColor 10)
+        ++ studs fr ( 0.15, 0.86, 0.05 ) ( 2, 1 ) 0.44 (ldrawColor 10)
+        ++ studs fr ( -0.5, 0.5, 0.3 ) ( 1, 1 ) 0.4 (ldrawColor 14)
+
+
+fenceTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+fenceTris fr =
+    let
+        post lz =
+            brick fr ( 0, 0, lz ) ( 0.09, 1.05, 0.09 ) (ldrawColor 70)
+                ++ studs fr ( 0, 1.05, lz ) ( 1, 1 ) 0.3 (ldrawColor 70)
+
+        rail ly =
+            brick fr ( 0, ly, 0 ) ( 0.05, 0.16, 1.5 ) (ldrawColor 15)
+    in
+    post -1.4 ++ post 1.4 ++ rail 0.35 ++ rail 0.75
+
+
+rockTris : Frame -> Float -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+rockTris fr rad ht =
+    let
+        lower =
+            ht * 0.55
+    in
+    brick fr ( 0, 0, 0 ) ( rad, lower, rad * 0.8 ) (ldrawColor 72)
+        ++ brick fr ( rad * 0.15, lower, -(rad * 0.1) ) ( rad * 0.68, ht - lower, rad * 0.56 ) (ldrawColor 71)
+        ++ studs fr ( rad * 0.15, ht, -(rad * 0.1) ) ( 2, 1 ) (rad * 0.55) (ldrawColor 71)
+
+
+signpostTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+signpostTris fr ht =
+    brick fr ( 0, 0, 0 ) ( 0.08, ht, 0.08 ) (ldrawColor 70)
+        ++ brick fr ( 0, ht - 0.62, 0.1 ) ( 0.55, 0.42, 0.05 ) (ldrawColor 14)
+        ++ brick fr ( 0, ht - 0.5, 0.16 ) ( 0.38, 0.16, 0.02 ) (ldrawColor 4)
+        ++ studs fr ( 0, ht, 0 ) ( 1, 1 ) 0.3 (ldrawColor 70)
+
+
+hayBaleTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+hayBaleTris fr ht =
+    let
+        hay =
+            ldrawColor 19
+
+        twine =
+            ldrawColor 28
+
+        bale ( lx, ly, lz ) =
+            brick fr ( lx, ly, lz ) ( 0.7, 0.8, 0.42 ) hay
+                ++ brick fr ( lx, ly + 0.2, lz ) ( 0.71, 0.08, 0.43 ) twine
+                ++ brick fr ( lx, ly + 0.52, lz ) ( 0.71, 0.08, 0.43 ) twine
+                ++ studs fr ( lx, ly + 0.8, lz ) ( 2, 1 ) 0.55 hay
+    in
+    if ht > 1.2 then
+        bale ( 0, 0, -0.44 ) ++ bale ( 0, 0, 0.44 ) ++ bale ( 0.1, 0.8, 0 )
+
+    else
+        bale ( 0, 0, 0 )
+
+
+cottageTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+cottageTris fr =
+    let
+        wall =
+            ldrawColor 15
+
+        roof =
+            ldrawColor 4
+
+        roofStep i =
+            brick fr ( 0, 2.1 + toFloat i * 0.4, 0 ) ( 2.4, 0.4, 1.9 - toFloat i * 0.62 ) roof
+    in
+    brick fr ( 0, 0, 0 ) ( 2.0, 2.1, 1.5 ) wall
+        ++ brick fr ( -0.9, 0, 1.52 ) ( 0.4, 1.3, 0.04 ) (ldrawColor 70)
+        ++ brick fr ( 0.8, 0.9, 1.52 ) ( 0.45, 0.6, 0.04 ) (ldrawColor 1)
+        ++ List.concatMap roofStep (List.range 0 2)
+        ++ brick fr ( 1.2, 2.5, -0.5 ) ( 0.25, 1.6, 0.25 ) (ldrawColor 72)
+        ++ studs fr ( 0, 3.3, 0 ) ( 4, 1 ) 1.0 roof
+
+
+barnTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+barnTris fr =
+    let
+        wall =
+            ldrawColor 320
+
+        roof =
+            ldrawColor 72
+
+        roofStep i =
+            brick fr ( 0, 2.8 + toFloat i * 0.45, 0 ) ( 2.9, 0.45, 2.3 - toFloat i * 0.72 ) roof
+    in
+    brick fr ( 0, 0, 0 ) ( 2.6, 2.8, 2.0 ) wall
+        ++ brick fr ( 0, 0, 2.02 ) ( 1.0, 2.0, 0.04 ) (ldrawColor 15)
+        ++ brick fr ( 0, 0, 2.06 ) ( 0.8, 1.84, 0.04 ) wall
+        ++ List.concatMap roofStep (List.range 0 2)
+        ++ studs fr ( 0, 4.15, 0 ) ( 5, 1 ) 1.0 roof
 
 
 cylinderAt : Vec3 -> Float -> Float -> Int -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -1064,21 +981,6 @@ tri a b c n col =
     , { position = b, normal = n, color = col }
     , { position = c, normal = n, color = col }
     )
-
-
-triWithComputedNormal : Vec3 -> Vec3 -> Vec3 -> Vec3 -> ( TerrainVertex, TerrainVertex, TerrainVertex )
-triWithComputedNormal a b c col =
-    let
-        ab =
-            Vec3.sub b a
-
-        ac =
-            Vec3.sub c a
-
-        n =
-            normalizeSafe (Vec3.cross ab ac) (vec3 0 1 0)
-    in
-    tri a b c n col
 
 
 adjacentPairs : List a -> List ( a, a )

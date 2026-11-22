@@ -1,20 +1,26 @@
 module Racer.Track exposing
-    ( generate
-    , mountainRidgeHeight
+    ( fieldUndulation
+    , generate
     , obstaclesNear
+    , removeObstacles
     , sampleAt
     , sampleAtHinted
     , splineSampleAtS
     , trackConfigFor
     )
 
-{-| Procedural 3D downhill mountain course generator and spatial terrain sampler.
+{-| Procedural downhill countryside course generator and spatial terrain sampler.
 
-Generates deterministic Catmull-Rom 3D tracks for:
+Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads:
 
-  - `PineRidge`: wide sweeping tarmac descent with jump ramps,
-  - `QuarrySwitchbacks`: tight banked hairpins, chicanes, and cobble flats,
-  - `AlpineGlacier`: steep high-altitude alpine chutes and washboard frost ribs.
+  - `FarmLane`: dirt and gravel farm road with two clear bends and a steep drop
+    into the farmyard,
+  - `ForestTrail`: packed-earth forest track with a root-rippled section, a log
+    hump and a fast gravel chute through a clearing,
+  - `MeadowPath`: narrow, steepest grass footpath with a field hump and tussocks.
+
+Each course is lined with brick-built scenery (trees, bushes, fences, rocks,
+signposts, hay bales, cottages and barns) that the racer can smash apart.
 
 Exposes continuous `sampleAt` / `sampleAtHinted` heightmap + finite-difference surface
 normal queries and O(1) spatial-bucketed `obstaclesNear` collision lookups.
@@ -43,32 +49,35 @@ import Random
 
 
 {-| Return the canonical configuration preset for a given `TrackId` and seed.
+
+All courses are short (about 0.4–0.55 km) and steep (about 30–35 % average grade).
+
 -}
 trackConfigFor : TrackId -> Int -> TrackConfig
 trackConfigFor id seed =
     case id of
-        PineRidge ->
-            { id = PineRidge
+        FarmLane ->
+            { id = FarmLane
             , seed = seed
-            , lengthM = 1100.0
-            , dropM = 220.0
-            , defaultHalfWidthM = 6.4
+            , lengthM = 480.0
+            , dropM = 150.0
+            , defaultHalfWidthM = 4.4
             }
 
-        QuarrySwitchbacks ->
-            { id = QuarrySwitchbacks
+        ForestTrail ->
+            { id = ForestTrail
             , seed = seed
-            , lengthM = 1350.0
-            , dropM = 310.0
-            , defaultHalfWidthM = 5.8
+            , lengthM = 540.0
+            , dropM = 175.0
+            , defaultHalfWidthM = 3.9
             }
 
-        AlpineGlacier ->
-            { id = AlpineGlacier
+        MeadowPath ->
+            { id = MeadowPath
             , seed = seed
-            , lengthM = 1600.0
-            , dropM = 410.0
-            , defaultHalfWidthM = 5.4
+            , lengthM = 420.0
+            , dropM = 150.0
+            , defaultHalfWidthM = 3.3
             }
 
 
@@ -112,7 +121,7 @@ generate config =
                     , normal = vec3 0 1 0
                     , halfWidth = config.defaultHalfWidthM
                     , bankingRad = 0.0
-                    , surface = AsphaltTrack
+                    , surface = DirtRoad
                     }
 
         endSample =
@@ -131,33 +140,54 @@ generate config =
         checkpoints =
             buildCheckpoints samples finishS
 
-        ( ramps, washes, chicaneZones ) =
+        ( ramps, washes ) =
             extractFeatureZones totalLengthM controlPoints
-
-        obstacles =
-            generateObstacles config.seed samples ramps checkpoints chicaneZones finishS
 
         bucketCount =
             max 1 (ceiling (totalLengthM / bucketSizeM) + 1)
 
-        obstacleBuckets =
-            bucketObstacles bucketSizeM bucketCount obstacles
+        bareTrack =
+            { config = config
+            , samples = samples
+            , sampleSpacingM = sampleSpacingM
+            , totalLengthM = totalLengthM
+            , totalDropM = totalDropM
+            , startPosition = Vec3.add startSample.center (vec3 0 0.08 0)
+            , startYaw = startYaw
+            , finishS = finishS
+            , checkpoints = checkpoints
+            , obstacles = []
+            , obstacleBuckets = Array.repeat bucketCount []
+            , bucketSizeM = bucketSizeM
+            , ramps = ramps
+            , washes = washes
+            }
+
+        obstacles =
+            generateScenery bareTrack
     in
-    { config = config
-    , samples = samples
-    , sampleSpacingM = sampleSpacingM
-    , totalLengthM = totalLengthM
-    , totalDropM = totalDropM
-    , startPosition = Vec3.add startSample.center (vec3 0 0.08 0)
-    , startYaw = startYaw
-    , finishS = finishS
-    , checkpoints = checkpoints
-    , obstacles = obstacles
-    , obstacleBuckets = obstacleBuckets
-    , bucketSizeM = bucketSizeM
-    , ramps = ramps
-    , washes = washes
+    { bareTrack
+        | obstacles = obstacles
+        , obstacleBuckets = bucketObstacles bucketSizeM bucketCount obstacles
     }
+
+
+{-| Remove smashed scenery pieces (by obstacle id) from collision lists and buckets.
+-}
+removeObstacles : List Int -> GeneratedTrack -> GeneratedTrack
+removeObstacles ids track =
+    if List.isEmpty ids then
+        track
+
+    else
+        let
+            keep o =
+                not (List.member o.id ids)
+        in
+        { track
+            | obstacles = List.filter keep track.obstacles
+            , obstacleBuckets = Array.map (List.filter keep) track.obstacleBuckets
+        }
 
 
 {-| Query continuous terrain height, unit surface normal, surface material, and road offset
@@ -214,11 +244,11 @@ sampleAtHinted hintS track worldX worldZ =
             if absD <= proj.halfWidth then
                 proj.surface
 
-            else if absD <= proj.halfWidth + 3.5 then
-                GravelShoulder
+            else if absD <= proj.halfWidth + vergeWidthM then
+                RoughVerge
 
             else
-                AlpineGrass
+                MeadowGrass
     in
     { height = hCenter
     , normal = unitNormal
@@ -266,7 +296,7 @@ splineSampleAtS track targetS =
         , normal = vec3 0 1 0
         , halfWidth = track.config.defaultHalfWidthM
         , bankingRad = 0.0
-        , surface = AsphaltTrack
+        , surface = DirtRoad
         }
 
     else
@@ -305,14 +335,14 @@ splineSampleAtS track targetS =
                 , normal = vec3 0 1 0
                 , halfWidth = track.config.defaultHalfWidthM
                 , bankingRad = 0.0
-                , surface = AsphaltTrack
+                , surface = DirtRoad
                 }
 
 
-{-| Smooth deterministic off-track mountain ridge height modulation around a valley floor.
+{-| Smooth deterministic rolling-field undulation for the open countryside beside the road.
 -}
-mountainRidgeHeight : Int -> Float -> Float -> Float
-mountainRidgeHeight seed x z =
+fieldUndulation : Int -> Float -> Float -> Float
+fieldUndulation seed x z =
     let
         phaseA =
             toFloat (modBy 997 (abs seed + 17)) * 0.013
@@ -321,15 +351,22 @@ mountainRidgeHeight seed x z =
             toFloat (modBy 613 (abs seed + 41)) * 0.019
 
         low =
-            sin (x * 0.022 + phaseA) * cos (z * 0.019 - phaseB) * 9.5
+            sin (x * 0.03 + phaseA) * cos (z * 0.026 - phaseB) * 3.2
 
         mid =
-            sin ((x + z) * 0.051 - phaseB) * 3.8
+            sin ((x + z) * 0.07 - phaseB) * 1.1
 
         detail =
-            cos (x * 0.14 - z * 0.11 + phaseA) * 0.9
+            cos (x * 0.17 - z * 0.13 + phaseA) * 0.25
     in
     low + mid + detail
+
+
+{-| Width of the rough grass verge between the roadbed and the open field.
+-}
+vergeWidthM : Float
+vergeWidthM =
+    2.5
 
 
 
@@ -352,14 +389,14 @@ buildControlPoints config =
     let
         rawKnots =
             case config.id of
-                PineRidge ->
-                    pineRidgeKnots
+                FarmLane ->
+                    farmLaneKnots
 
-                QuarrySwitchbacks ->
-                    quarrySwitchbackKnots
+                ForestTrail ->
+                    forestTrailKnots
 
-                AlpineGlacier ->
-                    alpineGlacierKnots
+                MeadowPath ->
+                    meadowPathKnots
 
         lenScale =
             config.lengthM
@@ -372,10 +409,10 @@ buildControlPoints config =
                 (\knot ( acc, rng ) ->
                     let
                         ( jitterX, rng1 ) =
-                            Random.step (Random.float -9.5 9.5) rng
+                            Random.step (Random.float -5.0 5.0) rng
 
                         ( jitterY, rng2 ) =
-                            Random.step (Random.float -1.4 1.4) rng1
+                            Random.step (Random.float -0.8 0.8) rng1
 
                         envelope =
                             if knot.sFrac <= 0.06 || knot.sFrac >= 0.92 then
@@ -385,7 +422,7 @@ buildControlPoints config =
                                 sin (pi * clamp 0.0 1.0 ((knot.sFrac - 0.06) / 0.86))
 
                         x =
-                            knot.xOffset * (lenScale / 1100.0) + jitterX * envelope
+                            knot.xOffset + jitterX * envelope
 
                         z =
                             knot.zProgress * lenScale
@@ -410,54 +447,52 @@ buildControlPoints config =
     List.reverse finalKnots
 
 
-pineRidgeKnots : List BlueprintKnot
-pineRidgeKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 6.5, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.03, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.035, halfWidth = 6.5, surface = AsphaltTrack, feature = Just SpeedGate }
-    , { sFrac = 0.11, xOffset = 22.0, yDropFrac = 0.14, zProgress = 0.12, halfWidth = 6.3, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.21, xOffset = 68.0, yDropFrac = 0.22, zProgress = 0.21, halfWidth = 6.2, surface = AsphaltTrack, feature = Just (LaunchRamp { lengthM = 14.0, lipHeightM = 0.85 }) }
-    , { sFrac = 0.32, xOffset = 20.0, yDropFrac = 0.32, zProgress = 0.31, halfWidth = 6.2, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.44, xOffset = -64.0, yDropFrac = 0.44, zProgress = 0.42, halfWidth = 6.1, surface = AsphaltTrack, feature = Just (RoughWash { amplitudeM = 0.09, wavelengthM = 2.8 }) }
-    , { sFrac = 0.56, xOffset = -92.0, yDropFrac = 0.56, zProgress = 0.53, halfWidth = 6.2, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.67, xOffset = -18.0, yDropFrac = 0.68, zProgress = 0.64, halfWidth = 6.2, surface = AsphaltTrack, feature = Just (LaunchRamp { lengthM = 15.0, lipHeightM = 1.05 }) }
-    , { sFrac = 0.78, xOffset = 62.0, yDropFrac = 0.81, zProgress = 0.75, halfWidth = 6.2, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.89, xOffset = 28.0, yDropFrac = 0.93, zProgress = 0.86, halfWidth = 6.4, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.96, xOffset = 10.0, yDropFrac = 0.985, zProgress = 0.94, halfWidth = 6.8, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 1.0, xOffset = 10.0, yDropFrac = 1.0, zProgress = 0.99, halfWidth = 7.0, surface = AsphaltTrack, feature = Nothing }
+{-| Farm lane: run-in, steep left-hand drop, gravel right-hand sweep with ruts,
+then the steepest pitch down into the farmyard. `xOffset` is in meters.
+-}
+farmLaneKnots : List BlueprintKnot
+farmLaneKnots =
+    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.11, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.1, halfWidth = 4.5, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.27, xOffset = -24.0, yDropFrac = 0.24, zProgress = 0.25, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.43, xOffset = -32.0, yDropFrac = 0.38, zProgress = 0.4, halfWidth = 4.3, surface = GravelRoad, feature = Nothing }
+    , { sFrac = 0.59, xOffset = 4.0, yDropFrac = 0.55, zProgress = 0.55, halfWidth = 4.2, surface = GravelRoad, feature = Just (RoughWash { amplitudeM = 0.06, wavelengthM = 2.6 }) }
+    , { sFrac = 0.75, xOffset = 30.0, yDropFrac = 0.73, zProgress = 0.7, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.9, xOffset = 20.0, yDropFrac = 0.93, zProgress = 0.85, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 1.0, xOffset = 16.0, yDropFrac = 1.0, zProgress = 0.95, halfWidth = 5.0, surface = DirtRoad, feature = Nothing }
     ]
 
 
-quarrySwitchbackKnots : List BlueprintKnot
-quarrySwitchbackKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 5.8, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.04, xOffset = 0.0, yDropFrac = 0.065, zProgress = 0.035, halfWidth = 5.8, surface = AsphaltTrack, feature = Just SpeedGate }
-    , { sFrac = 0.14, xOffset = 58.0, yDropFrac = 0.15, zProgress = 0.11, halfWidth = 5.5, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.24, xOffset = 112.0, yDropFrac = 0.24, zProgress = 0.18, halfWidth = 5.4, surface = GravelShoulder, feature = Just (Chicane { sideOffsetM = 2.0, barrierCount = 4 }) }
-    , { sFrac = 0.35, xOffset = 18.0, yDropFrac = 0.36, zProgress = 0.26, halfWidth = 5.4, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.46, xOffset = -102.0, yDropFrac = 0.48, zProgress = 0.34, halfWidth = 5.4, surface = CobbleStone, feature = Just (LaunchRamp { lengthM = 13.0, lipHeightM = 0.9 }) }
-    , { sFrac = 0.58, xOffset = -45.0, yDropFrac = 0.61, zProgress = 0.44, halfWidth = 5.5, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.69, xOffset = 94.0, yDropFrac = 0.74, zProgress = 0.52, halfWidth = 5.3, surface = AsphaltTrack, feature = Just (Chicane { sideOffsetM = 1.9, barrierCount = 5 }) }
-    , { sFrac = 0.8, xOffset = 40.0, yDropFrac = 0.85, zProgress = 0.63, halfWidth = 5.5, surface = CobbleStone, feature = Nothing }
-    , { sFrac = 0.9, xOffset = -28.0, yDropFrac = 0.94, zProgress = 0.74, halfWidth = 5.8, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.96, xOffset = -14.0, yDropFrac = 0.988, zProgress = 0.82, halfWidth = 6.2, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 1.0, xOffset = -14.0, yDropFrac = 1.0, zProgress = 0.87, halfWidth = 6.4, surface = AsphaltTrack, feature = Nothing }
+{-| Forest trail: packed-earth track with a right-hand bend over roots, a steep
+gravel chute through a clearing, a left-hand bend and a log hump.
+-}
+forestTrailKnots : List BlueprintKnot
+forestTrailKnots =
+    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 4.1, surface = ForestTrack, feature = Nothing }
+    , { sFrac = 0.1, xOffset = 0.0, yDropFrac = 0.05, zProgress = 0.09, halfWidth = 4.0, surface = ForestTrack, feature = Nothing }
+    , { sFrac = 0.24, xOffset = 26.0, yDropFrac = 0.2, zProgress = 0.22, halfWidth = 3.8, surface = ForestTrack, feature = Nothing }
+    , { sFrac = 0.38, xOffset = 34.0, yDropFrac = 0.33, zProgress = 0.35, halfWidth = 3.8, surface = ForestTrack, feature = Just (RoughWash { amplitudeM = 0.08, wavelengthM = 2.2 }) }
+    , { sFrac = 0.53, xOffset = 6.0, yDropFrac = 0.52, zProgress = 0.49, halfWidth = 4.0, surface = GravelRoad, feature = Nothing }
+    , { sFrac = 0.67, xOffset = -26.0, yDropFrac = 0.67, zProgress = 0.62, halfWidth = 3.8, surface = ForestTrack, feature = Nothing }
+    , { sFrac = 0.8, xOffset = -20.0, yDropFrac = 0.81, zProgress = 0.75, halfWidth = 3.9, surface = ForestTrack, feature = Just (LaunchRamp { lengthM = 9.0, lipHeightM = 0.55 }) }
+    , { sFrac = 0.92, xOffset = 0.0, yDropFrac = 0.94, zProgress = 0.87, halfWidth = 4.2, surface = GravelRoad, feature = Nothing }
+    , { sFrac = 1.0, xOffset = 4.0, yDropFrac = 1.0, zProgress = 0.94, halfWidth = 4.6, surface = GravelRoad, feature = Nothing }
     ]
 
 
-alpineGlacierKnots : List BlueprintKnot
-alpineGlacierKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 5.6, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.04, xOffset = 0.0, yDropFrac = 0.07, zProgress = 0.032, halfWidth = 5.4, surface = AsphaltTrack, feature = Just SpeedGate }
-    , { sFrac = 0.13, xOffset = -44.0, yDropFrac = 0.15, zProgress = 0.11, halfWidth = 5.1, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.24, xOffset = -96.0, yDropFrac = 0.27, zProgress = 0.2, halfWidth = 5.0, surface = CobbleStone, feature = Just (RoughWash { amplitudeM = 0.12, wavelengthM = 2.4 }) }
-    , { sFrac = 0.35, xOffset = -22.0, yDropFrac = 0.39, zProgress = 0.3, halfWidth = 5.0, surface = AsphaltTrack, feature = Just (LaunchRamp { lengthM = 16.0, lipHeightM = 1.25 }) }
-    , { sFrac = 0.47, xOffset = 78.0, yDropFrac = 0.51, zProgress = 0.4, halfWidth = 4.9, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.58, xOffset = 104.0, yDropFrac = 0.64, zProgress = 0.5, halfWidth = 4.9, surface = GravelShoulder, feature = Just (Chicane { sideOffsetM = 1.8, barrierCount = 5 }) }
-    , { sFrac = 0.7, xOffset = 18.0, yDropFrac = 0.76, zProgress = 0.61, halfWidth = 5.0, surface = AsphaltTrack, feature = Just (RoughWash { amplitudeM = 0.1, wavelengthM = 2.6 }) }
-    , { sFrac = 0.81, xOffset = -68.0, yDropFrac = 0.87, zProgress = 0.72, halfWidth = 5.1, surface = AsphaltTrack, feature = Just (LaunchRamp { lengthM = 15.0, lipHeightM = 1.15 }) }
-    , { sFrac = 0.9, xOffset = -24.0, yDropFrac = 0.95, zProgress = 0.82, halfWidth = 5.4, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 0.96, xOffset = 0.0, yDropFrac = 0.989, zProgress = 0.89, halfWidth = 5.8, surface = AsphaltTrack, feature = Nothing }
-    , { sFrac = 1.0, xOffset = 0.0, yDropFrac = 1.0, zProgress = 0.94, halfWidth = 6.0, surface = AsphaltTrack, feature = Nothing }
+{-| Meadow footpath: narrowest and steepest, a field hump on the first bend,
+tussocky grass on the last drop.
+-}
+meadowPathKnots : List BlueprintKnot
+meadowPathKnots =
+    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 3.6, surface = GrassPath, feature = Nothing }
+    , { sFrac = 0.12, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.11, halfWidth = 3.4, surface = GrassPath, feature = Nothing }
+    , { sFrac = 0.27, xOffset = -18.0, yDropFrac = 0.25, zProgress = 0.26, halfWidth = 3.2, surface = GrassPath, feature = Nothing }
+    , { sFrac = 0.42, xOffset = 10.0, yDropFrac = 0.43, zProgress = 0.41, halfWidth = 3.2, surface = GrassPath, feature = Just (LaunchRamp { lengthM = 8.0, lipHeightM = 0.5 }) }
+    , { sFrac = 0.58, xOffset = 26.0, yDropFrac = 0.6, zProgress = 0.56, halfWidth = 3.2, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.74, xOffset = 6.0, yDropFrac = 0.79, zProgress = 0.71, halfWidth = 3.2, surface = GrassPath, feature = Just (RoughWash { amplitudeM = 0.07, wavelengthM = 3.0 }) }
+    , { sFrac = 0.89, xOffset = -12.0, yDropFrac = 0.94, zProgress = 0.86, halfWidth = 3.5, surface = GrassPath, feature = Nothing }
+    , { sFrac = 1.0, xOffset = -10.0, yDropFrac = 1.0, zProgress = 0.96, halfWidth = 4.0, surface = GrassPath, feature = Nothing }
     ]
 
 
@@ -764,13 +799,13 @@ normalizeXZ v =
 -- ── Feature Zones, Checkpoints & Obstacles ────────────────────────────────────
 
 
-extractFeatureZones : Float -> List ControlPoint -> ( List RampZone, List WashZone, List ( Float, Float, Int ) )
+extractFeatureZones : Float -> List ControlPoint -> ( List RampZone, List WashZone )
 extractFeatureZones totalLen cps =
     let
         count =
             max 1 (List.length cps - 1)
 
-        process i cp ( rampsAcc, washesAcc, chicanesAcc ) =
+        process i cp ( rampsAcc, washesAcc ) =
             let
                 approxS =
                     totalLen * (toFloat i / toFloat count)
@@ -784,33 +819,25 @@ extractFeatureZones totalLen cps =
                       }
                         :: rampsAcc
                     , washesAcc
-                    , chicanesAcc
                     )
 
                 Just (RoughWash w) ->
                     ( rampsAcc
-                    , { startS = approxS - 28.0
-                      , endS = approxS + 28.0
+                    , { startS = approxS - 16.0
+                      , endS = approxS + 16.0
                       , amplitudeM = w.amplitudeM
                       , wavelengthM = w.wavelengthM
                       }
                         :: washesAcc
-                    , chicanesAcc
                     )
 
-                Just (Chicane c) ->
-                    ( rampsAcc
-                    , washesAcc
-                    , ( approxS, c.sideOffsetM, c.barrierCount ) :: chicanesAcc
-                    )
+                Nothing ->
+                    ( rampsAcc, washesAcc )
 
-                _ ->
-                    ( rampsAcc, washesAcc, chicanesAcc )
-
-        ( rList, wList, cList ) =
-            List.foldl (\( idx, cp ) acc -> process idx cp acc) ( [], [], [] ) (List.indexedMap Tuple.pair cps)
+        ( rList, wList ) =
+            List.foldl (\( idx, cp ) acc -> process idx cp acc) ( [], [] ) (List.indexedMap Tuple.pair cps)
     in
-    ( List.reverse rList, List.reverse wList, List.reverse cList )
+    ( List.reverse rList, List.reverse wList )
 
 
 buildCheckpoints : Array TrackSample -> Float -> List Checkpoint
@@ -847,169 +874,295 @@ buildCheckpoints samples finishS =
         targets
 
 
-generateObstacles :
-    Int
-    -> Array TrackSample
-    -> List RampZone
-    -> List Checkpoint
-    -> List ( Float, Float, Int )
-    -> Float
-    -> List TrackObstacle
-generateObstacles seed samples ramps checkpoints chicaneZones finishS =
+{-| How densely each course is dressed and which scenery kinds it favours.
+-}
+type alias SceneryTheme =
+    { fenceChance : Float
+    , density : Float
+    , weights : List ( ObstacleKind, Float )
+    }
+
+
+sceneryTheme : TrackId -> SceneryTheme
+sceneryTheme trackId =
+    case trackId of
+        FarmLane ->
+            { fenceChance = 0.06
+            , density = 0.2
+            , weights =
+                [ ( LeafyTree, 22 ), ( Bush, 18 ), ( HayBale, 18 ), ( Rock, 8 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ) ]
+            }
+
+        ForestTrail ->
+            { fenceChance = 0.015
+            , density = 0.34
+            , weights =
+                [ ( PineTree, 40 ), ( LeafyTree, 18 ), ( Bush, 14 ), ( Rock, 14 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ) ]
+            }
+
+        MeadowPath ->
+            { fenceChance = 0.04
+            , density = 0.17
+            , weights =
+                [ ( Bush, 24 ), ( LeafyTree, 16 ), ( Rock, 16 ), ( HayBale, 14 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ) ]
+            }
+
+
+pickWeighted : List ( ObstacleKind, Float ) -> Float -> ObstacleKind
+pickWeighted weights roll =
     let
-        rng0 =
-            Random.initialSeed (seed * 3571 + 91)
+        total =
+            List.sum (List.map Tuple.second weights)
 
-        totalS =
-            Array.get (Array.length samples - 1) samples
-                |> Maybe.map .s
-                |> Maybe.withDefault finishS
+        target =
+            roll * total
 
-        sampleAtStep sVal =
-            Array.get (clamp 0 (Array.length samples - 1) (floor (sVal / 2.0))) samples
+        go remaining acc =
+            case remaining of
+                [] ->
+                    Bush
 
-        nearCheckpoint sVal =
-            List.any (\cp -> abs (cp.s - sVal) < 16.0) checkpoints
+                [ ( k, _ ) ] ->
+                    k
 
-        nearRamp sVal =
-            List.any (\rp -> sVal >= rp.startS - 6.0 && sVal <= rp.endS + 14.0) ramps
-
-        stepSList =
-            List.range 6 (floor ((totalS - 20.0) / 9.0))
-                |> List.map (\k -> toFloat k * 9.0)
-
-        ( roadsideObs, rngAfterRoad, nextId0 ) =
-            List.foldl
-                (\sVal ( acc, rng, obsId ) ->
-                    if sVal < 58.0 || sVal > finishS - 18.0 || nearCheckpoint sVal then
-                        ( acc, rng, obsId )
+                ( k, w ) :: rest ->
+                    if target < acc + w then
+                        k
 
                     else
-                        case sampleAtStep sVal of
-                            Nothing ->
-                                ( acc, rng, obsId )
-
-                            Just smp ->
-                                let
-                                    ( roll, rng1 ) =
-                                        Random.step (Random.float 0.0 1.0) rng
-
-                                    ( sideSignFloat, rng2 ) =
-                                        Random.step (Random.uniform -1.0 [ 1.0 ]) rng1
-
-                                    ( extraOffset, rng3 ) =
-                                        Random.step (Random.float 3.4 13.5) rng2
-
-                                    ( kindRoll, rng4 ) =
-                                        Random.step (Random.float 0.0 1.0) rng3
-
-                                    ( sizeScale, rng5 ) =
-                                        Random.step (Random.float 0.85 1.35) rng4
-                                in
-                                if roll < 0.25 then
-                                    ( acc, rng5, obsId )
-
-                                else
-                                    let
-                                        lateralD =
-                                            sideSignFloat * (smp.halfWidth + extraOffset)
-
-                                        rightFlat =
-                                            normalizeXZ smp.right
-
-                                        posXZ =
-                                            Vec3.add smp.center (Vec3.scale lateralD rightFlat)
-
-                                        -- Road verge/mountain height estimate for clean grounding
-                                        groundY =
-                                            Vec3.getY smp.center + lateralD * tan smp.bankingRad + max 0.0 (extraOffset - 3.5) * 0.28
-
-                                        ( kind, rad, ht ) =
-                                            if kindRoll < 0.62 then
-                                                ( PineTree, 0.72 * sizeScale, 5.2 * sizeScale )
-
-                                            else if kindRoll < 0.88 then
-                                                ( Boulder, 0.95 * sizeScale, 1.45 * sizeScale )
-
-                                            else
-                                                ( BarrierPost, 0.45, 1.25 )
-
-                                        obs =
-                                            { id = obsId
-                                            , kind = kind
-                                            , s = smp.s
-                                            , position = vec3 (Vec3.getX posXZ) groundY (Vec3.getZ posXZ)
-                                            , radiusM = rad
-                                            , heightM = ht
-                                            }
-                                    in
-                                    ( obs :: acc, rng5, obsId + 1 )
-                )
-                ( [], rng0, 1 )
-                stepSList
-
-        ( chicaneObs, _ ) =
-            List.foldl
-                (\( centerS, offsetM, count ) ( acc, oid ) ->
-                    let
-                        indices =
-                            List.range 0 (max 1 count - 1)
-
-                        created =
-                            List.filterMap
-                                (\idx ->
-                                    let
-                                        gateS =
-                                            centerS + (toFloat idx - toFloat (count - 1) * 0.5) * 14.0
-                                    in
-                                    if nearRamp gateS || gateS < 65.0 || gateS > finishS - 25.0 then
-                                        Nothing
-
-                                    else
-                                        sampleAtStep gateS
-                                            |> Maybe.map
-                                                (\smp ->
-                                                    let
-                                                        side =
-                                                            if modBy 2 idx == 0 then
-                                                                1.0
-
-                                                            else
-                                                                -1.0
-
-                                                        d =
-                                                            clamp -(smp.halfWidth * 0.52) (smp.halfWidth * 0.52) (side * offsetM)
-
-                                                        rightFlat =
-                                                            normalizeXZ smp.right
-
-                                                        posXZ =
-                                                            Vec3.add smp.center (Vec3.scale d rightFlat)
-
-                                                        y =
-                                                            Vec3.getY smp.center + d * tan smp.bankingRad
-                                                    in
-                                                    { id = oid + idx
-                                                    , kind = ChicaneBlock
-                                                    , s = smp.s
-                                                    , position = vec3 (Vec3.getX posXZ) y (Vec3.getZ posXZ)
-                                                    , radiusM = 0.85
-                                                    , heightM = 1.05
-                                                    }
-                                                )
-                                )
-                                indices
-                    in
-                    ( created ++ acc, oid + max 1 count + 1 )
-                )
-                ( [], nextId0 + 100 )
-                chicaneZones
-
-        _ =
-            rngAfterRoad
+                        go rest (acc + w)
     in
-    List.reverse roadsideObs
-        ++ List.reverse chicaneObs
+    go weights 0.0
+
+
+{-| Lateral distance beyond the road edge, collision radius and height for one scenery kind.
+`offRoll` and `sizeRoll` are uniform in [0, 1].
+-}
+scenerySpec : ObstacleKind -> Float -> Float -> { offsetM : Float, radiusM : Float, heightM : Float }
+scenerySpec kind offRoll sizeRoll =
+    case kind of
+        LeafyTree ->
+            { offsetM = 2.6 + offRoll * 7.0, radiusM = 0.7, heightM = 4.0 + 1.6 * sizeRoll }
+
+        PineTree ->
+            { offsetM = 2.4 + offRoll * 8.0, radiusM = 0.65, heightM = 5.0 + 2.0 * sizeRoll }
+
+        Bush ->
+            { offsetM = 1.7 + offRoll * 2.2, radiusM = 0.8, heightM = 0.9 }
+
+        Rock ->
+            { offsetM = 1.9 + offRoll * 4.0, radiusM = 0.7 + 0.35 * sizeRoll, heightM = 0.9 + 0.4 * sizeRoll }
+
+        Signpost ->
+            { offsetM = 1.3 + offRoll * 0.6, radiusM = 0.35, heightM = 1.9 }
+
+        HayBale ->
+            { offsetM = 1.9 + offRoll * 3.0
+            , radiusM = 0.8
+            , heightM =
+                if sizeRoll > 0.55 then
+                    1.7
+
+                else
+                    0.85
+            }
+
+        FenceSection ->
+            { offsetM = 1.6, radiusM = 1.2, heightM = 1.0 }
+
+        Cottage ->
+            { offsetM = 10.0 + offRoll * 6.0, radiusM = 2.8, heightM = 4.6 }
+
+        Barn ->
+            { offsetM = 11.0 + offRoll * 6.0, radiusM = 3.3, heightM = 5.6 }
+
+
+type alias SceneryCursor =
+    { acc : List TrackObstacle
+    , rng : Random.Seed
+    , nextId : Int
+    , fenceLeft : Int
+    , fenceRight : Int
+    }
+
+
+{-| Dress both road edges with brick-built scenery every 3 m of arc length.
+
+Fences come in short runs parallel to the road; every other piece is picked from
+the course theme. Pieces never overlap each other or the roadbed (checked against
+the real nearest-road projection so bends cannot pull the road into them), and
+the start pad and checkpoint arches stay clear.
+
+-}
+generateScenery : GeneratedTrack -> List TrackObstacle
+generateScenery track =
+    let
+        theme =
+            sceneryTheme track.config.id
+
+        stepM =
+            3.0
+
+        startS =
+            24.0
+
+        endS =
+            track.finishS - 10.0
+
+        positions =
+            List.range 0 (max 0 (floor ((endS - startS) / stepM)))
+                |> List.map (\k -> startS + toFloat k * stepM)
+
+        nearGate sVal =
+            List.any (\cp -> abs (cp.s - sVal) < 7.0) track.checkpoints
+
+        tryPlace kind side sVal offRoll sizeRoll yawRoll cur =
+            let
+                smp =
+                    splineSampleAtS track sVal
+
+                spec =
+                    scenerySpec kind offRoll sizeRoll
+
+                rightFlat =
+                    normalizeXZ smp.right
+
+                lateralD =
+                    side * (smp.halfWidth + spec.offsetM)
+
+                posXZ =
+                    Vec3.add smp.center (Vec3.scale lateralD rightFlat)
+
+                q =
+                    sampleAtHinted smp.s track (Vec3.getX posXZ) (Vec3.getZ posXZ)
+
+                heading =
+                    atan2 (Vec3.getX smp.tangent) (Vec3.getZ smp.tangent)
+
+                yaw =
+                    case kind of
+                        FenceSection ->
+                            heading
+
+                        Signpost ->
+                            heading + (yawRoll - 0.5) * 0.3
+
+                        Cottage ->
+                            heading + (yawRoll - 0.5) * 0.4
+
+                        Barn ->
+                            heading + (yawRoll - 0.5) * 0.4
+
+                        _ ->
+                            yawRoll * 2.0 * pi
+
+                clearOfRoad =
+                    abs q.roadOffsetM - spec.radiusM >= q.halfWidthM + 0.3
+
+                clearOfOthers =
+                    List.take 12 cur.acc
+                        |> List.all
+                            (\o ->
+                                let
+                                    dx =
+                                        Vec3.getX o.position - Vec3.getX posXZ
+
+                                    dz =
+                                        Vec3.getZ o.position - Vec3.getZ posXZ
+
+                                    minGap =
+                                        if kind == FenceSection && o.kind == FenceSection then
+                                            0.0
+
+                                        else
+                                            o.radiusM + spec.radiusM + 0.3
+                                in
+                                dx * dx + dz * dz >= minGap * minGap
+                            )
+            in
+            if clearOfRoad && clearOfOthers then
+                Just
+                    { id = cur.nextId
+                    , kind = kind
+                    , s = smp.s
+                    , position = vec3 (Vec3.getX posXZ) (q.height - 0.12) (Vec3.getZ posXZ)
+                    , radiusM = spec.radiusM
+                    , heightM = spec.heightM
+                    , yaw = yaw
+                    }
+
+            else
+                Nothing
+
+        withFence side n cur =
+            if side < 0 then
+                { cur | fenceLeft = n }
+
+            else
+                { cur | fenceRight = n }
+
+        placeSide side sVal cur =
+            let
+                fenceRemaining =
+                    if side < 0 then
+                        cur.fenceLeft
+
+                    else
+                        cur.fenceRight
+
+                ( rolls, nextRng ) =
+                    Random.step (Random.list 5 (Random.float 0.0 1.0)) cur.rng
+
+                roll i =
+                    List.drop i rolls |> List.head |> Maybe.withDefault 0.5
+
+                advanced =
+                    { cur | rng = nextRng }
+
+                push maybeObs fenceLeftAfter c =
+                    case maybeObs of
+                        Just obs ->
+                            withFence side fenceLeftAfter { c | acc = obs :: c.acc, nextId = c.nextId + 1 }
+
+                        Nothing ->
+                            withFence side 0 c
+            in
+            if fenceRemaining > 0 then
+                push (tryPlace FenceSection side sVal 0.0 0.0 0.0 advanced) (fenceRemaining - 1) advanced
+
+            else if roll 0 < theme.fenceChance then
+                push (tryPlace FenceSection side sVal 0.0 0.0 0.0 advanced) (2 + floor (roll 1 * 4.0)) advanced
+
+            else if roll 0 < theme.fenceChance + theme.density then
+                let
+                    kind =
+                        pickWeighted theme.weights (roll 1)
+                in
+                push (tryPlace kind side sVal (roll 2) (roll 3) (roll 4) advanced) 0 advanced
+
+            else
+                advanced
+
+        step sVal cur =
+            if nearGate sVal then
+                { cur | fenceLeft = 0, fenceRight = 0 }
+
+            else
+                cur
+                    |> placeSide -1.0 sVal
+                    |> placeSide 1.0 sVal
+
+        final =
+            List.foldl step
+                { acc = []
+                , rng = Random.initialSeed (track.config.seed * 3571 + 91)
+                , nextId = 1
+                , fenceLeft = 0
+                , fenceRight = 0
+                }
+                positions
+    in
+    List.reverse final.acc
         |> List.sortBy .s
 
 
@@ -1068,7 +1221,7 @@ findClosestSplineProjection hintS track x z =
         , right = vec3 -1 0 0
         , halfWidth = track.config.defaultHalfWidthM
         , bankingRad = 0.0
-        , surface = AsphaltTrack
+        , surface = DirtRoad
         , signedD = 0.0
         }
 
@@ -1215,7 +1368,7 @@ scanRange samples maxSegIdx lo hi x z =
                 , right = vec3 -1 0 0
                 , halfWidth = 6.0
                 , bankingRad = 0.0
-                , surface = AsphaltTrack
+                , surface = DirtRoad
                 , signedD = 0.0
                 }
             }
@@ -1282,7 +1435,7 @@ heightWithProjection track proj x z =
             proj.halfWidth
 
         shoulderOuter =
-            hw + 3.5
+            hw + vergeWidthM
     in
     if absD <= hw then
         pureRoadY
@@ -1302,10 +1455,10 @@ heightWithProjection track proj x z =
                 -0.18 * smoothstep hw shoulderOuter absD
 
             noiseVal =
-                mountainRidgeHeight track.config.seed x z
+                fieldUndulation track.config.seed x z
 
             valleyRise =
-                max 0.0 (absD - shoulderOuter) * 0.34
+                max 0.0 (absD - shoulderOuter) * 0.12
 
             mountainTarget =
                 edgeY + valleyRise + noiseVal * smoothstep hw (hw + 26.0) absD

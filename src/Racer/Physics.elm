@@ -12,7 +12,7 @@ module Racer.Physics exposing
 
 {-| Deterministic 60 Hz downhill soapbox physics engine.
 
-Integrates gravity projected onto continuous 3D mountain terrain, 4-wheel suspension
+Integrates gravity projected onto continuous 3D countryside terrain, 4-wheel suspension
 loads and pitch/roll chassis tilt, surface-dependent rolling resistance and lateral
 tire slip, articulated steering vs fixed-axle weight-shift authority, aerodynamic drag
 with aero tuck, obstacle impulses, structural brick pop-off events, and checkpoint tracking.
@@ -378,7 +378,7 @@ stepFixed dt track spec input state =
             else
                 0.0
 
-        -- Gravity along mountain surface normal
+        -- Gravity along the terrain surface normal
         normalUpDot =
             clamp 0.25 1.0 (Vec3.getY centerTerrain.normal)
 
@@ -838,39 +838,55 @@ rightVector yaw =
     vec3 -(cos yaw) 0.0 (sin yaw)
 
 
-{-| Lateral tire grip multiplier for each terrain surface type.
+{-| Lateral tire grip multiplier for each unpaved surface type.
+
+Loose countryside surfaces grip less than a paved road would, so steep descents
+slide and feel a bit out of control.
+
 -}
 surfaceGripMultiplier : SurfaceType -> Float
 surfaceGripMultiplier surface =
     case surface of
-        AsphaltTrack ->
-            1.15
+        DirtRoad ->
+            0.95
 
-        CobbleStone ->
-            0.92
+        ForestTrack ->
+            0.88
 
-        GravelShoulder ->
-            0.7
+        GravelRoad ->
+            0.78
 
-        AlpineGrass ->
-            0.52
+        GrassPath ->
+            0.72
+
+        RoughVerge ->
+            0.6
+
+        MeadowGrass ->
+            0.5
 
 
-{-| Rolling resistance coefficient for each terrain surface type.
+{-| Rolling resistance coefficient for each unpaved surface type.
 -}
 surfaceRollingResist : SurfaceType -> Float
 surfaceRollingResist surface =
     case surface of
-        AsphaltTrack ->
-            0.015
+        DirtRoad ->
+            0.022
 
-        CobbleStone ->
-            0.028
+        ForestTrack ->
+            0.045
 
-        GravelShoulder ->
-            0.065
+        GravelRoad ->
+            0.04
 
-        AlpineGrass ->
+        GrassPath ->
+            0.055
+
+        RoughVerge ->
+            0.09
+
+        MeadowGrass ->
             0.14
 
 

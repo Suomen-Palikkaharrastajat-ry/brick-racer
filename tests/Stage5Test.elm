@@ -36,7 +36,7 @@ suite =
                 |> .spec
 
         track =
-            Track.generate (Track.trackConfigFor PineRidge 1)
+            Track.generate (Track.trackConfigFor FarmLane 1)
 
         basePhysics =
             Physics.initPhysics track vehicleSpec
@@ -61,28 +61,28 @@ suite =
                     Expect.equal
                         ( False, False, False )
                         ( mutedTel.active, pausedTel.active, idleTel.active )
-            , test "gravel increases ground rumble over asphalt and airborne zeros rumble" <|
+            , test "gravel increases ground rumble over packed dirt and airborne zeros rumble" <|
                 \_ ->
                     let
                         asphalt =
                             Audio.deriveAudioState True
                                 False
                                 False
-                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = AsphaltTrack, groundedWheels = 4 }
+                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = DirtRoad, groundedWheels = 4 }
                                 vehicleSpec
 
                         gravel =
                             Audio.deriveAudioState True
                                 False
                                 False
-                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = GravelShoulder, groundedWheels = 4 }
+                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = GravelRoad, groundedWheels = 4 }
                                 vehicleSpec
 
                         airborne =
                             Audio.deriveAudioState True
                                 False
                                 False
-                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = AsphaltTrack, groundedWheels = 0 }
+                                { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = DirtRoad, groundedWheels = 0 }
                                 vehicleSpec
                     in
                     Expect.all
@@ -118,7 +118,7 @@ suite =
                 \_ ->
                     let
                         entry1 =
-                            { trackId = PineRidge
+                            { trackId = FarmLane
                             , vehicleName = "Kart A"
                             , timeSeconds = 58.4
                             , topSpeedKmh = 92.0
@@ -128,7 +128,7 @@ suite =
                             }
 
                         entry2 =
-                            { trackId = PineRidge
+                            { trackId = FarmLane
                             , vehicleName = "Kart B"
                             , timeSeconds = 51.2
                             , topSpeedKmh = 104.0
@@ -153,14 +153,14 @@ suite =
                             Leaderboard.decodeLeaderboard (Leaderboard.encodeLeaderboard lb3)
 
                         bestAfter =
-                            Leaderboard.bestForTrack PineRidge decoded
+                            Leaderboard.bestForTrack FarmLane decoded
                     in
                     Expect.all
                         [ \_ -> Expect.equal True best1
                         , \_ -> Expect.equal True best2
                         , \_ -> Expect.equal False best3
                         , \_ -> Expect.equal (Just "Kart B") (Maybe.map .vehicleName bestAfter)
-                        , \_ -> Expect.equal 3 (List.length (Leaderboard.entriesForTrack PineRidge decoded))
+                        , \_ -> Expect.equal 3 (List.length (Leaderboard.entriesForTrack FarmLane decoded))
                         ]
                         ()
             ]

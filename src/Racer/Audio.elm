@@ -65,16 +65,22 @@ deriveAudioState isRacing isPaused isMuted physics spec =
 
             surfaceRumbleMult =
                 case physics.surfaceUnderCar of
-                    AsphaltTrack ->
-                        0.45
+                    DirtRoad ->
+                        0.7
 
-                    CobbleStone ->
-                        0.85
+                    ForestTrack ->
+                        0.9
 
-                    GravelShoulder ->
+                    GravelRoad ->
                         1.15
 
-                    AlpineGrass ->
+                    GrassPath ->
+                        0.75
+
+                    RoughVerge ->
+                        1.0
+
+                    MeadowGrass ->
                         0.95
 
             hasRubber =
@@ -95,17 +101,23 @@ deriveAudioState isRacing isPaused isMuted physics spec =
 
             clatterBase =
                 case physics.surfaceUnderCar of
-                    CobbleStone ->
-                        0.28
+                    DirtRoad ->
+                        0.14
 
-                    GravelShoulder ->
+                    ForestTrack ->
+                        0.24
+
+                    GravelRoad ->
                         0.34
 
-                    AlpineGrass ->
-                        0.16
+                    GrassPath ->
+                        0.12
 
-                    AsphaltTrack ->
-                        0.06
+                    RoughVerge ->
+                        0.22
+
+                    MeadowGrass ->
+                        0.16
 
             clatterGain =
                 clamp 0.0 0.4 (groundedFactor * clamp 0.0 1.0 (speed / 16.0) * clatterBase * rimPenalty)

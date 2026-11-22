@@ -22,7 +22,7 @@ import Racer.Analyze exposing (CarMeshBundle)
 import Racer.I18n as RI18n
 import Racer.Render as Render
 import Racer.TerrainShader exposing (TerrainVertex)
-import Racer.Types exposing (RaceMode(..), TrackId(..), ValidationIssue, ValidationSeverity(..), VehicleSpec)
+import Racer.Types exposing (RaceMode(..), TrackId, ValidationIssue, allTrackIds, ValidationSeverity(..), VehicleSpec)
 import Render.Camera exposing (Camera)
 import Tailwind as Tw
 import Tailwind.Breakpoints as Bp
@@ -193,7 +193,7 @@ view data actions =
 
             -- Quick course switcher
             , div [ Tw.classes [ Tw.flex, Tw.gap Th.s1_dot_5, Tw.flex_wrap ] ]
-                (List.map (trackChip lang data.selectedTrack actions.onSelectTrack) [ PineRidge, QuarrySwitchbacks, AlpineGlacier ])
+                (List.map (trackChip lang data.selectedTrack actions.onSelectTrack) allTrackIds)
 
             -- Specs Grid
             , viewSpecsGrid data

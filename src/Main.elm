@@ -3,7 +3,7 @@ module Main exposing (Flags, Model, Msg, main)
 {-| Top-level Elm Architecture entry point for Brick Racer (`brick-racer`).
 
 Wires URL/file model ingestion (`Racer.Ingest`), mechanical inspection & mesh
-splitting (`Racer.Analyze`), procedural mountain courses (`Racer.Track`,
+splitting (`Racer.Analyze`), procedural countryside courses (`Racer.Track`,
 `Racer.TerrainMesh`), 60 Hz downhill soapbox physics (`Racer.Physics`),
 WebGL rendering (`Racer.Render`), Web Audio telemetry (`Racer.Audio`),
 local leaderboards (`Racer.Leaderboard`), and responsive menus/HUD (`Pages.*`,
@@ -335,7 +335,7 @@ init flags =
             Ingest.parseHash flags.initialHash
 
         initTrackId =
-            Maybe.withDefault PineRidge parsedInit.trackId
+            Maybe.withDefault FarmLane parsedInit.trackId
 
         initSeed =
             Maybe.withDefault 1 parsedInit.seed

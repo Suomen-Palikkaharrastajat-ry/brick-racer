@@ -4,13 +4,14 @@ module Racer.TerrainShader exposing
     , buildShadowQuadMesh
     , buildUnitCubeMesh
     , debrisEntity
+    , groundEntity
     , paletteForTrack
     , shadowEntity
     , skyEntity
     , terrainEntity
     )
 
-{-| Custom WebGL vertex/fragment shaders and sky dome for mountain terrain,
+{-| Custom WebGL vertex/fragment shaders and sky dome for countryside terrain,
 track markings, low-poly boulders/pines, car drop-shadow, and brick debris.
 
 Designed to match `Render.Shader`'s crisp daylight aesthetic while adding
@@ -62,33 +63,33 @@ type alias TrackPalette =
     }
 
 
-{-| Select sky, fog, and sun lighting palette matching each mountain course.
+{-| Select sky, fog, and sun lighting palette for each countryside course.
 -}
 paletteForTrack : TrackId -> TrackPalette
 paletteForTrack trackId =
     case trackId of
-        PineRidge ->
-            { zenithColor = vec3 0.24 0.56 0.88
-            , horizonColor = vec3 0.78 0.89 0.96
-            , fogColor = vec3 0.78 0.89 0.96
+        FarmLane ->
+            { zenithColor = vec3 0.26 0.55 0.9
+            , horizonColor = vec3 0.83 0.9 0.94
+            , fogColor = vec3 0.83 0.9 0.94
             , sunDir = Vec3.normalize (vec3 0.45 0.9 0.35)
-            , ambientGround = vec3 0.28 0.33 0.24
+            , ambientGround = vec3 0.32 0.38 0.22
             }
 
-        QuarrySwitchbacks ->
-            { zenithColor = vec3 0.32 0.52 0.82
-            , horizonColor = vec3 0.89 0.84 0.74
-            , fogColor = vec3 0.89 0.84 0.74
-            , sunDir = Vec3.normalize (vec3 0.55 0.82 0.28)
-            , ambientGround = vec3 0.36 0.32 0.27
+        ForestTrail ->
+            { zenithColor = vec3 0.3 0.52 0.78
+            , horizonColor = vec3 0.76 0.85 0.8
+            , fogColor = vec3 0.72 0.82 0.76
+            , sunDir = Vec3.normalize (vec3 -0.4 0.86 0.3)
+            , ambientGround = vec3 0.24 0.32 0.2
             }
 
-        AlpineGlacier ->
-            { zenithColor = vec3 0.18 0.43 0.78
-            , horizonColor = vec3 0.82 0.91 0.98
-            , fogColor = vec3 0.82 0.91 0.98
-            , sunDir = Vec3.normalize (vec3 -0.35 0.88 0.42)
-            , ambientGround = vec3 0.36 0.42 0.5
+        MeadowPath ->
+            { zenithColor = vec3 0.22 0.5 0.88
+            , horizonColor = vec3 0.9 0.92 0.86
+            , fogColor = vec3 0.9 0.92 0.86
+            , sunDir = Vec3.normalize (vec3 0.3 0.92 0.45)
+            , ambientGround = vec3 0.38 0.42 0.24
             }
 
 
@@ -153,6 +154,41 @@ terrainEntity modelMat mesh trackId camera width height =
         { u_model = modelMat
         , u_viewProj = viewProj
         , u_eyePos = eye
+        , u_sunDir = pal.sunDir
+        , u_fogColor = pal.fogColor
+        , u_skyAmbient = pal.horizonColor
+        , u_groundAmbient = pal.ambientGround
+        }
+
+
+{-| Render a chunk of unpaved countryside ground: matte, with soft procedural
+grain (dirt, gravel speckle, grass) instead of the studded plastic finish used
+for brick-built scenery.
+-}
+groundEntity : WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> WebGL.Entity
+groundEntity mesh trackId camera width height =
+    let
+        aspect =
+            toFloat (max 1 width) / toFloat (max 1 height)
+
+        viewProj =
+            Mat4.mul
+                (Camera.projectionMatrix aspect (Camera.nearPlane camera) (Camera.farPlane camera))
+                (Camera.viewMatrix camera)
+
+        pal =
+            paletteForTrack trackId
+    in
+    WebGL.entityWith
+        [ DepthTest.default
+        , WebGL.Settings.cullFace WebGL.Settings.back
+        ]
+        terrainVertexShader
+        groundFragmentShader
+        mesh
+        { u_model = Mat4.identity
+        , u_viewProj = viewProj
+        , u_eyePos = Camera.position camera
         , u_sunDir = pal.sunDir
         , u_fogColor = pal.fogColor
         , u_skyAmbient = pal.horizonColor
@@ -558,7 +594,7 @@ terrainFragmentShader =
                 }
             }
 
-            // 2. Procedural LEGO Stud Grid (Cylindrical Highlights / Normals)
+            // 2. Procedural Stud Grid (Cylindrical Highlights / Normals)
             if (isFlatTop && studFade > 0.0) {
                 float studPitch = 0.125;
                 vec2 uv = v_worldPos.xz / studPitch;
@@ -673,5 +709,72 @@ shadowFragmentShader =
         void main() {
             float softness = 1.0 - smoothstep(0.15, 1.0, v_edge);
             gl_FragColor = vec4(0.05, 0.06, 0.08, softness * u_alpha);
+        }
+    |]
+
+
+groundFragmentShader :
+    WebGL.Shader
+        {}
+        { u
+            | u_sunDir : Vec3
+            , u_fogColor : Vec3
+            , u_skyAmbient : Vec3
+            , u_groundAmbient : Vec3
+            , u_eyePos : Vec3
+        }
+        { v_normal : Vec3, v_color : Vec3, v_worldPos : Vec3 }
+groundFragmentShader =
+    [glsl|
+        precision mediump float;
+
+        uniform vec3 u_sunDir;
+        uniform vec3 u_fogColor;
+        uniform vec3 u_skyAmbient;
+        uniform vec3 u_groundAmbient;
+        uniform vec3 u_eyePos;
+
+        varying vec3 v_normal;
+        varying vec3 v_color;
+        varying vec3 v_worldPos;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float valueNoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                       mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+
+        void main() {
+            float dist = length(v_worldPos - u_eyePos);
+            vec3 n = normalize(v_normal);
+            vec3 col = v_color;
+
+            // Large soft patches (worn ground, damp spots) and fine grain up close.
+            float patches = valueNoise(v_worldPos.xz * 0.35);
+            col *= 0.9 + patches * 0.2;
+
+            float grainFade = 1.0 - smoothstep(10.0, 45.0, dist);
+            float grain = hash(floor(v_worldPos.xz * 9.0));
+            float greenness = col.g - max(col.r, col.b);
+            // Grass: fine darker blades. Dirt/gravel: light pebbles and dark specks.
+            float speck = greenness > 0.06
+                ? (grain < 0.35 ? -0.08 : 0.02)
+                : (grain > 0.9 ? 0.14 : (grain < 0.12 ? -0.1 : 0.0));
+            col *= 1.0 + speck * grainFade;
+
+            vec3 sun = normalize(u_sunDir);
+            float hemi = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+            vec3 amb = mix(u_groundAmbient, u_skyAmbient, hemi) * 0.44;
+            float diff = max(dot(n, sun), 0.0) * 0.72;
+            vec3 lit = col * (amb + vec3(0.32 + diff));
+
+            float fog = smoothstep(140.0, 620.0, dist);
+            gl_FragColor = vec4(mix(lit, u_fogColor, fog * 0.92), 1.0);
         }
     |]

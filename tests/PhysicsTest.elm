@@ -144,7 +144,7 @@ suite =
                         "#b/HYuxFYAwCETvIJUW1m4RTYzP0hSu5AC6WxxLAu9x8OGuXkQIucRosuaQSl5C2o9NiQnAaA3frD6SWodmQx4CRi_96igiZnJtFOk_I-05hZ7z_QM"
 
                     track =
-                        Track.generate (Track.trackConfigFor PineRidge 42)
+                        Track.generate (Track.trackConfigFor FarmLane 42)
                 in
                 case Ingest.decodeRaceInput Nothing bumpyHash of
                     Ok decoded ->
@@ -273,7 +273,7 @@ suite =
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor PineRidge 7)
+                        Track.generate (Track.trackConfigFor FarmLane 7)
 
                     spec =
                         loadSpec "turntable-kart"
@@ -305,11 +305,12 @@ suite =
 
                     boulder =
                         { id = 1
-                        , kind = Racer.Types.Boulder
+                        , kind = Racer.Types.Rock
                         , s = 20.0
                         , position = vec3 0.0 0.0 20.0
                         , radiusM = 1.2
                         , heightM = 1.8
+                        , yaw = 0.0
                         }
 
                     trackWithBoulder =
@@ -448,7 +449,7 @@ buildFlatTestTrack dyDz totalLen =
             , normal = normal
             , halfWidth = 8.0
             , bankingRad = 0.0
-            , surface = AsphaltTrack
+            , surface = DirtRoad
             }
 
         samples : Array.Array TrackSample
@@ -458,7 +459,7 @@ buildFlatTestTrack dyDz totalLen =
                 |> Array.fromList
 
         cfg =
-            Track.trackConfigFor PineRidge 1
+            Track.trackConfigFor FarmLane 1
     in
     { config = { cfg | lengthM = totalLen, dropM = abs (dyDz * totalLen) }
     , samples = samples

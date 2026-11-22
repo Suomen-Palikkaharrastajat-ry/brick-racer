@@ -26,6 +26,7 @@ module Racer.Types exposing
     , VehicleSpec
     , WashZone
     , WheelSpec
+    , allTrackIds
     , fixedDt
     , lduPerMeter
     , lduToMeters
@@ -92,12 +93,19 @@ vec3MetersToLdu v =
     Vec3.scale lduPerMeter v
 
 
-{-| Available mountain downhill courses.
+{-| Available countryside downhill courses.
 -}
 type TrackId
-    = PineRidge
-    | QuarrySwitchbacks
-    | AlpineGlacier
+    = FarmLane
+    | ForestTrail
+    | MeadowPath
+
+
+{-| Every selectable course, in menu order (easiest first).
+-}
+allTrackIds : List TrackId
+allTrackIds =
+    [ FarmLane, ForestTrail, MeadowPath ]
 
 
 {-| Serialize a `TrackId` for URL hashes and storage.
@@ -105,53 +113,70 @@ type TrackId
 trackIdToString : TrackId -> String
 trackIdToString trackId =
     case trackId of
-        PineRidge ->
-            "pine-ridge"
+        FarmLane ->
+            "farm-lane"
 
-        QuarrySwitchbacks ->
-            "quarry-switchbacks"
+        ForestTrail ->
+            "forest-trail"
 
-        AlpineGlacier ->
-            "alpine-glacier"
+        MeadowPath ->
+            "meadow-path"
 
 
 {-| Parse a `TrackId` from URL query/hash segments.
+
+Ids of the retired long mountain courses still resolve to the countryside course
+that replaced them, so old share links and stored best times keep working.
+
 -}
 trackIdFromString : String -> Maybe TrackId
 trackIdFromString raw =
     case String.toLower (String.trim raw) of
+        "farm-lane" ->
+            Just FarmLane
+
+        "forest-trail" ->
+            Just ForestTrail
+
+        "meadow-path" ->
+            Just MeadowPath
+
         "pine-ridge" ->
-            Just PineRidge
+            Just FarmLane
 
         "quarry-switchbacks" ->
-            Just QuarrySwitchbacks
+            Just ForestTrail
 
         "alpine-glacier" ->
-            Just AlpineGlacier
+            Just MeadowPath
 
         _ ->
             Nothing
 
 
-{-| Surface material beneath a wheel or track segment.
+{-| Unpaved surface beneath a wheel or track segment.
+
+`RoughVerge` is the tufty strip just outside the roadbed and `MeadowGrass` the
+open field beyond it.
+
 -}
 type SurfaceType
-    = AsphaltTrack
-    | CobbleStone
-    | GravelShoulder
-    | AlpineGrass
+    = DirtRoad
+    | GravelRoad
+    | ForestTrack
+    | GrassPath
+    | RoughVerge
+    | MeadowGrass
 
 
 {-| Special track segments placed along spline control points.
 -}
 type SegmentFeature
     = LaunchRamp { lengthM : Float, lipHeightM : Float }
-    | Chicane { sideOffsetM : Float, barrierCount : Int }
     | RoughWash { amplitudeM : Float, wavelengthM : Float }
-    | SpeedGate
 
 
-{-| Control knot along a mountain track spline.
+{-| Control knot along a countryside track spline.
 -}
 type alias ControlPoint =
     { position : Vec3
@@ -199,16 +224,22 @@ type alias Checkpoint =
     }
 
 
-{-| Kind of roadside or trackside obstacle.
+{-| Kind of brick-built roadside scenery. Every kind can be smashed apart.
 -}
 type ObstacleKind
-    = PineTree
-    | Boulder
-    | ChicaneBlock
-    | BarrierPost
+    = LeafyTree
+    | PineTree
+    | Bush
+    | FenceSection
+    | Rock
+    | Signpost
+    | HayBale
+    | Cottage
+    | Barn
 
 
-{-| Solid cylindrical/AABB-approximated track obstacle.
+{-| Cylinder-approximated roadside scenery piece. `yaw` orients fences, signs and
+buildings relative to the road (radians around +Y).
 -}
 type alias TrackObstacle =
     { id : Int
@@ -217,6 +248,7 @@ type alias TrackObstacle =
     , position : Vec3
     , radiusM : Float
     , heightM : Float
+    , yaw : Float
     }
 
 
@@ -240,7 +272,7 @@ type alias WashZone =
     }
 
 
-{-| Complete deterministic generated mountain course.
+{-| Complete deterministic generated countryside course.
 -}
 type alias GeneratedTrack =
     { config : TrackConfig

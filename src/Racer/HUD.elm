@@ -5,7 +5,7 @@ module Racer.HUD exposing
     , viewHudOverlay
     )
 
-{-| Pointer-friendly Tailwind gameplay HUD overlay: timer, checkpoint splits, mountain progress,
+{-| Pointer-friendly Tailwind gameplay HUD overlay: timer, checkpoint splits, course progress,
 speedometer, surface badge, integrity bar, pause & recovery modals, and touch/tilt pads.
 -}
 
@@ -164,7 +164,7 @@ viewTopBar data actions =
                 ]
             ]
 
-        -- Center Mountain Progress
+        -- Center Course Progress
         , div
             [ Tw.classes [ Tw.hidden, Bp.sm [ Tw.flex ], Tw.flex_col, Tw.items_center, Tw.flex_1, Tw.rounded_xl, Tw.px Th.s4, Tw.py Th.s2, Tw.border ]
             , Attr.style "max-width" "26rem"

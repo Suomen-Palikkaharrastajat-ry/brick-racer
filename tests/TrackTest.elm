@@ -1,14 +1,14 @@
 module TrackTest exposing (suite)
 
 {-| Unit tests for `Racer.Track` procedural spline generation, heightmap continuity,
-deterministic seeding, and obstacle clearance.
+deterministic seeding, course length/steepness, and roadside scenery clearance.
 -}
 
 import Array
 import Expect
 import Math.Vector3 as Vec3
 import Racer.Track as Track
-import Racer.Types exposing (ObstacleKind(..), SurfaceType(..), TrackId(..))
+import Racer.Types exposing (SurfaceType(..), TrackId(..), allTrackIds, trackIdFromString, trackIdToString)
 import Test exposing (Test, describe, test)
 
 
@@ -16,15 +16,26 @@ suite : Test
 suite =
     describe "Track generation and spatial queries"
         [ describe "All three track presets"
-            [ verifyCourseMonotonicAndFinite "PineRidge" PineRidge 42
-            , verifyCourseMonotonicAndFinite "QuarrySwitchbacks" QuarrySwitchbacks 77
-            , verifyCourseMonotonicAndFinite "AlpineGlacier" AlpineGlacier 109
+            [ verifyCourseMonotonicAndFinite "FarmLane" FarmLane 42
+            , verifyCourseMonotonicAndFinite "ForestTrail" ForestTrail 77
+            , verifyCourseMonotonicAndFinite "MeadowPath" MeadowPath 109
             ]
+        , describe "Courses are short and steep"
+            (List.map verifyShortAndSteep allTrackIds)
+        , test "Track ids round-trip and retired mountain ids map to countryside courses" <|
+            \_ ->
+                Expect.all
+                    [ \_ -> Expect.equal (List.map Just allTrackIds) (List.map (trackIdToString >> trackIdFromString) allTrackIds)
+                    , \_ -> Expect.equal (Just FarmLane) (trackIdFromString "pine-ridge")
+                    , \_ -> Expect.equal (Just ForestTrail) (trackIdFromString "quarry-switchbacks")
+                    , \_ -> Expect.equal (Just MeadowPath) (trackIdFromString "alpine-glacier")
+                    ]
+                    ()
         , test "Deterministic generation produces identical samples and obstacles for same seed" <|
             \_ ->
                 let
                     cfg =
-                        Track.trackConfigFor PineRidge 1234
+                        Track.trackConfigFor FarmLane 1234
 
                     t1 =
                         Track.generate cfg
@@ -39,11 +50,11 @@ suite =
                     , \_ -> Expect.equal (Array.length t1.samples) (Array.length t2.samples)
                     ]
                     ()
-        , test "Heightfield transitions continuously across roadbed and gravel shoulder" <|
+        , test "Heightfield transitions continuously across the unpaved roadbed and grass verge" <|
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor PineRidge 7)
+                        Track.generate (Track.trackConfigFor FarmLane 7)
 
                     midSample =
                         Track.splineSampleAtS track (track.totalLengthM * 0.45)
@@ -62,18 +73,19 @@ suite =
                 in
                 Expect.all
                     [ \_ -> Expect.within (Expect.Absolute 0.25) qIn.height qOut.height
-                    , \_ -> Expect.notEqual AlpineGrass qIn.surface
-                    , \_ -> Expect.equal GravelShoulder qOut.surface
+                    , \_ -> Expect.notEqual MeadowGrass qIn.surface
+                    , \_ -> Expect.notEqual RoughVerge qIn.surface
+                    , \_ -> Expect.equal RoughVerge qOut.surface
                     ]
                     ()
         , test "sampleAtHinted agrees closely with full-scan sampleAt" <|
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor AlpineGlacier 5)
+                        Track.generate (Track.trackConfigFor MeadowPath 5)
 
                     smp =
-                        Track.splineSampleAtS track 420.0
+                        Track.splineSampleAtS track 220.0
 
                     p =
                         Vec3.add smp.center (Vec3.scale 2.1 smp.right)
@@ -88,7 +100,7 @@ suite =
                         Track.sampleAt track x z
 
                     hintQ =
-                        Track.sampleAtHinted 415.0 track x z
+                        Track.sampleAtHinted 215.0 track x z
                 in
                 Expect.all
                     [ \_ -> Expect.within (Expect.Absolute 0.01) fullQ.height hintQ.height
@@ -96,45 +108,89 @@ suite =
                     , \_ -> Expect.within (Expect.Absolute 0.01) (Vec3.length hintQ.normal) 1.0
                     ]
                     ()
-        , test "Roadside trees/boulders maintain safe clearance from start pad and asphalt lane" <|
+        , describe "Roadside scenery stays off the roadbed and clear of the start"
+            (List.map verifySceneryClearance allTrackIds)
+        , test "removeObstacles drops smashed pieces from the list and the collision buckets" <|
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor QuarrySwitchbacks 99)
+                        Track.generate (Track.trackConfigFor FarmLane 3)
 
-                    roadsideObstacles =
-                        List.filter (\o -> o.kind /= ChicaneBlock) track.obstacles
+                    victims =
+                        List.take 3 track.obstacles |> List.map .id
 
-                    badStart =
-                        List.filter (\o -> o.s < 55.0) roadsideObstacles
+                    after =
+                        Track.removeObstacles victims track
 
-                    badRoadbed =
-                        List.filter
-                            (\o ->
-                                let
-                                    smp =
-                                        Track.splineSampleAtS track o.s
-
-                                    dx =
-                                        Vec3.getX o.position - Vec3.getX smp.center
-
-                                    dz =
-                                        Vec3.getZ o.position - Vec3.getZ smp.center
-
-                                    latDist =
-                                        sqrt (dx * dx + dz * dz)
-                                in
-                                latDist < smp.halfWidth + 2.5
-                            )
-                            roadsideObstacles
+                    bucketIds =
+                        Array.toList after.obstacleBuckets |> List.concat |> List.map .id
                 in
                 Expect.all
-                    [ \_ -> Expect.equal [] badStart
-                    , \_ -> Expect.equal [] badRoadbed
-                    , \_ -> Expect.greaterThan 15 (List.length track.obstacles)
+                    [ \_ -> Expect.equal (List.length track.obstacles - 3) (List.length after.obstacles)
+                    , \_ -> Expect.equal False (List.any (\i -> List.member i victims) bucketIds)
+                    , \_ -> Expect.equal (List.length after.obstacles) (List.length bucketIds)
                     ]
                     ()
         ]
+
+
+verifyShortAndSteep : TrackId -> Test
+verifyShortAndSteep id =
+    test (trackIdToString id ++ " is 0.35-0.65 km long with at least 25% average grade") <|
+        \_ ->
+            let
+                track =
+                    Track.generate (Track.trackConfigFor id 11)
+            in
+            Expect.all
+                [ \_ -> Expect.atLeast 350.0 track.totalLengthM
+                , \_ -> Expect.atMost 650.0 track.totalLengthM
+                , \_ -> Expect.atLeast 0.25 (track.totalDropM / track.totalLengthM)
+                ]
+                ()
+
+
+verifySceneryClearance : TrackId -> Test
+verifySceneryClearance id =
+    test (trackIdToString id ++ " scenery is varied, off the road and clear of the start pad") <|
+        \_ ->
+            let
+                track =
+                    Track.generate (Track.trackConfigFor id 99)
+
+                badStart =
+                    List.filter (\o -> o.s < 20.0) track.obstacles
+
+                badRoadbed =
+                    List.filter
+                        (\o ->
+                            let
+                                q =
+                                    Track.sampleAt track (Vec3.getX o.position) (Vec3.getZ o.position)
+                            in
+                            abs q.roadOffsetM - o.radiusM < q.halfWidthM + 0.25
+                        )
+                        track.obstacles
+
+                kinds =
+                    List.foldl
+                        (\o acc ->
+                            if List.member o.kind acc then
+                                acc
+
+                            else
+                                o.kind :: acc
+                        )
+                        []
+                        track.obstacles
+            in
+            Expect.all
+                [ \_ -> Expect.equal [] badStart
+                , \_ -> Expect.equal [] badRoadbed
+                , \_ -> Expect.greaterThan 25 (List.length track.obstacles)
+                , \_ -> Expect.atLeast 5 (List.length kinds)
+                ]
+                ()
 
 
 verifyCourseMonotonicAndFinite : String -> TrackId -> Int -> Test

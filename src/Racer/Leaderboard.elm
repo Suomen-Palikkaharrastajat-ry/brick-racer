@@ -169,7 +169,7 @@ entryDecoder : Decoder LeaderboardEntry
 entryDecoder =
     Decode.map7 LeaderboardEntry
         (Decode.field "trackId" Decode.string
-            |> Decode.map (\s -> Maybe.withDefault PineRidge (trackIdFromString s))
+            |> Decode.map (\s -> Maybe.withDefault FarmLane (trackIdFromString s))
         )
         (Decode.field "vehicleName" Decode.string)
         (Decode.field "timeSeconds" Decode.float)

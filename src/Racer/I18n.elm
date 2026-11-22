@@ -8,6 +8,7 @@ module Racer.I18n exposing
     , changeCarLabel
     , checkpointBanner
     , controlsSummary
+    , coursesHeading
     , crashReasonText
     , defaultPresetSectionTitle
     , dropHintLabel
@@ -80,10 +81,22 @@ menuSubtitle : Language -> String
 menuSubtitle lang =
     case lang of
         Fi ->
-            "Liitä linkki Brick Studiosta tai Brick Playsta ja ohjaa rakennelmasi alas vuoristorataa painovoiman avulla."
+            "Liitä linkki Brick Studiosta tai Brick Playsta ja ohjaa rakennelmasi alas jyrkkiä maalaisteitä painovoiman avulla."
 
         En ->
-            "Paste a build link from Brick Studio or Brick Play and steer your soapbox down alpine mountain courses under gravity."
+            "Paste a build link from Brick Studio or Brick Play and steer your soapbox down steep countryside lanes under gravity."
+
+
+{-| Heading above the course selector.
+-}
+coursesHeading : Language -> String
+coursesHeading lang =
+    case lang of
+        Fi ->
+            "Maalaisradat"
+
+        En ->
+            "Countryside Courses"
 
 
 {-| Track title per course ID.
@@ -91,23 +104,23 @@ menuSubtitle lang =
 trackTitle : Language -> TrackId -> String
 trackTitle lang id =
     case ( lang, id ) of
-        ( Fi, PineRidge ) ->
-            "Aurinkoinen Mäntyrinne"
+        ( Fi, FarmLane ) ->
+            "Tilan Kujanne"
 
-        ( En, PineRidge ) ->
-            "Sunny Pine Ridge"
+        ( En, FarmLane ) ->
+            "Farm Lane Drop"
 
-        ( Fi, QuarrySwitchbacks ) ->
-            "Louhoksen Neulansilmät"
+        ( Fi, ForestTrail ) ->
+            "Metsäpolku"
 
-        ( En, QuarrySwitchbacks ) ->
-            "Quarry Switchbacks"
+        ( En, ForestTrail ) ->
+            "Forest Trail"
 
-        ( Fi, AlpineGlacier ) ->
-            "Alppijäätikön Syöksy"
+        ( Fi, MeadowPath ) ->
+            "Niittypolku"
 
-        ( En, AlpineGlacier ) ->
-            "Alpine Glacier Run"
+        ( En, MeadowPath ) ->
+            "Meadow Footpath"
 
 
 {-| Short course blurb shown on track selector cards.
@@ -115,23 +128,23 @@ trackTitle lang id =
 trackDescription : Language -> TrackId -> String
 trackDescription lang id =
     case ( lang, id ) of
-        ( Fi, PineRidge ) ->
-            "1,1 km / −145 m • Leveä asfaltti, hyppyrit ja huippunopeudet"
+        ( Fi, FarmLane ) ->
+            "0,5 km / −150 m • Hiekkatie ja sora, kaksi mutkaa, jyrkkä lasku pihaan"
 
-        ( En, PineRidge ) ->
-            "1.1 km / -145 m • Wide tarmac sweepers, launch ramps, high top speed"
+        ( En, FarmLane ) ->
+            "0.5 km / -150 m • Dirt and gravel lane, two bends, steep drop into the farmyard"
 
-        ( Fi, QuarrySwitchbacks ) ->
-            "1,35 km / −210 m • Kallistetut hiusneulamutkat, soraa ja shikaanit"
+        ( Fi, ForestTrail ) ->
+            "0,55 km / −175 m • Juurakkoinen metsätie, soraränni ja tukkihyppy"
 
-        ( En, QuarrySwitchbacks ) ->
-            "1.35 km / -210 m • Banked hairpins, cobbles, technical chicanes"
+        ( En, ForestTrail ) ->
+            "0.55 km / -175 m • Rooty forest track, gravel chute, log hump"
 
-        ( Fi, AlpineGlacier ) ->
-            "1,6 km / −285 m • Jyrkkä lasku, nimismiehenkiharat ja alppisolat"
+        ( Fi, MeadowPath ) ->
+            "0,45 km / −150 m • Kapea ja jyrkin: ruohopolku, kumpu ja mättäät"
 
-        ( En, AlpineGlacier ) ->
-            "1.6 km / -285 m • Steep high-altitude drop, rough washboards, cliff chutes"
+        ( En, MeadowPath ) ->
+            "0.45 km / -150 m • Narrowest and steepest: grass footpath, hump, tussocks"
 
 
 {-| Paste input placeholder text.
@@ -248,10 +261,10 @@ startRaceButton : Language -> String
 startRaceButton lang =
     case lang of
         Fi ->
-            "Laske vuorelta!"
+            "Laske mäkeä alas!"
 
         En ->
-            "Drop Down Mountain!"
+            "Drop Down the Hill!"
 
 
 {-| Button to bypass non-blocking warnings cleanly.
@@ -475,29 +488,41 @@ validationTitle lang code =
 surfaceName : Language -> SurfaceType -> String
 surfaceName lang surf =
     case ( lang, surf ) of
-        ( Fi, AsphaltTrack ) ->
-            "Asfaltti"
+        ( Fi, DirtRoad ) ->
+            "Hiekkatie"
 
-        ( En, AsphaltTrack ) ->
-            "Tarmac"
+        ( En, DirtRoad ) ->
+            "Dirt"
 
-        ( Fi, CobbleStone ) ->
-            "Kiveys"
-
-        ( En, CobbleStone ) ->
-            "Cobble"
-
-        ( Fi, GravelShoulder ) ->
+        ( Fi, GravelRoad ) ->
             "Sora"
 
-        ( En, GravelShoulder ) ->
+        ( En, GravelRoad ) ->
             "Gravel"
 
-        ( Fi, AlpineGrass ) ->
-            "Ruoho"
+        ( Fi, ForestTrack ) ->
+            "Metsätie"
 
-        ( En, AlpineGrass ) ->
-            "Grass"
+        ( En, ForestTrack ) ->
+            "Forest track"
+
+        ( Fi, GrassPath ) ->
+            "Polku"
+
+        ( En, GrassPath ) ->
+            "Footpath"
+
+        ( Fi, RoughVerge ) ->
+            "Piennar"
+
+        ( En, RoughVerge ) ->
+            "Verge"
+
+        ( Fi, MeadowGrass ) ->
+            "Niitty"
+
+        ( En, MeadowGrass ) ->
+            "Meadow"
 
 
 {-| Localized camera mode label.
@@ -722,10 +747,10 @@ crashReasonText lang reason =
             "Rollover Wipeout!"
 
         ( Fi, OffMountainDrop ) ->
-            "Suistuit jyrkänteeltä!"
+            "Suistuit tieltä!"
 
         ( En, OffMountainDrop ) ->
-            "Off the Mountain Cliff!"
+            "Off the Road!"
 
 
 {-| Crash recovery countdown hint.

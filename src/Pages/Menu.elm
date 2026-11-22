@@ -8,7 +8,7 @@ module Pages.Menu exposing
 
 Lets players paste any `#b/...` or `#model=...` URL exported from `brick-play` or
 `brick-studio`, open or drop `.ldr`/`.mpd`/`.io` files, pick from starter soapbox
-builds, select one of the three mountain courses + seed, and view local PBs.
+builds, select one of the three countryside courses + seed, and view local PBs.
 
 -}
 
@@ -20,7 +20,7 @@ import I18n exposing (Language(..))
 import Racer.I18n as RI18n
 import Racer.Ingest as Ingest
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
-import Racer.Types exposing (PresetBuild, RaceMode(..), TrackId(..))
+import Racer.Types exposing (PresetBuild, RaceMode(..), TrackId, allTrackIds)
 import Tailwind as Tw
 import Tailwind.Breakpoints as Bp
 import Tailwind.Theme as Th
@@ -231,7 +231,7 @@ viewCourseCard data actions =
             data.language
 
         allTracks =
-            [ PineRidge, QuarrySwitchbacks, AlpineGlacier ]
+            allTrackIds
     in
     div
         [ Tw.classes [ Tw.rounded_n2xl, Tw.p Th.s5, Tw.border, Tw.flex, Tw.flex_col, Tw.gap Th.s3 ]
@@ -239,7 +239,7 @@ viewCourseCard data actions =
         , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
         ]
         [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.gap Th.s2 ] ]
-            [ h2 [ Tw.classes [ Tw.text_lg, Tw.font_bold ] ] [ text "Mountain Courses" ]
+            [ h2 [ Tw.classes [ Tw.text_lg, Tw.font_bold ] ] [ text (RI18n.coursesHeading lang) ]
             , div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
                 [ span [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ] [ text (RI18n.seedLabel lang) ]
                 , input

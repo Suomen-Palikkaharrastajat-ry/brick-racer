@@ -10,7 +10,7 @@ module Racer.Render exposing
 
 {-| WebGL rendering compositor for Brick Racer's Garage Inspector and 3D Race View.
 
-Combines sky dome, chunked mountain terrain (`Racer.TerrainMesh`), frustum culling
+Combines sky dome, chunked countryside terrain (`Racer.TerrainMesh`), frustum culling
 (`Render.Instanced.frustumFromMatrix`), articulated brick sub-assemblies
 (`Render.Scene.renderSceneWithTransform`), ground contact shadows, and debris particles.
 
@@ -346,7 +346,12 @@ renderRaceViewportMulti bundle track cars cubeMesh shadowMesh debris camera w h 
             chunkIndices
                 |> List.filterMap (\idx -> Array.get idx bundle.chunks)
                 |> List.filter (\c -> Instanced.sphereInFrustum frustum c.boundsCenter c.boundsRadius)
-                |> List.map (\c -> TerrainShader.terrainEntity Mat4.identity c.mesh bundle.trackId camera safeW safeH)
+                |> List.concatMap
+                    (\c ->
+                        [ TerrainShader.groundEntity c.mesh bundle.trackId camera safeW safeH
+                        , TerrainShader.terrainEntity Mat4.identity c.sceneryMesh bundle.trackId camera safeW safeH
+                        ]
+                    )
 
         style =
             carStyleForTrack bundle.trackId

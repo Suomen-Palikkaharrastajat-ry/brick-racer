@@ -1467,7 +1467,7 @@ buildValidationReport ctx =
             if ctx.placementCount > 0 && ctx.wheelCount < 3 then
                 [ { severity = Blocker
                   , code = TooFewWheels ctx.wheelCount
-                  , detail = "Need at least 3 wheels to balance and steer down the mountain."
+                  , detail = "Need at least 3 wheels to balance and steer down the hill."
                   }
                 ]
 
