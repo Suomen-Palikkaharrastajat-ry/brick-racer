@@ -1,6 +1,6 @@
 # Brick Racer (`brick-racer`) — Architecture & System Design
 
-**Brick Racer** is a browser-based 3D gravity / soapbox racing game in the `brick-family` ecosystem (joining `brick-studio`, `brick-play`, `brick-catalog`, and the `brick-frame-*` packages). Players copy a build URL hash exported from `brick-play` or `brick-studio` (or drop an `.ldr`/`.mpd`/`.io` file or pick a starter racer), validate its rolling chassis, and steer it down procedural 3D mountain tracks under gravity.
+**Brick Racer** is a browser-based 3D gravity / soapbox racing game in the `brick-family` ecosystem (joining `brick-studio`, `brick-play`, `brick-catalog`, and the `brick-frame-*` packages). Players copy a build URL hash exported from `brick-play` or `brick-studio` (or drop an `.ldr`/`.mpd`/`.io` file or pick a starter racer), validate its rolling chassis, and steer it down short, steep procedural countryside tracks under gravity, smashing brick-built roadside scenery on the way.
 
 ---
 
@@ -79,7 +79,7 @@ brick-racer/
 │   │   ├── Camera.elm          # Chase, Hood/Cockpit, and Finish/Inspection Orbit camera rigs
 │   │   ├── Audio.elm           # Pure derivation of continuous audio parameters from PhysicsState
 │   │   ├── Leaderboard.elm     # Per-track PB splits, car class ratings, localStorage codecs
-│   │   └── HUD.elm             # Speedometer, timer/splits, stability meter, mountain progress
+│   │   └── HUD.elm             # Speedometer, timer/splits, stability meter, course progress
 │   └── Pages/
 │       ├── Menu.elm            # Title screen, track selector, starter cars, quick URL paste
 │       ├── Garage.elm          # 3D model inspection + validation checklist & telemetry readout
@@ -148,10 +148,10 @@ LDraw and `brick-frame` use three coordinate conventions that `brick-racer` brid
 | **WebGL Render (`brick-frame`)** | Right-handed **+Y up** via `Mat4.makeScale3 1 -1 -1` | `1.0 unit = 1 LDU` | `Render.Scene`, `Render.Instanced` |
 | **Physics World** | Right-handed **+Y up**, vehicle nose along `+Z` (normalized) | `160 LDU = 1.0 m` (`8 studs = 1.0 m`, `1 stud = 0.125 m`) | Proposed `Racer.Physics` |
 
-**Why `160 LDU = 1.0 m` (soapbox kart scale):** Real LEGO scale (`1 LDU = 0.4 mm`) makes a 16-stud car `12.8 cm` long, where `9.81 m/s^2` gravity looks absurdly fast visually unless scaled. Scaling `160 LDU = 1.0 m` (`1 LDU = 0.00625 m`) puts a typical 14–20 stud (`280–400 LDU`) LEGO build at human-scale soapbox kart dimensions:
+**Why `160 LDU = 1.0 m` (soapbox kart scale):** Real brick scale (`1 LDU = 0.4 mm`) makes a 16-stud car `12.8 cm` long, where `9.81 m/s^2` gravity looks absurdly fast visually unless scaled. Scaling `160 LDU = 1.0 m` (`1 LDU = 0.00625 m`) puts a typical 14–20 stud (`280–400 LDU`) brick build at human-scale soapbox kart dimensions:
 - A standard 14–20 stud soapbox racer is `1.75–2.50 m` long and `0.75–1.25 m` wide.
 - `56891.dat` Off-Road Tire (radius `37 LDU`) has effective soapbox wheel radius `0.23 m` (~18-inch kart wheel).
-- Gravity `g = 9.81 m/s^2` produces authentic 25–85 km/h downhill soapbox speeds over a `1.0–1.5 km` mountain course in ~60–110 seconds.
+- Gravity `g = 9.81 m/s^2` produces authentic 25–85 km/h downhill soapbox speeds over a `0.45–0.56 km` countryside course in roughly 30–60 seconds.
 
 **Heading Normalization:** Players build cars facing arbitrary LDraw axes (`-Z`, `+Z`, `+X`, `-X`). During analysis, `Racer.Analyze` computes the car's forward axis from:
 1. Front-to-rear wheel cluster vector (smaller/steerable axle cluster or steering mechanism end = front),
@@ -282,10 +282,13 @@ type alias PhysicsState =
 
 3. **Rolling Resistance, Braking & Surface Grip:**
    - Surface coefficients vary by `SurfaceType`:
-     - `AsphaltTrack`: low rolling resistance ($\mu_r = 0.015$), high tire grip ($\mu_{\text{lat}} = 1.15$).
-     - `CobbleStone` / `WoodenPlank`: medium-low ($\mu_r = 0.028$, $\mu_{\text{lat}} = 0.92$) + micro-bump suspension jitter.
-     - `GravelShoulder`: elevated drag ($\mu_r = 0.065$), loose driftable grip ($\mu_{\text{lat}} = 0.70$).
-     - `AlpineGrass` / `SnowOffTrack`: heavy rolling drag ($\mu_r = 0.14$), low grip ($\mu_{\text{lat}} = 0.50$).
+     - All roads are unpaved, so grip is deliberately looser than pavement and steep drops slide a little:
+     - `DirtRoad`: $\mu_r = 0.022$, $\mu_{\text{lat}} = 0.95$.
+     - `ForestTrack`: $\mu_r = 0.045$, $\mu_{\text{lat}} = 0.88$.
+     - `GravelRoad`: $\mu_r = 0.04$, loose driftable grip $\mu_{\text{lat}} = 0.78$.
+     - `GrassPath`: $\mu_r = 0.055$, $\mu_{\text{lat}} = 0.72$.
+     - `RoughVerge` (2.5 m strip beside the road): $\mu_r = 0.09$, $\mu_{\text{lat}} = 0.60$.
+     - `MeadowGrass` (open field): heavy rolling drag ($\mu_r = 0.14$), low grip ($\mu_{\text{lat}} = 0.50$).
    - **Tire vs Bare Rim Multiplier:** Rubber tires yield `1.0×` grip; plastic bare-rim builds yield `0.62×` grip and louder clatter!
    - **Belly Scrape Penalty:** If validation detected negative ground clearance (`chassisMinY < wheelContactY`) or deep bottom-out compression, belly friction ($\mu_{\text{scrape}} = 0.35$) slows acceleration and shaves integrity on bumps.
    - **Brakes:** Holding `Down`/`S` applies progressive braking torque ($\text{maxDecel} \approx 6.5\ \text{m/s}^2 \cdot \text{groundedRatio}$). Holding `Space` applies rear-biased handbrake to initiate a controllable slide/drift into tight hairpins.
@@ -302,17 +305,22 @@ type alias PhysicsState =
 
 6. **Collisions & Structural Integrity ("Brick Pop-Off"):**
    - **Broadphase:** Track spline parameter `progressS` narrows obstacle checks to a ±25 m window (spatial buckets).
-   - **Narrowphase:** Car bounding OBB / dual-sphere hull tested against rocks, pine tree trunks, wooden barriers, and chicane hay/brick blocks.
-   - **Response:** Elastic + frictional impulse $(\vec{J}_n)$ reflects velocity along contact normal, slows car proportionally to grazing angle, plays impact sound proportional to impulse $|\vec{J}_n|$, and subtracts `integrity` above a grace threshold (`impactSpeed > 4.5 m/s`).
+   - **Narrowphase:** Car hull circle tested against each scenery piece's cylinder (radius + height).
+   - **Smash (breakable scenery):** If the normal impact speed reaches the piece's break speed (`Physics.breakSpeedFor`: bush 1.0 m/s, fence/signpost 1.5, hay bale 2.0, trees 4.0, rock 5.5, cottage 7.0, barn 7.5), the piece shatters. The racer keeps going, losing a mass fraction of its speed (6 % for a bush up to 50 % for a barn); heavy pieces (trees, rocks, buildings) also cost `(impactSpeed - 8) * 2.5` integrity (max 25). Physics emits `ScenerySmashed { obstacleId, impactSpeed, direction }` and drops the piece for the rest of the frame's substeps.
+   - **Bounce:** Slower hits use the elastic + frictional impulse $(\vec{J}_n)$: velocity is reflected along the contact normal, an impact sound plays proportional to impulse, and `integrity` drops above a grace threshold (`impactSpeed > 4.5 m/s`).
    - **Brick Pop-Off Debris:** Every 20% integrity lost (or on hard impact) spawns lightweight visual-only tumbling brick particles using colors sampled from the car's own bricks (or detaches tagged `loosePlacements`). At `integrity <= 0` or vertical fall below terrain kill-plane (steep cliff drop), transition to **Crash/Recovery** overlay, then reset upright to the last passed checkpoint with restored integrity and a time penalty (`+2.0 s` or clean checkpoint restart).
 
 ---
 
-## 5. Mountain Course & Procedural Track Generation (`Racer.Track`)
+## 5. Countryside Courses & Procedural Track Generation (`Racer.Track`)
+
+The game favours short, steep, readable runs over long winding circuits: each
+course is a single descent of roughly half a kilometre with a few clear bends and
+drops, on unpaved country roads, lined with brick-built scenery that breaks.
 
 ### 5.1 Deterministic Spline Architecture
 
-Each mountain track is generated deterministically from a `TrackConfig` + integer `seed` (using `elm/random` `Random.Seed` + precomputed piecewise lookup tables):
+Each course is generated deterministically from a `TrackConfig` + integer `seed` (using `elm/random`). A course is a short list (8–9) of hand-authored blueprint knots (`xOffset` in meters, forward progress and drop as fractions of the course length/drop, road half-width, surface, optional feature) with small seeded jitter (±5 m sideways, ±0.8 m vertically) in the middle of the run:
 
 ```elm
 type alias ControlPoint =
@@ -324,54 +332,52 @@ type alias ControlPoint =
     }
 
 type SegmentFeature
-    = LaunchRamp { lengthM : Float, lipHeightM : Float }
-    | Chicane { sideOffsetM : Float, barrierCount : Int }
-    | RoughWash { amplitudeM : Float, wavelengthM : Float }
-    | SpeedGate
+    = LaunchRamp { lengthM : Float, lipHeightM : Float }   -- field hump / log hump
+    | RoughWash { amplitudeM : Float, wavelengthM : Float } -- ruts, roots, tussocks
 ```
 
-- **Catmull-Rom 3D Spline:** Sampled at `2.0 m` arc-length intervals into a flat `Array TrackSample` (~500–800 samples for a 1.0–1.6 km downhill run). Each `TrackSample` caches `(s, center, tangent, right, normal, halfWidth, bankingRad, surface, cumElevationDrop)`.
-- **Fast Spatial Queries (`Track.sampleAt x z`):** Tracks the car's local search window around `lastProgressS` (`O(1)` local Newton/segment projection onto nearby spline segments), with full-index fallback on respawn.
+- **Catmull-Rom 3D Spline:** Sampled at `2.0 m` arc-length intervals into a flat `Array TrackSample` (~220–280 samples). Each `TrackSample` caches `(s, center, tangent, right, normal, halfWidth, bankingRad, surface)`.
+- **Fast Spatial Queries (`Track.sampleAt x z`):** Tracks the car's local search window around `lastProgressS` (local segment projection onto nearby spline segments), with full-index fallback on respawn. `Track.groundHeightAt` is a cheaper height-only query used to land debris.
 
-### 5.2 Seamless Terrain Blending & Mountain Heightmap
+### 5.2 Countryside Ground
 
-Instead of floating a flat ribbon in empty space, the roadbed sits carved directly into a continuous 3D mountain heightmap `h(x, z)`:
+The roadbed sits in a continuous heightfield `h(x, z)` of gently rolling fields:
 
-1. Find closest spline point `P(s)` with lateral signed distance $d$ from road centerline.
-2. Compute road surface height including banking:
-   $$y_{\text{road}}(s, d) = P_y(s) + d \cdot \tan(\phi(s)) + \text{rampOffset}(s, d)$$
-3. Blend smoothly with multi-octave procedural mountain noise $y_{\text{mountain}}(x, z)$ (steep ridge walls rising outside the shoulder, gentler meadow runoff on inner sweepers):
-   - $|d| \le w$: exact road surface (`w = roadHalfWidth`)
-   - $w < |d| \le w + w_{\text{shoulder}}$: cubic Hermite blend (`smoothstep`) to gravel shoulder + ditch/berm
-   - $|d| > w + w_{\text{shoulder}}$: blends outward into rocky cliff/alpine terrain noise (`smoothstep(w + shoulder, w + 28 m)`)
-4. Analytic or finite-difference central gradient yields continuous terrain normal $\hat{n}(x, z)$ for smooth suspension physics and vertex normals.
+1. Find closest spline point `P(s)` with lateral signed distance $d$ from the road centerline.
+2. Road surface height including banking: $y_{\text{road}}(s, d) = P_y(s) + d \cdot \tan(\phi(s)) + \text{rampOffset}(s, d) + \text{washOffset}(s, d)$.
+3. Blend outward:
+   - $|d| \le w$: exact road surface (`w = roadHalfWidth`, 3.2–5.0 m)
+   - $w < |d| \le w + 2.5$: rough grass verge with a shallow ditch
+   - beyond: fields rise gently away from the road (`0.12` slope) with low rolling undulation (`Track.fieldUndulation`, a few meters of amplitude), so the road runs in a shallow valley.
+4. Finite-difference gradient yields the terrain normal for suspension and shading.
 
-### 5.3 Track Features, Obstacles & Checkpoints
+The ground is drawn smooth and matte (`TerrainShader.groundEntity`): no studs, plate seams, curbs or terracing. Each cross-section has a darker road edge, two wheel tracks and a grassy center strip; colors come from the segment surface (dirt brown, gravel grey, forest earth, worn footpath) and the course (crop strips on the farm lane, dark moss in the forest, light meadow grass), with per-segment patch jitter and a fine procedural grain.
 
-- **Starting Ramp:** Elevated wooden/brick launch platform (`14°` initial pitch) at `s = 0` so every build accelerates smoothly from standstill on "GO!".
-- **Banked Hairpins & S-Curves:** Curvature $\kappa(s)$ automatically drives recommended banking angle $\phi(s)$ (with inner apex curbing rendered in classic alternating red/white brick stripes!).
-- **Ramps & Jumps:** Raised wedge segments blended cleanly into `Track.sampleAt` height; landing transitions smoothly through suspension compression.
-- **Chicanes:** Staggered red/white brick chicane gates and straw/brick bales forcing technical weight-transfer slaloms.
-- **Static Obstacles (`TrackObstacle`):** Pine trees, angular mountain boulders, kilometer/distance posts, wooden guardrails, and archways placed strictly outside the roadbed (or intentionally placed on off-center bonus/hazard lanes), built from low-poly geometry matching `brick-family`'s crisp faceted/LDraw edge aesthetic.
-- **Checkpoints & Finish Line:** Placed every ~25% of track length (3 checkpoints + Finish Arch). Crossing a checkpoint records split time, flashes split delta (`-0.84 s`), updates respawn anchor `(s_checkpoint, pos, yaw)`, and plays a chime.
+### 5.3 Track Features, Scenery & Checkpoints
+
+- **Start:** a gentle run-in (about 6 % of the drop over the first tenth of the course) so every build starts rolling cleanly on "GO!".
+- **Bends & Drops:** two or three clear bends per course; curvature drives a mild banking angle. The steepest pitches reach roughly 40 % grade.
+- **Humps & Rough Patches:** `LaunchRamp` humps (0.5–0.55 m lip) and `RoughWash` ruts, roots or tussocks (32 m long, 6–8 cm amplitude).
+- **Brick-Built Scenery (`TrackObstacle`, `Track.generateScenery`):** placed every 3 m of arc length on both edges from `s = 24 m`, never on the roadbed (checked against the real nearest-road projection), never overlapping each other, and kept clear of checkpoint arches. Kinds: `LeafyTree`, `PineTree`, `Bush`, `FenceSection` (short runs of 3–6 sections parallel to the road), `Rock`, `Signpost`, `HayBale` (single or stacked), `Cottage`, `Barn`. Each course has its own mix and density (forest: mostly pines; farm: fences, hay, barns; meadow: bushes, rocks, hay). Every piece is assembled from boxes with round studs on top in its own yaw frame so it reads as a brick build.
+- **Breaking:** see §4.2 (6). A smashed piece is removed from `race.track` (`Track.removeObstacles`), only the scenery mesh of its chunk is rebuilt (`TerrainMesh.rebuildChunkScenery`), and it bursts into 4–14 studded debris bricks in its own colors (`TerrainMesh.sceneryDebrisStyle`), thrown along the racer's heading with some spread and lift. Debris lands and bounces on the terrain, lies there for 3.2–4.4 s, then shrinks away over the last 0.5 s. At most 72 debris bricks (racer and scenery together) are alive at once; the oldest go first, and all of them are drawn with one shared brick mesh. Feedback: a short decaying camera shake, a "Smash!" banner and a shattering sound (`playSfx "smash"`).
+- **Checkpoints & Finish Line:** placed every ~25 % of track length (3 checkpoints + finish arch). Crossing a checkpoint records the split time, flashes the split delta, updates the respawn anchor and plays a chime.
 
 ### 5.4 Course Presets & Chunked WebGL Rendering
 
-Three flagship courses ship out of the box (plus custom `?seed=` variations):
+Three courses ship out of the box (plus custom `seed` variations):
 
 | Preset ID | Track Name | Length / Drop | Character |
 |---|---|---|---|
-| `pine-ridge` | **Sunny Pine Ridge** | 1,100 m / -145 m | Wide asphalt, gentle sweeping turns, beginner-friendly jumps, high top speed |
-| `quarry-switchbacks` | **Quarry Switchbacks** | 1,350 m / -210 m | Tight banked hairpins, gravel shoulders, technical chicanes, cobble sections |
-| `alpine-glacier` | **Alpine Glacier Run** | 1,600 m / -285 m | Steep high-altitude drops, icy/low-grip patches, narrow ridges, dramatic cliffside bridges |
+| `farm-lane` | **Farm Lane Drop** | ~0.5 km / -150 m | Dirt and gravel farm road, a left and a right bend, rutted gravel sweep, steepest pitch into the farmyard. Fences, hay bales, barns. |
+| `forest-trail` | **Forest Trail** | ~0.56 km / -175 m | Packed-earth forest track over roots, steep gravel chute through a clearing, log hump. Dense pines, rocks. |
+| `meadow-path` | **Meadow Footpath** | ~0.45 km / -150 m | Narrowest and steepest: grass footpath with a field hump and tussocks. Bushes, rocks, hay. |
+
+The retired long mountain courses' ids (`pine-ridge`, `quarry-switchbacks`, `alpine-glacier`) still parse and map to `farm-lane`, `forest-trail` and `meadow-path`, so old share links and stored best times keep working.
 
 #### Chunked WebGL Architecture (`Racer.TerrainMesh`, `Racer.TerrainShader`)
-- Terrain & roadbed are divided into `100 m` track-length chunks (`12–16` chunks total), built once when entering a track (`Mesh.triangles` -> `WebGL.indexedTriangles` / `WebGL.triangles`).
-- **Custom `TerrainShader`:** Vertex attributes `{ position, normal, color, roadMask }` supporting:
-  - Biome coloring (asphalt charcoal, alternating red/white apex curbs, gravel tan, alpine grass green, granite cliff grey, snow peaks).
-  - Hemisphere sky + directional sun lighting matching `Render.Shader`'s crisp daylight look.
-  - Linear/exponential atmospheric distance fog blending seamlessly into a procedural gradient sky dome so distant terrain pops in invisibly.
-- **Culling:** Only chunks within `[playerChunk - 1, playerChunk + 3]` (plus `Render.Instanced.frustumFromMatrix` bounds test) are submitted to `WebGL.toHtmlWith` each frame, guaranteeing 60 FPS even alongside multi-hundred-part LEGO builds.
+- Ground and arches are divided into `100 m` track-length chunks (5–6 chunks), built once when entering a track. Each chunk has a static ground mesh and a separate scenery mesh that is rebuilt only when a piece in it is smashed.
+- Ground and arches use the matte `groundEntity` shader; scenery and debris use the studded plastic `terrainEntity` / `debrisEntity` shaders. Both share hemisphere sky + directional sun lighting and distance fog blending into a gradient sky dome.
+- **Culling:** Only chunks within `[playerChunk - 1, playerChunk + 4]` that pass the `Render.Instanced.frustumFromMatrix` bounds test are submitted each frame.
 
 ---
 
@@ -398,14 +404,14 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 `Racer.Camera` outputs a standard `Render.Camera.Camera` record (`target`, `azimuth`, `elevation`, `distance`, `projection`) so `Render.Shader`, `Render.EdgeShader`, and `Render.Instanced.frustumFromMatrix` work identically across Garage and Race scenes:
 
 1. **Chase Cam (Default):** Follows behind the car's velocity/heading vector with spring-damped yaw lag (`1.5–4.5 m` scaled gently to car bounding radius via `Viewport.Framing.ModelBounds`, widens FOV slightly at high speed for sensation of velocity).
-2. **Hood / Cockpit Cam:** Mounted slightly above `minY + 0.7 * height` looking forward over the hood, LEGO bricks, and spinning `3829c01.dat` steering wheel if present!
+2. **Hood / Cockpit Cam:** Mounted slightly above `minY + 0.7 * height` looking forward over the hood, bricks, and spinning `3829c01.dat` steering wheel if present!
 3. **Trackside / Free Orbit Cam:** Available during Garage inspection, Pause, and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
 
 ### 6.3 Gameplay HUD (`Racer.HUD`)
 
 Layered cleanly over the full-bleed WebGL canvas using `.elm-tailwind/` utilities and shared tokens from `brick-frame-ui/theme.css`:
 - **Top-Left:** Race Timer (`01:14.32`), live Checkpoint Split badge (`-0.62 s` green / `+0.41 s` amber), current Checkpoint (`2 / 4`).
-- **Top-Center:** Mountain Progress Bar showing start-to-finish percentage, remaining elevation drop (`-82 m left`), and checkpoint ticks.
+- **Top-Center:** Course Progress Bar showing start-to-finish percentage, remaining elevation drop (`-82 m left`), and checkpoint ticks.
 - **Top-Right:** Compact icon toolbar (Camera `C`, Audio Mute, Reset `R`, Pause `Esc`).
 - **Bottom-Left:** Structural Integrity / Stability Gauge (100%–0%) + live warning flashes (`Scraping!`, `Tipping!`, `Off-Track`).
 - **Bottom-Right:** Digital + Arc Speedometer (`km/h`), instantaneous grade `%`, and surface grip badge (`Tarmac` / `Gravel` / `Grass` / `Airborne!`).
@@ -520,7 +526,7 @@ type alias RaceState =
     , input : InputState              -- Pressed keys + touch + tilt
     , cameraMode : CameraMode         -- Chase | Hood | Orbit
     , camera : Camera
-    , particles : List BrickDebris    -- Pop-off bricks & dust puffs
+    , particles : List BrickDebris    -- Pop-off bricks and smashed-scenery bricks (max 72)
     , splitTimes : List Float
     , hudAlert : Maybe HudAlert
     }
@@ -553,7 +559,7 @@ type Msg
 2. Loop fixed substeps (`fixedDt = 1 / 60`):
    - `Physics.step fixedDt trackData vehicle input physics` -> `( nextPhysics, events )`.
    - Handle `events`: `Impact { impulse, scrape }`, `Landing impulse`, `CheckpointCrossed idx`, `BrickDetached`, `Crashed reason`, `FinishedRace`.
-3. Update `BrickDebris` ballistic particles (1.5 s lifetime), `Camera.update`, and HUD split banners.
+3. Apply `ScenerySmashed` events (remove the piece from `race.track`, rebuild that chunk's scenery mesh, spawn scenery debris, add camera shake), update debris bricks (terrain bounce, 2.4 s for racer bricks, 3.2–4.4 s for scenery), `Camera.update`, and HUD banners.
 4. Emit `Ports.updateAudioState` and any triggered `Ports.playSfx` commands.
 5. On `FinishedRace`, compare against `Leaderboard`, persist updated PB via `Ports.saveLeaderboard`, play finish chime, and transition to `FinishLeaderboardPage`.
 
@@ -581,7 +587,7 @@ type Msg
 
 ### 8.6 View Layer Composition
 
-- **Menu / Garage Inspector:** Two-column responsive layout (mobile stacks canvas above compact validation/launch sheet), reusing `Viewport` (or `Racer.Camera` + `WebGL.toHtmlWith`) to display the car rotating over a miniature starting plinth, overlaid with clear wheel/steering/CoM telemetry badges and a green **"Drop Down Mountain!"** CTA.
+- **Menu / Garage Inspector:** Two-column responsive layout (mobile stacks canvas above compact validation/launch sheet), reusing `Viewport` (or `Racer.Camera` + `WebGL.toHtmlWith`) to display the car rotating over a miniature starting plinth, overlaid with clear wheel/steering/CoM telemetry badges and a green **"Drop Down the Hill!"** CTA.
 - **Race View:** Full-viewport `<canvas>` rendered by `WebGL.toHtmlWith` (`alpha False`, `depth 1`, `antialias`, dynamic device-pixel ratio scaling / adaptive quality option if FPS dips), compositing:
   1. Procedural sky dome (`TerrainShader.skyEntity`)
   2. Visible terrain/track chunks + ramps/checkpoints/obstacles (`TerrainShader.terrainEntity`)
@@ -596,7 +602,7 @@ type Msg
 ### 9.1 Linking from `brick-studio` and `brick-play`
 
 Add an optional `"Race in Brick Racer"` action alongside `"Simulate"` / `"Share"` in `brick-play` (`src/Link.elm` / share modal) and `brick-studio`:
-- When `VITE_RACER_URL` (or relative sibling `../racer/`) is configured, emit `<racerBase>#track=pine-ridge&b/<base64url>` from `Link.freeHash` or `Link.fixedModelHash` (using `encodeHash`), letting builders test their soapbox creations down the mountain in one click.
+- When `VITE_RACER_URL` (or relative sibling `../racer/`) is configured, emit `<racerBase>#track=farm-lane&b/<base64url>` from `Link.freeHash` or `Link.fixedModelHash` (using `encodeHash`), letting builders test their soapbox creations down the hill in one click.
 
 ### 9.2 Verification Strategy (`elm-test`, `elm-review`, Browser Tests)
 
@@ -604,12 +610,13 @@ Add an optional `"Race in Brick Racer"` action alongside `"Simulate"` / `"Share"
    - `IngestTest`: verifies `#b/<base64url>`, `#model=...`, `#track=...&b/...`, and bare pasted URLs decode into valid `Document` + `TrackId`.
    - `AnalyzeTest`: tests fixture builds (4-wheel fixed holder `4600.dat`, turntable steering bogie `3679.dat`/`3680.dat`, bare-rim vs rubber-tire selection, zero-clearance warning, 2-wheel blocker, disconnected brick detection, heading normalization).
    - `PhysicsTest`: conservation & invariants (zero slope + zero speed stays stationary; steeper slope increases terminal speed; belly-scrape applies extra drag; braking decelerates smoothly; airborne flag clears ground rumble; checkpoint recovery resets upright).
-   - `TrackTest`: spline monotonicity (every track monotonically drops overall and stays finite/smooth), roadbed terrain blend continuity across shoulder boundary, deterministic replay from equal `seed`.
+   - `TrackTest`: spline monotonicity (every track monotonically drops overall and stays finite/smooth), short-and-steep bounds (0.35–0.65 km, at least 25 % average grade), roadbed-to-verge terrain continuity, deterministic replay from equal `seed`, scenery clearance from the roadbed and start pad, legacy track id mapping, and `removeObstacles`.
+   - `PhysicsTest`: smashing a bush keeps most speed and emits exactly one `ScenerySmashed` across substeps; a slow nudge on a rock bounces without breaking it.
 2. **Static Checks (`make check`):**
    - `elm-format --validate src/ tests/`
    - `elm-review` enforcing `NoTailwindRawStrings`, `RequireModuleDoc`, `RequireTypeAnnotation`, `NoExposingEverything`.
 3. **Browser Acceptance Smoke Test:**
-   - Launch starter build via URL hash, assert Garage reaches `Ready` with 4 detected wheels, enter Race, assert canvas draws non-blank frames and distance `progressS` advances down the mountain under steering inputs without console/WebGL errors.
+   - Launch starter build via URL hash, assert Garage reaches `Ready` with 4 detected wheels, enter Race, assert canvas draws non-blank frames and distance `progressS` advances down the course under steering inputs, and that steering into roadside scenery smashes a piece without console/WebGL errors.
 
 ### 9.3 Suggested Implementation Milestones
 
@@ -617,6 +624,6 @@ Add an optional `"Race in Brick Racer"` action alongside `"Simulate"` / `"Share"
 |---|---|---|
 | **M1 — Scaffold & Ingest** | Repo setup (`devenv.nix`, `elm.json`, `Makefile`, `vite.config.mjs`), `#b/` & `#model=` parser, `LDraw.Resolve` preview in Garage | Can paste any `brick-play` / `brick-studio` URL hash and inspect the car in 3D |
 | **M2 — Vehicle Analyzer** | `Racer.Analyze` wheel/tire pairing, turntable/knuckle detection, mass/CoM calculation, validation checklist, mesh splitting | Garage displays accurate wheel count, steering type, CoM/weight, and spins front wheels cleanly |
-| **M3 — Track & Terrain Renderer** | `Racer.Track` Catmull-Rom spline + heightmap blend + chunked `TerrainMesh` + `TerrainShader` + Pine Ridge preset | Full 3D mountain course renders at 60 FPS with fog, banking, ramps, checkpoints |
+| **M3 — Track & Terrain Renderer** | `Racer.Track` Catmull-Rom spline + heightmap blend + chunked `TerrainMesh` + `TerrainShader` + farm lane preset | Full 3D countryside course renders at 60 FPS with fog, banking, ramps, checkpoints |
 | **M4 — Physics & Gameplay Loop** | `Racer.Physics` fixed-step suspension, grip, aero, obstacles, crash/recovery, Chase/Hood cams, full HUD, `Results` local PBs | Complete playable downhill race loop from Start Ramp to Finish Arch |
-| **M5 — Audio, Mobile & Polish** | `audio.js` Web Audio synth, touch controls + tilt port, Quarry & Alpine tracks, brick pop-off debris, `brick-play`/`brick-studio` export link, full test suite | `make check` and `make test` green; responsive desktop + mobile playtest verified |
+| **M5 — Audio, Mobile & Polish** | `audio.js` Web Audio synth, touch controls + tilt port, forest and meadow courses, brick pop-off debris, smashable scenery, `brick-play`/`brick-studio` export link, full test suite | `make check` and `make test` green; responsive desktop + mobile playtest verified |
