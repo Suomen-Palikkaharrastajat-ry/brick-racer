@@ -8,6 +8,26 @@
   background-color: #0b1623;
 }
 
+/* The game fills the whole screen. With `viewport-fit=cover` (index.html) the
+   page also covers the areas beside the notch and home indicator in iOS
+   landscape, which otherwise show as black bars left and right; the HUD keeps
+   its controls inside the safe area with `env(safe-area-inset-*)` padding. The
+   page background matches the game in case any edge still shows. */
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background-color: #0b1623;
+}
+
+/* Full-screen views use the dynamic viewport height, so on phones the race
+   fills exactly the visible screen whether or not the browser bars show. */
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh;
+  }
+}
+
 .racer-hud-glass {
   background: rgba(5, 19, 29, 0.78);
   backdrop-filter: blur(8px);

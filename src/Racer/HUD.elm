@@ -94,10 +94,13 @@ viewHudOverlay data actions =
             , Tw.flex
             , Tw.flex_col
             , Tw.justify_between
-            , Tw.p Th.s3
             , Tw.select_none
             ]
         , Attr.style "inset" "0"
+
+        -- Keep the controls clear of the notch and home indicator (the page
+        -- itself runs edge to edge with viewport-fit=cover).
+        , Attr.style "padding" "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))"
 
         -- A tap on any HUD control may ask for the iOS tilt permission
         -- (tilt-steer.js) when tilt is on but not yet allowed.
