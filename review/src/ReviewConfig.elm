@@ -1,6 +1,6 @@
 module ReviewConfig exposing (config)
 
-{-| elm-review configuration for brick-racer.
+{-| elm-review configuration of the Brick Frame games (brick-racer, brick-sails).
 -}
 
 import LlmAgent.NoExposingEverything
