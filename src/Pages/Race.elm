@@ -20,7 +20,7 @@ import Racer.TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
 import Racer.Types exposing (CameraMode(..), GeneratedTrack, PhysicsState, SurfaceType(..), VehicleSpec)
-import Render.Camera exposing (Camera)
+import Render.Camera as Camera exposing (Camera)
 import Tailwind as Tw
 import Tailwind.Theme as Th
 import WebGL
