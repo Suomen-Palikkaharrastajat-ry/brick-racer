@@ -1,0 +1,57 @@
+0 FILE long-plank.ldr
+0 Long Plank Racer Base
+0 Name: Long Plank Racer Base
+0 Author: Brick Family starter bases
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+0 // Description: Long, low 4 x 18 stud plank frame, small 4624/3641 wheels outside it on 4488 holders; fixed axles.
+0 // Parts: 35 (all inside the grouped submodel long-plank-base.ldr)
+0 // Wheels: 4 (rim + tyre pairs on two axles)
+0 // Bounds LDU: x -58..58, y -44..23, z -180..180 (size 116 x 67 x 360)
+0 // Front / bow towards -Z, -Y up. The whole base is one submodel reference: move it as one piece.
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 long-plank-base.ldr
+0 NOFILE
+0 FILE long-plank-base.ldr
+0 Long Plank Racer chassis (grouped)
+0 Name: long-plank-base.ldr
+0 Author: Brick Family starter bases
+0 // Front (z=-140) and rear (z=+140) axles: pairs of 4488 holders, 4624 rims, 3641 tyres
+1 72 20 0 -140 1 0 0 0 1 0 0 0 1 4488.dat
+1 72 -20 0 -140 -1 0 0 0 1 0 0 0 -1 4488.dat
+1 71 50 5 -140 0 0 1 0 1 0 -1 0 0 4624.dat
+1 0 50 5 -140 0 0 1 0 1 0 -1 0 0 3641.dat
+1 71 -50 5 -140 0 0 -1 0 1 0 1 0 0 4624.dat
+1 0 -50 5 -140 0 0 -1 0 1 0 1 0 0 3641.dat
+1 72 20 0 140 1 0 0 0 1 0 0 0 1 4488.dat
+1 72 -20 0 140 -1 0 0 0 1 0 0 0 -1 4488.dat
+1 71 50 5 140 0 0 1 0 1 0 -1 0 0 4624.dat
+1 0 50 5 140 0 0 1 0 1 0 -1 0 0 3641.dat
+1 71 -50 5 140 0 0 -1 0 1 0 1 0 0 4624.dat
+1 0 -50 5 140 0 0 -1 0 1 0 1 0 0 3641.dat
+0 // Frame layer 1 (y=-8): two 2-wide stringers with staggered joints, wheels run outside them
+1 4 -20 -8 -100 0 0 1 0 1 0 -1 0 0 3034.dat
+1 4 -20 -8 60 0 0 1 0 1 0 -1 0 0 3034.dat
+1 4 -20 -8 160 1 0 0 0 1 0 0 0 1 3022.dat
+1 4 20 -8 -160 1 0 0 0 1 0 0 0 1 3022.dat
+1 4 20 -8 -60 0 0 1 0 1 0 -1 0 0 3034.dat
+1 4 20 -8 100 0 0 1 0 1 0 -1 0 0 3034.dat
+0 // Frame layer 2 (y=-16): 2x4 cross plates tie the stringers together
+1 4 0 -16 -160 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 -120 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 -80 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 -40 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 0 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 40 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 80 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 120 1 0 0 0 1 0 0 0 1 3020.dat
+1 4 0 -16 160 1 0 0 0 1 0 0 0 1 3020.dat
+0 // Side sills (1-brick rails) leave a 2-wide stud channel down the middle
+1 72 -30 -40 -60 0 0 1 0 1 0 -1 0 0 3008.dat
+1 72 -30 -40 80 0 0 1 0 1 0 -1 0 0 3009.dat
+1 72 30 -40 -80 0 0 1 0 1 0 -1 0 0 3009.dat
+1 72 30 -40 60 0 0 1 0 1 0 -1 0 0 3008.dat
+0 // Nose and tail: 45 degree 2x2 slopes
+1 14 -20 -40 -150 1 0 0 0 1 0 0 0 1 3039.dat
+1 14 20 -40 -150 1 0 0 0 1 0 0 0 1 3039.dat
+1 4 -20 -40 150 -1 0 0 0 1 0 0 0 -1 3039.dat
+1 4 20 -40 150 -1 0 0 0 1 0 0 0 -1 3039.dat
+0 NOFILE
