@@ -1,8 +1,8 @@
 module Racer.Track exposing
     ( fieldUndulation
     , generate
-    , obstaclesNear
     , groundHeightAt
+    , obstaclesNear
     , removeObstacles
     , sampleAt
     , sampleAtHinted

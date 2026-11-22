@@ -229,8 +229,9 @@ suite =
                 Expect.all
                     [ -- Settles back into directional stability: yaw rate drops close to zero
                       \_ -> Expect.lessThan 0.05 (abs sRecovered.yawRate)
-                      -- Holds line without runaway over-rotation beyond initial turn
-                    , \_ -> Expect.lessThan 0.70 (abs sRecovered.yaw)
+
+                    -- Holds line without runaway over-rotation beyond initial turn
+                    , \_ -> Expect.lessThan 0.7 (abs sRecovered.yaw)
                     ]
                     ()
         , test "User car hash #b/fcsx... with turntable bogie navigates corner and stabilizes without oversteer" <|
