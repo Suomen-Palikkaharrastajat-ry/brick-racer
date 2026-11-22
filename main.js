@@ -1,72 +1,19 @@
 import './main.css'
-import { initBricksRuntime } from './vendor/packages/brick-frame-viewport/runtime/initBricksRuntime.js'
+import { bootGame } from './vendor/packages/brick-frame-game/runtime/game-boot.js'
 import { createAudioEngine } from './audio.js'
-import { createMultiplayerManager } from './vendor/packages/brick-frame-game/runtime/multiplayer.js'
-import { createQrCameraScanner } from './vendor/packages/brick-frame-game/runtime/qr-camera-scanner.js'
-import {
-  readLanguage,
-  readAudioMuted,
-  readLeaderboard,
-  decodeHashToByteArray,
-  setupGameRuntime,
-} from './vendor/packages/brick-frame-game/runtime/game-runtime.js'
 import { Elm } from './src/Main.elm'
 import { migrateRetiredTrackBestTimes } from './leaderboard-migration.js'
-
-const ldrawBase = import.meta.env.VITE_LDRAW_BASE || 'https://catalog.palikkaharrastajat.fi/raw'
-const indicesBase = import.meta.env.VITE_LDRAW_INDICES_BASE || 'https://catalog.palikkaharrastajat.fi/indices'
-
-const coarsePointer =
-  typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
 
 // Drop best times stored for the retired courses (once, before Elm reads them).
 migrateRetiredTrackBestTimes('racer')
 
-const initialHash = window.location.hash ?? ''
-const savedAudioMuted = readAudioMuted('racer')
-const audioEngine = createAudioEngine(savedAudioMuted)
-
-const runtime = initBricksRuntime({
+// Tilt steering streams the raw device orientation to Elm, which does its
+// own calibration (`Game.Ports.tiltOrientationReceived`).
+bootGame({
   elm: Elm.Main,
-  node: document.getElementById('app'),
-  mode: 'viewer',
-  ldrawBase,
-  indicesBase,
-  ldrawFallbackBase: import.meta.env.VITE_LDRAW_FALLBACK_BASE || '/raw',
-  defaultModel: '',
-  loadModelInJs: false,
-  extraFlags: {
-    coarsePointer,
-    language: readLanguage(),
-    savedAudioMuted,
-    savedLeaderboardJson: readLeaderboard('racer'),
-    baseUrl: window.location.origin + window.location.pathname,
-    predecodedInitialBytes: decodeHashToByteArray(initialHash),
-  },
-  initialHash,
-  syncUrlHash: true,
-  useWindowResize: true,
-  dragDropTarget: window,
-  suppressGestureTarget: window,
-})
-
-const ports = runtime.app?.ports
-const multiplayer = createMultiplayerManager(ports)
-const qrScanner = createQrCameraScanner(ports, {
-  onScanned: (hash) => {
-    const bytes = decodeHashToByteArray(hash)
-    if (bytes) {
-      ports?.binaryHashDecoded?.send(bytes)
-      window.location.hash = hash
-    }
-  },
-})
-
-setupGameRuntime(ports, {
+  env: import.meta.env,
   storagePrefix: 'racer',
-  audioEngine,
-  multiplayer,
-  qrScanner,
+  createAudioEngine,
   playerPrefix: 'Racer ',
   tiltFormat: 'object',
 })

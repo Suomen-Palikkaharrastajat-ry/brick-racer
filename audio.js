@@ -4,69 +4,32 @@
  * wheel rumble & axle clatter, chassis scrape rasp, impact thuds, and chimes.
  */
 
-import { BaseAudioEngine } from './vendor/packages/brick-frame-game/runtime/audio-engine.js'
+import {
+  BaseAudioEngine,
+  createNoiseLoop,
+  createOscillatorLoop,
+} from './vendor/packages/brick-frame-game/runtime/audio-engine.js'
 
 export function createAudioEngine(initialMuted = false) {
   const engine = new BaseAudioEngine(initialMuted)
 
-  let windGainNode = null
-  let windFilter = null
-  let rumbleGainNode = null
-  let rumbleFilter = null
-  let clatterGainNode = null
-  let clatterOsc = null
-  let scrapeGainNode = null
-  let scrapeOsc = null
+  let wind = null
+  let rumble = null
+  let clatter = null
+  let scrape = null
 
   engine.initContinuousLoops = function (ctx, noiseBuffer, masterGain) {
     // 1. Wind bandpass loop
-    const windSrc = ctx.createBufferSource()
-    windSrc.buffer = noiseBuffer
-    windSrc.loop = true
-    windFilter = ctx.createBiquadFilter()
-    windFilter.type = 'bandpass'
-    windFilter.frequency.value = 320
-    windFilter.Q.value = 0.8
-    windGainNode = ctx.createGain()
-    windGainNode.gain.value = 0
-    windSrc.connect(windFilter)
-    windFilter.connect(windGainNode)
-    windGainNode.connect(masterGain)
-    windSrc.start()
+    wind = createNoiseLoop(ctx, noiseBuffer, masterGain, { type: 'bandpass', frequency: 320, Q: 0.8 })
 
     // 2. Ground rumble lowpass loop
-    const rumbleSrc = ctx.createBufferSource()
-    rumbleSrc.buffer = noiseBuffer
-    rumbleSrc.loop = true
-    rumbleFilter = ctx.createBiquadFilter()
-    rumbleFilter.type = 'lowpass'
-    rumbleFilter.frequency.value = 120
-    rumbleGainNode = ctx.createGain()
-    rumbleGainNode.gain.value = 0
-    rumbleSrc.connect(rumbleFilter)
-    rumbleFilter.connect(rumbleGainNode)
-    rumbleGainNode.connect(masterGain)
-    rumbleSrc.start()
+    rumble = createNoiseLoop(ctx, noiseBuffer, masterGain, { type: 'lowpass', frequency: 120 })
 
     // 3. Wheel / rim / axle clatter oscillator
-    clatterOsc = ctx.createOscillator()
-    clatterOsc.type = 'triangle'
-    clatterOsc.frequency.value = 42
-    clatterGainNode = ctx.createGain()
-    clatterGainNode.gain.value = 0
-    clatterOsc.connect(clatterGainNode)
-    clatterGainNode.connect(masterGain)
-    clatterOsc.start()
+    clatter = createOscillatorLoop(ctx, masterGain, { type: 'triangle', frequency: 42 })
 
     // 4. Chassis scrape sawtooth rasp
-    scrapeOsc = ctx.createOscillator()
-    scrapeOsc.type = 'sawtooth'
-    scrapeOsc.frequency.value = 95
-    scrapeGainNode = ctx.createGain()
-    scrapeGainNode.gain.value = 0
-    scrapeOsc.connect(scrapeGainNode)
-    scrapeGainNode.connect(masterGain)
-    scrapeOsc.start()
+    scrape = createOscillatorLoop(ctx, masterGain, { type: 'sawtooth', frequency: 95 })
   }
 
   engine.updateContinuous = function (state) {
@@ -78,16 +41,16 @@ export function createAudioEngine(initialMuted = false) {
     const targetClatter = active ? Math.max(0, Math.min(0.25, state.clatterGain || 0)) : 0
     const targetScrape = active ? Math.max(0, Math.min(0.18, state.scrapeGain || 0)) : 0
 
-    windGainNode?.gain.setTargetAtTime(targetWind, now, 0.05)
-    windFilter?.frequency.setTargetAtTime(Math.max(120, Math.min(2600, state.windHz || 300)), now, 0.06)
+    wind?.level.gain.setTargetAtTime(targetWind, now, 0.05)
+    wind?.filter.frequency.setTargetAtTime(Math.max(120, Math.min(2600, state.windHz || 300)), now, 0.06)
 
-    rumbleGainNode?.gain.setTargetAtTime(targetRumble, now, 0.04)
-    rumbleFilter?.frequency.setTargetAtTime(Math.max(60, Math.min(600, state.rumbleHz || 120)), now, 0.05)
+    rumble?.level.gain.setTargetAtTime(targetRumble, now, 0.04)
+    rumble?.filter.frequency.setTargetAtTime(Math.max(60, Math.min(600, state.rumbleHz || 120)), now, 0.05)
 
-    clatterGainNode?.gain.setTargetAtTime(targetClatter, now, 0.04)
-    clatterOsc?.frequency.setTargetAtTime(Math.max(18, Math.min(180, (state.rumbleHz || 80) * 0.45)), now, 0.05)
+    clatter?.level.gain.setTargetAtTime(targetClatter, now, 0.04)
+    clatter?.osc.frequency.setTargetAtTime(Math.max(18, Math.min(180, (state.rumbleHz || 80) * 0.45)), now, 0.05)
 
-    scrapeGainNode?.gain.setTargetAtTime(targetScrape, now, 0.03)
+    scrape?.level.gain.setTargetAtTime(targetScrape, now, 0.03)
   }
 
   engine.playSfx = function (event) {
