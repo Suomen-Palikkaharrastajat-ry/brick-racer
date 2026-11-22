@@ -899,21 +899,21 @@ sceneryTheme trackId =
             { fenceChance = 0.06
             , density = 0.2
             , weights =
-                [ ( LeafyTree, 22 ), ( Bush, 18 ), ( HayBale, 18 ), ( Rock, 8 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ) ]
+                [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ) ]
             }
 
         ForestTrail ->
             { fenceChance = 0.015
             , density = 0.34
             , weights =
-                [ ( PineTree, 40 ), ( LeafyTree, 18 ), ( Bush, 14 ), ( Rock, 14 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ) ]
+                [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ) ]
             }
 
         MeadowPath ->
             { fenceChance = 0.04
             , density = 0.17
             , weights =
-                [ ( Bush, 24 ), ( LeafyTree, 16 ), ( Rock, 16 ), ( HayBale, 14 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ) ]
+                [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ) ]
             }
 
 
@@ -984,6 +984,26 @@ scenerySpec kind offRoll sizeRoll =
 
         Barn ->
             { offsetM = 11.0 + offRoll * 6.0, radiusM = 3.3, heightM = 5.6 }
+
+        Crate ->
+            { offsetM = 1.4 + offRoll * 1.6
+            , radiusM = 0.75
+            , heightM =
+                if sizeRoll > 0.5 then
+                    1.8
+
+                else
+                    0.9
+            }
+
+        Barrel ->
+            { offsetM = 1.4 + offRoll * 1.8, radiusM = 0.7, heightM = 1.0 }
+
+        GardenGnome ->
+            { offsetM = 1.2 + offRoll * 1.4, radiusM = 0.35, heightM = 0.8 }
+
+        BrickWall ->
+            { offsetM = 1.7 + offRoll * 0.8, radiusM = 1.3, heightM = 1.1 }
 
 
 type alias SceneryCursor =
@@ -1061,6 +1081,13 @@ generateScenery track =
 
                         Barn ->
                             heading + (yawRoll - 0.5) * 0.4
+
+                        BrickWall ->
+                            heading + (yawRoll - 0.5) * 0.1
+
+                        GardenGnome ->
+                            -- Gnomes face the road, give or take.
+                            heading + side * (pi / 2.0) + (yawRoll - 0.5) * 0.8
 
                         _ ->
                             yawRoll * 2.0 * pi

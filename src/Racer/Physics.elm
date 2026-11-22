@@ -966,6 +966,18 @@ breakSpeedFor kind =
         Barn ->
             7.5
 
+        Crate ->
+            1.2
+
+        Barrel ->
+            2.5
+
+        GardenGnome ->
+            0.8
+
+        BrickWall ->
+            6.0
+
 
 {-| Fraction of the racer's speed soaked up when ploughing through a piece.
 -}
@@ -998,6 +1010,38 @@ sceneryMassFactor kind =
 
         Barn ->
             0.5
+
+        Crate ->
+            0.14
+
+        Barrel ->
+            0.24
+
+        GardenGnome ->
+            0.04
+
+        BrickWall ->
+            0.36
+
+
+{-| Structural integrity a smash always costs, on top of the speed-dependent
+damage of the heavy pieces: an oil drum dents the bodywork, a ceramic gnome
+chips it, a brick wall knocks bricks off.
+-}
+smashChipDamage : ObstacleKind -> Float
+smashChipDamage kind =
+    case kind of
+        Barrel ->
+            4.0
+
+        GardenGnome ->
+            2.0
+
+        BrickWall ->
+            8.0
+
+        _ ->
+            0.0
 
 
 resolveObstacles :
@@ -1095,11 +1139,13 @@ resolveObstacles obsList halfTrack spec _ cooldown pos vel =
                                 vec3 (Vec3.getX acc.vel * keep) (Vec3.getY acc.vel) (Vec3.getZ acc.vel * keep)
 
                             dmg =
-                                if massFactor >= 0.3 && impactSpeed > 8.0 then
-                                    clamp 0.0 25.0 ((impactSpeed - 8.0) * 2.5)
+                                smashChipDamage obs.kind
+                                    + (if massFactor >= 0.3 && impactSpeed > 8.0 then
+                                        clamp 0.0 25.0 ((impactSpeed - 8.0) * 2.5)
 
-                                else
-                                    0.0
+                                       else
+                                        0.0
+                                      )
 
                             horizDir =
                                 normalizeSafe (vec3 (Vec3.getX acc.vel) 0 (Vec3.getZ acc.vel)) (vec3 -nx 0 -nz)

@@ -408,6 +408,47 @@ suite =
                     , \_ -> Expect.lessThan 5.5 (Physics.breakSpeedFor Racer.Types.Bush)
                     ]
                     ()
+        , test "Smashing a crate costs a little speed and no integrity" <|
+            \_ ->
+                let
+                    ( speedAfter, integrity, smashed ) =
+                        smashAt Racer.Types.Crate 12.0
+                in
+                Expect.all
+                    [ \_ -> Expect.equal [ 7 ] smashed
+                    , \_ -> Expect.within (Expect.Absolute 0.01) 100.0 integrity
+                    , \_ -> Expect.lessThan 12.0 speedAfter
+                    , \_ -> Expect.greaterThan 9.5 speedAfter
+                    ]
+                    ()
+        , test "Smashing a barrel, a gnome or a brick wall chips integrity; the wall costs most" <|
+            \_ ->
+                let
+                    ( barrelSpeed, barrelIntegrity, barrelSmashed ) =
+                        smashAt Racer.Types.Barrel 12.0
+
+                    ( gnomeSpeed, gnomeIntegrity, gnomeSmashed ) =
+                        smashAt Racer.Types.GardenGnome 12.0
+
+                    ( wallSpeed, wallIntegrity, wallSmashed ) =
+                        smashAt Racer.Types.BrickWall 12.0
+                in
+                Expect.all
+                    [ \_ -> Expect.equal [ [ 7 ], [ 7 ], [ 7 ] ] [ barrelSmashed, gnomeSmashed, wallSmashed ]
+                    , \_ -> Expect.lessThan 100.0 gnomeIntegrity
+                    , \_ -> Expect.lessThan gnomeIntegrity barrelIntegrity
+                    , \_ -> Expect.lessThan barrelIntegrity wallIntegrity
+                    , \_ -> Expect.lessThan barrelSpeed wallSpeed
+                    , \_ -> Expect.lessThan gnomeSpeed barrelSpeed
+                    ]
+                    ()
+        , test "A slow knock against a brick wall bounces off without breaking it" <|
+            \_ ->
+                let
+                    ( _, _, smashed ) =
+                        smashAt Racer.Types.BrickWall 4.0
+                in
+                Expect.equal [] smashed
         , test "Two-player split-screen starting grid offsets players laterally by 3.6 meters" <|
             \_ ->
                 let
@@ -444,6 +485,34 @@ suite =
                     ]
                     ()
         ]
+
+
+{-| Drive the kart into a piece of scenery at `speed` on flat ground; returns
+the speed and integrity after the hit and the ids of the pieces smashed.
+-}
+smashAt : Racer.Types.ObstacleKind -> Float -> ( Float, Float, List Int )
+smashAt kind speed =
+    let
+        track =
+            trackWithScenery (sceneryAt kind 20.0)
+
+        spec =
+            loadSpec "turntable-kart"
+
+        s0 =
+            Physics.initPhysics track spec
+
+        sHit =
+            { s0
+                | position = vec3 0.0 0.0 18.6
+                , velocity = vec3 0.0 0.0 speed
+                , progressS = 18.6
+            }
+
+        ( _, sAfter, events ) =
+            Physics.stepFrame (fixedDt * 4.0) 0.0 track spec neutralInput sHit
+    in
+    ( Vec3.length sAfter.velocity, sAfter.integrity, smashedIds events )
 
 
 sceneryAt : Racer.Types.ObstacleKind -> Float -> Racer.Types.TrackObstacle

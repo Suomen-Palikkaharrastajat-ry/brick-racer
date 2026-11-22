@@ -8,9 +8,9 @@ module Racer.TerrainMesh exposing
     )
 
 {-| Chunked WebGL countryside ground (unpaved road, verges and fields), launch
-humps, checkpoint/finish arches, brick-built roadside scenery (trees, bushes,
-fences, rocks, signposts, hay bales, cottages, barns), and the garage display
-plinth mesh.
+humps, checkpoint/finish arches, brick-built roadside
+scenery (trees, bushes, fences, rocks, signposts, hay bales, cottages, barns,
+crates, barrels, garden gnomes, brick walls), and the garage display plinth mesh.
 
 Each chunk keeps its scenery in a separate mesh so smashed pieces can be removed
 by rebuilding only that small mesh.
@@ -700,6 +700,18 @@ sceneryDebrisStyle kind =
         Barn ->
             { colors = [ ldrawColor 320, ldrawColor 320, ldrawColor 72, ldrawColor 15 ], count = 14, scale = 1.3 }
 
+        Crate ->
+            { colors = [ ldrawColor 70, ldrawColor 28, ldrawColor 70 ], count = 7, scale = 0.85 }
+
+        Barrel ->
+            { colors = [ ldrawColor 1, ldrawColor 1, ldrawColor 71 ], count = 6, scale = 0.8 }
+
+        GardenGnome ->
+            { colors = [ ldrawColor 4, ldrawColor 1, ldrawColor 15, ldrawColor 78 ], count = 4, scale = 0.5 }
+
+        BrickWall ->
+            { colors = [ ldrawColor 4, ldrawColor 320, ldrawColor 4, ldrawColor 71 ], count = 12, scale = 0.9 }
+
 
 buildSceneryTris : TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
 buildSceneryTris obs =
@@ -734,6 +746,18 @@ buildSceneryTris obs =
 
         Barn ->
             barnTris fr
+
+        Crate ->
+            crateTris fr obs.heightM
+
+        Barrel ->
+            barrelTris fr
+
+        GardenGnome ->
+            gnomeTris fr
+
+        BrickWall ->
+            brickWallTris fr
 
 
 leafyTreeTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -883,6 +907,117 @@ barnTris fr =
         ++ brick fr ( 0, 0, 2.06 ) ( 0.8, 1.84, 0.04 ) wall
         ++ List.concatMap roofStep (List.range 0 2)
         ++ studs fr ( 0, 4.15, 0 ) ( 5, 1 ) 1.0 roof
+
+
+{-| A wooden crate (reddish brown 2 x 2 bricks framed in dark tan), or a stack of
+two with a third beside them.
+-}
+crateTris : Frame -> Float -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+crateTris fr ht =
+    let
+        wood =
+            ldrawColor 70
+
+        frame =
+            ldrawColor 28
+
+        crate ( lx, ly, lz ) =
+            brick fr ( lx, ly, lz ) ( 0.42, 0.84, 0.42 ) wood
+                ++ brick fr ( lx, ly, lz ) ( 0.45, 0.1, 0.45 ) frame
+                ++ brick fr ( lx, ly + 0.74, lz ) ( 0.45, 0.1, 0.45 ) frame
+                ++ studs fr ( lx, ly + 0.84, lz ) ( 2, 2 ) 0.42 wood
+    in
+    if ht > 1.2 then
+        crate ( -0.2, 0, 0 ) ++ crate ( -0.2, 0.86, 0 ) ++ crate ( 0.5, 0, 0.25 )
+
+    else
+        crate ( 0, 0, 0 )
+
+
+{-| Two blue oil drums (round bricks with grey rims) and a third lying on top.
+-}
+barrelTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+barrelTris fr =
+    let
+        drum =
+            ldrawColor 1
+
+        rim =
+            ldrawColor 71
+
+        barrel lx lz =
+            let
+                base =
+                    localPt fr lx 0 lz
+            in
+            cylinderAt base 0.32 0.95 8 drum
+                ++ cylinderAt (Vec3.add base (vec3 0 0.3 0)) 0.335 0.06 8 rim
+                ++ cylinderAt (Vec3.add base (vec3 0 0.65 0)) 0.335 0.06 8 rim
+                ++ cylinderAt (Vec3.add base (vec3 0.12 0.95 0)) 0.08 0.04 6 rim
+    in
+    barrel -0.3 0.0 ++ barrel 0.32 -0.12 ++ studs fr ( 0, 0.95, 0.2 ) ( 1, 1 ) 0.5 drum
+
+
+{-| A garden gnome: black boots, blue trousers, red coat, white beard, light
+nougat face and a tall red hat of stacked bricks. It faces the road.
+-}
+gnomeTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+gnomeTris fr =
+    let
+        red =
+            ldrawColor 4
+    in
+    brick fr ( 0, 0, 0 ) ( 0.16, 0.08, 0.12 ) (ldrawColor 0)
+        ++ brick fr ( 0, 0.08, 0 ) ( 0.14, 0.14, 0.1 ) (ldrawColor 1)
+        ++ brick fr ( 0, 0.22, 0 ) ( 0.16, 0.18, 0.12 ) red
+        ++ brick fr ( 0, 0.4, 0 ) ( 0.11, 0.12, 0.09 ) (ldrawColor 78)
+        ++ brick fr ( 0, 0.3, 0.1 ) ( 0.1, 0.16, 0.03 ) (ldrawColor 15)
+        ++ brick fr ( 0, 0.52, 0 ) ( 0.13, 0.08, 0.11 ) red
+        ++ brick fr ( 0, 0.6, 0 ) ( 0.08, 0.1, 0.07 ) red
+        ++ brick fr ( 0, 0.7, -0.02 ) ( 0.04, 0.08, 0.04 ) red
+
+
+{-| A section of brick garden wall along the road: four courses of red and
+dark red bricks in running bond, capped with grey studded plates.
+-}
+brickWallTris : Frame -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+brickWallTris fr =
+    let
+        course i =
+            let
+                ly =
+                    toFloat i * 0.24
+
+                shift =
+                    if modBy 2 i == 0 then
+                        0.0
+
+                    else
+                        0.36
+
+                brickAt j =
+                    let
+                        lz =
+                            -1.08 + shift + toFloat j * 0.72
+
+                        col =
+                            if modBy 2 (i + j) == 0 then
+                                ldrawColor 4
+
+                            else
+                                ldrawColor 320
+                    in
+                    if lz > 1.1 then
+                        []
+
+                    else
+                        brick fr ( 0, ly, lz ) ( 0.2, 0.235, 0.35 ) col
+            in
+            List.concatMap brickAt (List.range 0 3)
+    in
+    List.concatMap course (List.range 0 3)
+        ++ brick fr ( 0, 0.96, 0 ) ( 0.24, 0.1, 1.46 ) (ldrawColor 71)
+        ++ studs fr ( 0, 1.06, 0 ) ( 1, 4 ) 0.72 (ldrawColor 71)
 
 
 cylinderAt : Vec3 -> Float -> Float -> Int -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
