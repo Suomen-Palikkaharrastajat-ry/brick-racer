@@ -444,12 +444,12 @@ presets =
       , summaryFi = "Korkea maavara, 37x18-maastorenkaat ja tukeva tappi- ja akselirunko."
       , ldrText = alpineCrawlerLdr
       }
-    , { id = "trike-wedge"
-      , nameEn = "Streamlined Brick Trike"
-      , nameFi = "Virtaviivainen kolmipyörä"
-      , summaryEn = "3-wheel delta stance with wide rear track and ultra-low aero wedge."
-      , summaryFi = "Kolmipyöräinen delta-rakenne, leveä taka-akseli ja matala ilmanvastus."
-      , ldrText = trikeWedgeLdr
+    , { id = "two-wheel-dart"
+      , nameEn = "Two-Wheel Dart"
+      , nameFi = "Kaksipyöräinen nuoli"
+      , summaryEn = "Two wheels in line: a turntable-steered front wheel and a fixed rear wheel under a low deck."
+      , summaryFi = "Kaksi pyörää peräkkäin: kääntöpöydällä ohjattu etupyörä ja kiinteä takapyörä matalan kannen alla."
+      , ldrText = twoWheelDartLdr
       }
     ]
 
@@ -539,26 +539,26 @@ alpineCrawlerLdr =
         ]
 
 
-trikeWedgeLdr : String
-trikeWedgeLdr =
+twoWheelDartLdr : String
+twoWheelDartLdr =
     String.join "\n"
-        [ "0 FILE trike-wedge.ldr"
-        , "0 Name: Streamlined Brick Trike"
-        , "0 // Single steerable front wheel bogie (-Z LDraw = front)"
-        , "1 72 0 -8 -60 1 0 0 0 1 0 0 0 1 3680.dat"
-        , "1 14 0 -8 -60 1 0 0 0 1 0 0 0 1 3679.dat"
-        , "1 72 0 0 -60 1 0 0 0 1 0 0 0 1 4600.dat"
-        , "1 14 34 5 -60 0 0 -1 0 1 0 1 0 0 6014b.dat"
-        , "1 0 34 5 -60 0 0 1 0 1 0 -1 0 0 56890.dat"
-        , "0 // Wide rear stance (+Z LDraw = rear)"
-        , "1 72 0 0 60 1 0 0 0 1 0 0 0 1 4600.dat"
-        , "1 72 0 -8 60 1 0 0 0 1 0 0 0 1 3022.dat"
-        , "1 15 34 5 60 0 0 -1 0 1 0 1 0 0 6014b.dat"
-        , "1 0 34 5 60 0 0 1 0 1 0 -1 0 0 56890.dat"
-        , "1 15 -34 5 60 0 0 1 0 1 0 -1 0 0 6014b.dat"
-        , "1 0 -34 5 60 0 0 -1 0 1 0 1 0 0 56890.dat"
-        , "0 // Aero delta body"
-        , "1 14 0 -16 0 0 0 1 0 1 0 -1 0 0 3034.dat"
-        , "1 14 0 -40 -50 1 0 0 0 1 0 0 0 1 3039.dat"
-        , "1 4 0 -24 20 1 0 0 0 1 0 0 0 1 4079.dat"
+        [ "0 FILE two-wheel-dart.ldr"
+        , "0 Name: Two-Wheel Dart"
+        , "0 // Steerable front wheel on a turntable, centred on the car (-Z LDraw = front)"
+        , "1 72 -40 -8 -60 1 0 0 0 1 0 0 0 1 3680.dat"
+        , "1 14 -40 -8 -60 1 0 0 0 1 0 0 0 1 3679.dat"
+        , "1 72 -40 0 -60 1 0 0 0 1 0 0 0 1 4488.dat"
+        , "1 14 -6 5 -60 0 0 -1 0 1 0 1 0 0 6014b.dat"
+        , "1 0 0 5 -60 0 0 1 0 1 0 -1 0 0 56890.dat"
+        , "0 // Fixed rear wheel, centred on the car (+Z LDraw = rear)"
+        , "1 72 40 0 60 -1 0 0 0 1 0 0 0 -1 4488.dat"
+        , "1 15 6 5 60 0 0 1 0 1 0 -1 0 0 6014b.dat"
+        , "1 0 0 5 60 0 0 -1 0 1 0 1 0 0 56890.dat"
+        , "0 // Rails and deck"
+        , "1 4 40 -8 40 0 0 1 0 1 0 -1 0 0 3795.dat"
+        , "1 4 40 -16 40 0 0 1 0 1 0 -1 0 0 3795.dat"
+        , "1 4 -40 -16 -40 0 0 1 0 1 0 -1 0 0 3795.dat"
+        , "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3795.dat"
+        , "1 14 -40 -40 -70 1 0 0 0 1 0 0 0 1 3039.dat"
+        , "1 4 0 -32 0 1 0 0 0 1 0 0 0 1 4079.dat"
         ]

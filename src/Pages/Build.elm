@@ -224,10 +224,6 @@ setLanguage language model =
     { model | language = language }
 
 
-{-| Handle an editor message.
--}
-
-
 {-| Move the active part to the front of the palette. The palette keeps its
 order while the user taps the same card, and this runs once the user has moved on.
 -}
@@ -291,6 +287,8 @@ endsPaletteTap msg =
             False
 
 
+{-| Handle an editor message.
+-}
 update : Msg -> Model -> ( Model, Cmd Msg, Outcome )
 update msg model =
     let

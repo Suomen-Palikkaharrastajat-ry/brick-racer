@@ -5,9 +5,11 @@ module StarterBasesTest exposing (suite)
 
   - each file is one grouped base: the main model holds a single reference to
     the base submodel, and the part count in its header is the real count,
-  - `Racer.Analyze` pairs 4 rim + tyre wheels, finds 2 front wheels, reports
-    no blocker or warning (so no loose bricks and no belly scrape), and finds
-    the turntable on the steering kart,
+  - `Racer.Analyze` pairs the base's rim + tyre wheels (2 in line on the
+    two-wheel dart, 6 on three axles on the six-wheel hauler, 4 on the others),
+    finds the front wheels (1 on the dart, 2 on the others), reports no blocker
+    or warning (so no loose bricks and no belly scrape), and finds the
+    turntable on every base but the pinewood plank,
   - Brick Studio's `Studio.Health` finds no misaligned or overlapping parts in
     the base (a 6014b rim with its 56890 tyre aside, see `isOffsetRimTyre`),
     and every studded part sits on studs.
@@ -32,7 +34,7 @@ import Test exposing (Test, describe, test)
 suite : Test
 suite =
     describe "Starter car bases"
-        (test "there are four starter bases" (\_ -> Expect.equal 4 (List.length StarterBases.all))
+        (test "there are five starter bases" (\_ -> Expect.equal 5 (List.length StarterBases.all))
             :: List.map starterTest StarterBases.all
         )
 
@@ -65,17 +67,12 @@ starterTest starter =
             \_ -> Expect.equal (Just flatCount) (headerPartCount starter.text)
         , test "stays within the 80-part starter budget" <|
             \_ -> Expect.atMost 80 flatCount
-        , test "analyzer pairs 3 or 4 wheels with tyres" <|
+        , test ("analyzer pairs " ++ String.fromInt (expectedWheels starter.file) ++ " wheels with tyres") <|
             \_ ->
                 Expect.all
-                    [ \s -> Expect.equal True (List.member (List.length s.wheels) [ 3, 4 ])
+                    [ \s -> Expect.equal (expectedWheels starter.file) (List.length s.wheels)
                     , \s -> Expect.equal True (List.all .hasRubberTire s.wheels)
-                    , \s ->
-                        if starter.file == "trike-wedge.mpd" then
-                            Expect.equal 1 (List.length (List.filter .isFront s.wheels))
-
-                        else
-                            Expect.equal 2 (List.length (List.filter .isFront s.wheels))
+                    , \s -> Expect.equal (expectedFrontWheels starter.file) (List.length (List.filter .isFront s.wheels))
                     , \s -> Expect.equal True (List.all (\w -> List.length w.placementIds == 2) s.wheels)
                     ]
                     spec
@@ -89,7 +86,13 @@ starterTest starter =
                             (List.filter (\i -> i.severity == Blocker || i.severity == Warning) s.issues)
                     , \s -> Expect.atLeast 0.0 s.groundClearanceLdu
                     , \s -> Expect.atLeast 0.5 s.wheelBaseM
-                    , \s -> Expect.atLeast 0.3 s.trackWidthM
+                    , \s ->
+                        if starter.file == "two-wheel-dart.mpd" then
+                            -- Both wheels sit on the centreline, one behind the other.
+                            Expect.atMost 0.01 s.trackWidthM
+
+                        else
+                            Expect.atLeast 0.3 s.trackWidthM
                     ]
                     spec
         , test "steering matches the design" <|
@@ -112,6 +115,35 @@ starterTest starter =
         , test "every studded part sits on studs" <|
             \_ -> Expect.equal [] (floatingStudParts base)
         ]
+
+
+{-| How many wheels the analyzer should pair on a base: an even count, as the
+analyzer requires.
+-}
+expectedWheels : String -> Int
+expectedWheels file =
+    case file of
+        "two-wheel-dart.mpd" ->
+            2
+
+        "six-wheel-hauler.mpd" ->
+            6
+
+        _ ->
+            4
+
+
+{-| How many of a base's wheels are front wheels: the dart's single steered
+wheel, the hauler's turntable axle (its tandem middle axle sits behind the
+midpoint of the front and rear axles), and the front axle of the others.
+-}
+expectedFrontWheels : String -> Int
+expectedFrontWheels file =
+    if file == "two-wheel-dart.mpd" then
+        1
+
+    else
+        2
 
 
 {-| The base submodel on its own, as a single-model document (`Studio.Health`

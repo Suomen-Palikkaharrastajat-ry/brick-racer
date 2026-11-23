@@ -193,7 +193,7 @@ type alias Base =
     }
 
 
-{-| The four starter bases, in menu order.
+{-| The five starter bases, in menu order.
 -}
 bases : List Base
 bases =
@@ -208,7 +208,8 @@ baseOrder =
         [ ( "turntable-kart", 0 )
         , ( "pinewood-classic", 1 )
         , ( "alpine-crawler", 2 )
-        , ( "trike-wedge", 3 )
+        , ( "two-wheel-dart", 3 )
+        , ( "six-wheel-hauler", 4 )
         ]
 
 
@@ -218,7 +219,8 @@ finnishNames =
         [ ( "turntable-kart", "Kääntöpöytä-karting" )
         , ( "pinewood-classic", "Klassinen mäkiauto" )
         , ( "alpine-crawler", "Alppimaasturi" )
-        , ( "trike-wedge", "Virtaviivainen kolmipyörä" )
+        , ( "two-wheel-dart", "Kaksipyöräinen nuoli" )
+        , ( "six-wheel-hauler", "Kuusipyöräinen telirekka" )
         ]
 
 
