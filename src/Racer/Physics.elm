@@ -1183,6 +1183,18 @@ breakSpeedFor kind =
         BrickWall ->
             6.0
 
+        BrickPallet ->
+            2.0
+
+        TileStack ->
+            1.0
+
+        BrickGate ->
+            3.0
+
+        SlopeBlock ->
+            3.5
+
 
 {-| Fraction of the racer's speed soaked up when ploughing through a piece.
 -}
@@ -1228,6 +1240,18 @@ sceneryMassFactor kind =
         BrickWall ->
             0.36
 
+        BrickPallet ->
+            0.2
+
+        TileStack ->
+            0.1
+
+        BrickGate ->
+            0.22
+
+        SlopeBlock ->
+            0.28
+
 
 {-| Full health (structural integrity) of a fresh or rebuilt car. At 0 the car
 breaks apart into its bricks (`Crashed StructuralCollapse`).
@@ -1265,7 +1289,7 @@ landingDamage impactVel =
 
 {-| Structural integrity a smash always costs, on top of the speed-dependent
 damage of the heavy pieces: an oil drum dents the bodywork, a ceramic gnome
-chips it, a brick wall knocks bricks off.
+chips it, a brick wall, pallet, gate or slope block knocks bricks off.
 -}
 smashChipDamage : ObstacleKind -> Float
 smashChipDamage kind =
@@ -1278,6 +1302,15 @@ smashChipDamage kind =
 
         BrickWall ->
             16.0
+
+        BrickPallet ->
+            6.0
+
+        BrickGate ->
+            6.0
+
+        SlopeBlock ->
+            10.0
 
         _ ->
             0.0

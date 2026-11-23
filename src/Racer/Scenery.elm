@@ -13,7 +13,8 @@ module Racer.Scenery exposing
 checkpoint and finish arches and the loose bricks of a crash.
 
 Every one is a model from `Game.BrickModels` (or, for the crates, barrels,
-garden gnomes and brick walls, `Racer.SceneryModels`), made of catalog parts and
+garden gnomes, brick walls, brick pallets, tile stacks, brick gates and slope
+blocks, `Racer.SceneryModels`), made of catalog parts and
 loaded like the car (`Game.BrickProps`). Each model is built once into
 `Props` and drawn once per piece of scenery with its own model matrix, so a
 course with hundreds of trees keeps one copy of the tree's geometry.
@@ -144,6 +145,18 @@ modelFor obs =
 
         BrickWall ->
             ( "brickWall", BrickProps.fitBox { width = 0.48, height = obs.heightM, depth = 2.92 } )
+
+        BrickPallet ->
+            ( "brickPallet", BrickProps.fitHeight obs.heightM )
+
+        TileStack ->
+            ( "tileStack", BrickProps.fitHeight obs.heightM )
+
+        BrickGate ->
+            ( "brickGate", BrickProps.fitHeight obs.heightM )
+
+        SlopeBlock ->
+            ( "slopeBlock", BrickProps.fitHeight obs.heightM )
 
 
 noTint : Vec4

@@ -26,8 +26,9 @@ Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads:
   - `MeadowPath`: narrow, steepest grass footpath with a field hump and tussocks.
 
 Each course is lined with brick-built scenery (trees, bushes, fences, rocks,
-signposts, hay bales, cottages, barns, crates, barrels, garden gnomes and brick
-wall sections) that the racer can smash apart, and has a few brick-built launch
+signposts, hay bales, cottages, barns, crates, barrels, garden gnomes, brick
+wall sections, brick pallets, tile stacks, brick gates and slope blocks) that
+the racer can smash apart, and has a few brick-built launch
 ramps on one lane of the road (`brickRamps`, see `brickRampLift`).
 
 Exposes continuous `sampleAt` / `sampleAtHinted` heightmap + finite-difference surface
@@ -173,12 +174,14 @@ generate config =
             , washes = washes
             }
 
+        rampedTrack =
+            { bareTrack | brickRamps = placeBrickRamps bareTrack }
+
         obstacles =
-            generateScenery bareTrack
+            generateScenery rampedTrack
     in
-    { bareTrack
+    { rampedTrack
         | obstacles = obstacles
-        , brickRamps = placeBrickRamps bareTrack
         , obstacleBuckets = bucketObstacles bucketSizeM bucketCount obstacles
     }
 
@@ -936,21 +939,21 @@ sceneryTheme trackId =
             { fenceChance = 0.06
             , density = 0.2
             , weights =
-                [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ) ]
+                [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ), ( BrickPallet, 4 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ) ]
             }
 
         ForestTrail ->
             { fenceChance = 0.015
             , density = 0.34
             , weights =
-                [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ) ]
+                [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 2 ), ( SlopeBlock, 2 ) ]
             }
 
         MeadowPath ->
             { fenceChance = 0.04
             , density = 0.17
             , weights =
-                [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ) ]
+                [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ) ]
             }
 
 
@@ -1042,6 +1045,27 @@ scenerySpec kind offRoll sizeRoll =
         BrickWall ->
             { offsetM = 1.7 + offRoll * 0.8, radiusM = 1.3, heightM = 1.1 }
 
+        BrickPallet ->
+            { offsetM = 1.5 + offRoll * 1.8, radiusM = 0.65, heightM = 1.2 }
+
+        TileStack ->
+            { offsetM = 1.4 + offRoll * 1.6, radiusM = 0.65, heightM = 0.8 }
+
+        BrickGate ->
+            { offsetM = 1.6 + offRoll * 1.0, radiusM = 0.9, heightM = 1.6 }
+
+        SlopeBlock ->
+            { offsetM = 1.5 + offRoll * 1.0, radiusM = 1.0, heightM = 0.8 }
+
+
+{-| The brick-built crashables of `Racer.SceneryModels` made only of the car
+editor's dock parts. They also stay 6 m clear of the launch ramps, so a car
+coming off a ramp does not land in one.
+-}
+dockBuiltScenery : List ObstacleKind
+dockBuiltScenery =
+    [ BrickPallet, TileStack, BrickGate, SlopeBlock ]
+
 
 type alias SceneryCursor =
     { acc : List TrackObstacle
@@ -1081,6 +1105,10 @@ generateScenery track =
 
         nearGate sVal =
             List.any (\cp -> abs (cp.s - sVal) < 7.0) track.checkpoints
+
+        nearRamp sVal =
+            List.any (\rp -> sVal > rp.startS - 6.0 && sVal < rp.endS + 6.0) track.brickRamps
+                || List.any (\rp -> sVal > rp.startS - 6.0 && sVal < rp.endS + 6.0) track.ramps
 
         tryPlace kind side sVal offRoll sizeRoll yawRoll cur =
             let
@@ -1122,6 +1150,12 @@ generateScenery track =
                         BrickWall ->
                             heading + (yawRoll - 0.5) * 0.1
 
+                        BrickGate ->
+                            heading + (yawRoll - 0.5) * 0.2
+
+                        SlopeBlock ->
+                            heading + (yawRoll - 0.5) * 0.2
+
                         GardenGnome ->
                             -- Gnomes face the road, give or take.
                             heading + side * (pi / 2.0) + (yawRoll - 0.5) * 0.8
@@ -1152,8 +1186,11 @@ generateScenery track =
                                 in
                                 dx * dx + dz * dz >= minGap * minGap
                             )
+
+                clearOfRamps =
+                    not (List.member kind dockBuiltScenery && nearRamp sVal)
             in
-            if clearOfRoad && clearOfOthers then
+            if clearOfRoad && clearOfOthers && clearOfRamps then
                 Just
                     { id = cur.nextId
                     , kind = kind

@@ -1,4 +1,4 @@
-module Racer.SceneryModels exposing (all, barrels, brickWall, crate, crateStack, gnome)
+module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, crate, crateStack, gnome, slopeBlock, tileStack)
 
 {-| The racer's own crashable roadside props, as LDraw models of catalog
 parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
@@ -6,8 +6,13 @@ parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
 y = 0, centred on x = z = 0, the front towards LDraw -Z). They are drawn with
 `Game.BrickProps` like the shared models.
 
-Only the looks live here; where a crate, barrel, gnome or wall stands and
-how big its collision cylinder is stays in `Racer.Track`.
+Only the looks live here; where a crate, barrel, gnome, wall, pallet, tile
+stack, gate or slope block stands and how big its collision cylinder is stays
+in `Racer.Track`.
+
+The brick pallet, tile stack, brick gate and slope block use only parts of the
+car editor's dock (`Racer.Editor.parts`), which `tests/SceneryModelsTest.elm`
+checks.
 
 -}
 
@@ -21,12 +26,17 @@ all =
     , ( "barrels", barrels )
     , ( "gnome", gnome )
     , ( "brickWall", brickWall )
+    , ( "brickPallet", brickPallet )
+    , ( "tileStack", tileStack )
+    , ( "brickGate", brickGate )
+    , ( "slopeBlock", slopeBlock )
     ]
 
 
 type Turn
     = Straight
     | Quarter
+    | Half
 
 
 part : Int -> ( Float, Float, Float ) -> Turn -> String -> String
@@ -39,6 +49,9 @@ part colour ( x, y, z ) turn file =
 
                 Quarter ->
                     [ "0", "0", "1", "0", "1", "0", "-1", "0", "0" ]
+
+                Half ->
+                    [ "-1", "0", "0", "0", "1", "0", "0", "0", "-1" ]
     in
     String.join " " ([ "1", String.fromInt colour, String.fromFloat x, String.fromFloat y, String.fromFloat z ] ++ matrix ++ [ file ])
 
@@ -76,6 +89,26 @@ darkRed =
 lightBluishGrey : Int
 lightBluishGrey =
     71
+
+
+darkBluishGrey : Int
+darkBluishGrey =
+    72
+
+
+white : Int
+white =
+    15
+
+
+yellow : Int
+yellow =
+    14
+
+
+black : Int
+black =
+    0
 
 
 
@@ -185,4 +218,115 @@ brickWall =
     model "Brick wall"
         (List.concatMap course [ 0, 1, 2, 3 ]
             ++ List.map (\z -> part lightBluishGrey ( 0, -104, z ) Quarter "3020.dat") [ -80, 0, 80 ]
+        )
+
+
+
+-- BRICK PALLET
+
+
+{-| A wooden pallet of loose bricks waiting to be built: three reddish brown
+1 x 4 brick runners under a 4 x 4 plate, with three courses of red, yellow and
+blue 2 x 4 bricks laid crosswise on it (a 2 x 2 brick in the top course).
+-}
+brickPallet : String
+brickPallet =
+    model "Brick pallet"
+        (List.map (\z -> part reddishBrown ( 0, -24, z ) Straight "3010.dat") [ -30, 0, 30 ]
+            ++ [ part reddishBrown ( 0, -32, 0 ) Straight "3031.dat"
+               , part red ( 0, -56, -20 ) Straight "3001.dat"
+               , part yellow ( 0, -56, 20 ) Straight "3001.dat"
+               , part blue ( -20, -80, 0 ) Quarter "3001.dat"
+               , part red ( 20, -80, 0 ) Quarter "3001.dat"
+               , part yellow ( 0, -104, -20 ) Straight "3001.dat"
+               , part blue ( -20, -104, 20 ) Straight "3003.dat"
+               ]
+        )
+
+
+
+-- TILE STACK
+
+
+{-| A heap of spare plates and tiles: crosswise layers of grey and white 2 x 4
+plates, a layer of 2 x 2 plates, then a few 2 x 2, 1 x 2 and 1 x 1 tiles on
+top.
+-}
+tileStack : String
+tileStack =
+    let
+        straightLayer colour y =
+            List.map (\z -> part colour ( 0, y, z ) Straight "3020.dat") [ -20, 20 ]
+
+        crossLayer colour y =
+            List.map (\x -> part colour ( x, y, 0 ) Quarter "3020.dat") [ -20, 20 ]
+    in
+    model "Tile stack"
+        (straightLayer lightBluishGrey -8
+            ++ crossLayer darkBluishGrey -16
+            ++ straightLayer white -24
+            ++ crossLayer lightBluishGrey -32
+            ++ straightLayer darkBluishGrey -40
+            ++ List.map (\( x, z ) -> part white ( x, -48, z ) Straight "3022.dat") [ ( -20, -20 ), ( 20, -20 ), ( -20, 20 ), ( 20, 20 ) ]
+            ++ [ part lightBluishGrey ( 0, -56, -20 ) Straight "3020.dat"
+               , part yellow ( -20, -56, 20 ) Straight "3022.dat"
+               , part white ( -20, -64, -20 ) Straight "3068b.dat"
+               , part darkBluishGrey ( 20, -64, -20 ) Straight "3068b.dat"
+               , part blue ( -20, -64, 10 ) Straight "3069b.dat"
+               , part red ( -30, -64, 30 ) Straight "3070b.dat"
+               ]
+        )
+
+
+
+-- BRICK GATE
+
+
+{-| A garden gateway along Z: two white 2 x 2 brick posts four bricks tall,
+bridged by a red 1 x 6 brick topped with a yellow 1 x 4 tile.
+-}
+brickGate : String
+brickGate =
+    model "Brick gate"
+        (List.concatMap
+            (\z -> List.map (\i -> part white ( 0, -24 * toFloat i, z ) Straight "3003.dat") [ 1, 2, 3, 4 ])
+            [ -50, 50 ]
+            ++ [ part red ( 0, -120, 0 ) Quarter "3009.dat"
+               , part yellow ( 0, -128, 0 ) Quarter "2431.dat"
+               ]
+        )
+
+
+
+-- SLOPE BLOCK
+
+
+{-| A low chevron block along Z: grey 2 x 8 plates under yellow and black
+33° and 45° slopes rising from both ends to a ridge of yellow 2 x 2 tiles over
+a black 2 x 2 brick core. (A slope's origin is over its top stud row, so the
+slope runs out to -Z from it.)
+-}
+slopeBlock : String
+slopeBlock =
+    let
+        colourOf x =
+            if x < 0 then
+                yellow
+
+            else
+                black
+    in
+    model "Slope block"
+        (List.concatMap
+            (\x ->
+                [ part darkBluishGrey ( x, -8, 0 ) Quarter "3034.dat"
+                , part (colourOf x) ( x, -32, -30 ) Straight "3298.dat"
+                , part black ( x, -32, 0 ) Straight "3003.dat"
+                , part (colourOf -x) ( x, -32, 30 ) Half "3298.dat"
+                , part (colourOf -x) ( x, -56, -10 ) Straight "3039.dat"
+                , part (colourOf x) ( x, -56, 10 ) Half "3039.dat"
+                , part yellow ( x, -64, 0 ) Straight "3068b.dat"
+                ]
+            )
+            [ -20, 20 ]
         )

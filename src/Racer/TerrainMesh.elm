@@ -640,6 +640,18 @@ sceneryDebrisStyle kind =
         BrickWall ->
             { colors = [ ldrawColor 4, ldrawColor 320, ldrawColor 4, ldrawColor 71 ], count = 12, scale = 0.9 }
 
+        BrickPallet ->
+            { colors = [ ldrawColor 4, ldrawColor 14, ldrawColor 1, ldrawColor 70 ], count = 10, scale = 0.9 }
+
+        TileStack ->
+            { colors = [ ldrawColor 71, ldrawColor 72, ldrawColor 15, ldrawColor 14 ], count = 8, scale = 0.7 }
+
+        BrickGate ->
+            { colors = [ ldrawColor 15, ldrawColor 15, ldrawColor 4, ldrawColor 14 ], count = 9, scale = 0.85 }
+
+        SlopeBlock ->
+            { colors = [ ldrawColor 14, ldrawColor 0, ldrawColor 14, ldrawColor 72 ], count = 10, scale = 0.85 }
+
 
 
 -- ── Brick launch ramps ───────────────────────────────────────────────────────

@@ -228,9 +228,10 @@ type alias Checkpoint =
 
 {-| Kind of brick-built roadside scenery. Every kind can be smashed apart.
 
-`Crate`, `Barrel`, `GardenGnome` and `BrickWall` stand close to the road edge as
-things to crash into: each breaks into debris and costs some speed and, for the
-heavy ones, some structural integrity.
+`Crate`, `Barrel`, `GardenGnome`, `BrickWall`, `BrickPallet`, `TileStack`,
+`BrickGate` and `SlopeBlock` stand close to the road edge as things to crash
+into: each breaks into debris and costs some speed and, for the heavy ones,
+some structural integrity.
 
 -}
 type ObstacleKind
@@ -247,6 +248,10 @@ type ObstacleKind
     | Barrel
     | GardenGnome
     | BrickWall
+    | BrickPallet
+    | TileStack
+    | BrickGate
+    | SlopeBlock
 
 
 {-| Cylinder-approximated roadside scenery piece. `yaw` orients fences, signs and
