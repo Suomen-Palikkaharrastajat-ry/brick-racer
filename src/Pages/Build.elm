@@ -331,8 +331,16 @@ update msg model =
 
         SelectTab tab ->
             let
+                -- Pressing the button of the open drawer closes it.
+                nextTab =
+                    if tab == model.activeTab then
+                        BuildBricksTab
+
+                    else
+                        tab
+
                 updated =
-                    { model | activeTab = tab, notice = Nothing }
+                    { model | activeTab = nextTab, notice = Nothing }
 
                 ( next, cmd ) =
                     runCore (Core.update (Core.ViewportMsg (Viewport.WindowResize model.width (canvasHeight updated)))) updated
@@ -709,16 +717,25 @@ topBar model =
         , Attr.style "padding" "max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left))"
         , Attr.style "pointer-events" "none"
         ]
-        [ iconButton (tr lang "Back to the menu" "Takaisin valikkoon") FeatherIcons.arrowLeft (Just Leave)
+        [ button
+            (buttonStyle True
+                ++ [ onClick Finish
+                   , Attr.style "background" Brand.legoYellow
+                   , Attr.style "color" Brand.legoBlack
+                   , Attr.style "border" "none"
+                   , Attr.attribute "aria-label" (tr lang "To the garage" "Talliin")
+                   , Attr.title (tr lang "To the garage" "Talliin")
+                   ]
+            )
+            [ FeatherIcons.check |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [] ]
         , div
             [ Attr.style "display" "flex"
             , Attr.style "align-items" "center"
             , Attr.style "gap" "4px"
             , Attr.style "overflow-x" "auto"
-            , Attr.style "max-width" "calc(100vw - 220px)"
+            , Attr.style "max-width" "calc(100vw - 180px)"
             ]
             [ tabBtn BuildBricksTab (RI18n.buildTab lang) FeatherIcons.box
-            , tabBtn AllBricksTab (tr lang "All bricks" "Kaikki palikat") FeatherIcons.grid
             , tabBtn BasesTab (RI18n.basesTab lang) FeatherIcons.truck
             , tabBtn ImportBuildTab (RI18n.openBuildTab lang) FeatherIcons.download
             , tabBtn ReviewTab (RI18n.reviewTab lang) FeatherIcons.award
@@ -781,20 +798,7 @@ topBar model =
                 ]
             ]
         , div [ Attr.style "margin-left" "auto", Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "gap" "4px" ]
-            [ iconButton (tr lang "Undo" "Kumoa") FeatherIcons.cornerUpLeft (enabledIf (Core.canUndo model.studio) Undo)
-            , iconButton (tr lang "Redo" "Tee uudelleen") FeatherIcons.cornerUpRight (enabledIf (Core.canRedo model.studio) Redo)
-            , iconButton (tr lang "Show the whole car" "Näytä koko auto") FeatherIcons.maximize (Just FitView)
-            , button
-                (buttonStyle True
-                    ++ [ onClick Finish
-                       , Attr.style "background" Brand.legoYellow
-                       , Attr.style "color" Brand.legoBlack
-                       , Attr.style "border" "none"
-                       , Attr.attribute "aria-label" (tr lang "To the garage" "Talliin")
-                       , Attr.title (tr lang "To the garage" "Talliin")
-                       ]
-                )
-                [ FeatherIcons.check |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [] ]
+            [ iconButton (tr lang "Show the whole car" "Näytä koko auto") FeatherIcons.maximize (Just FitView)
             ]
         ]
 
@@ -886,25 +890,21 @@ paletteRow model =
                 [ Attr.type_ "button"
                 , onClick (SelectTab AllBricksTab)
                 , Attr.style "flex-shrink" "0"
+                , Attr.style "width" "56px"
                 , Attr.style "height" "56px"
-                , Attr.style "padding" "0 12px"
+                , Attr.style "padding" "0"
                 , Attr.style "display" "flex"
-                , Attr.style "flex-direction" "column"
                 , Attr.style "align-items" "center"
                 , Attr.style "justify-content" "center"
-                , Attr.style "gap" "3px"
                 , Attr.style "border-radius" "10px"
                 , Attr.style "border" "2px dashed rgba(250, 200, 10, 0.6)"
                 , Attr.style "background" "rgba(250, 200, 10, 0.15)"
                 , Attr.style "color" Brand.legoYellow
                 , Attr.style "cursor" "pointer"
-                , Attr.style "white-space" "nowrap"
+                , Attr.attribute "aria-label" (tr model.language "All bricks" "Kaikki palikat")
                 , Attr.title (tr model.language "Browse all categorized bricks" "Selaa kaikkia osia kategorioittain")
                 ]
-                [ span [ Attr.style "font-size" "18px" ] [ text "📦" ]
-                , span [ Attr.style "font-size" "10px", Attr.style "font-weight" "800" ]
-                    [ text (tr model.language "All Bricks..." "Kaikki palikat...") ]
-                ]
+                [ span [ Attr.style "font-size" "22px" ] [ text "📦" ] ]
     in
     div
         [ Attr.style "display" "flex"
@@ -932,7 +932,7 @@ paletteRow model =
             , Attr.style "padding-bottom" "2px"
             , Attr.attribute "aria-label" (tr model.language "Bricks" "Palikat")
             ]
-            (renderedBricks ++ [ allBricksBtn ])
+            (allBricksBtn :: renderedBricks)
         ]
 
 
@@ -1024,7 +1024,9 @@ modelingControls model =
         , Attr.style "gap" "6px"
         , Attr.style "flex-shrink" "0"
         ]
-        [ modelToolBtn (tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (enabledIf hasSel (Turn TurnLeft))
+        [ modelToolBtn (tr lang "Undo" "Kumoa") FeatherIcons.cornerUpLeft (enabledIf (Core.canUndo model.studio) Undo)
+        , modelToolBtn (tr lang "Redo" "Tee uudelleen") FeatherIcons.cornerUpRight (enabledIf (Core.canRedo model.studio) Redo)
+        , modelToolBtn (tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (enabledIf hasSel (Turn TurnLeft))
         , modelToolBtn (tr lang "Turn right" "Käännä oikealle") FeatherIcons.rotateCw (enabledIf hasSel (Turn TurnRight))
         , modelToolBtn (tr lang "Raise" "Nosta") FeatherIcons.arrowUp (enabledIf hasSel Raise)
         , modelToolBtn (tr lang "Lower" "Laske") FeatherIcons.arrowDown (enabledIf hasSel Lower)
