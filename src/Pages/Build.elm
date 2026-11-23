@@ -594,10 +594,10 @@ tabDrawerHeight : BuilderTab -> Int
 tabDrawerHeight tab =
     case tab of
         BuildBricksTab ->
-            126
+            dockHeight
 
         AllBricksTab ->
-            320
+            dockHeight + catalogDrawerHeight
 
         _ ->
             280
@@ -731,71 +731,15 @@ topBar model =
         , div
             [ Attr.style "display" "flex"
             , Attr.style "align-items" "center"
+            , Attr.style "justify-content" "center"
             , Attr.style "gap" "4px"
+            , Attr.style "flex" "1"
+            , Attr.style "min-width" "0"
             , Attr.style "overflow-x" "auto"
-            , Attr.style "max-width" "calc(100vw - 180px)"
             ]
-            [ tabBtn BuildBricksTab (RI18n.buildTab lang) FeatherIcons.box
-            , tabBtn BasesTab (RI18n.basesTab lang) FeatherIcons.truck
+            [ tabBtn BasesTab (RI18n.basesTab lang) FeatherIcons.truck
             , tabBtn ImportBuildTab (RI18n.openBuildTab lang) FeatherIcons.download
             , tabBtn ReviewTab (RI18n.reviewTab lang) FeatherIcons.award
-            , button
-                [ Attr.type_ "button"
-                , onClick ToggleBaseLock
-                , Attr.style "display" "inline-flex"
-                , Attr.style "align-items" "center"
-                , Attr.style "justify-content" "center"
-                , Attr.style "width" "40px"
-                , Attr.style "height" "40px"
-                , Attr.style "flex-shrink" "0"
-                , Attr.style "border-radius" "12px"
-                , Attr.style "border"
-                    (if model.baseLocked then
-                        "1px solid rgba(255, 255, 255, 0.2)"
-
-                     else
-                        "1px solid #f59e0b"
-                    )
-                , Attr.style "background"
-                    (if model.baseLocked then
-                        "rgba(15, 23, 42, 0.82)"
-
-                     else
-                        "rgba(245, 158, 11, 0.25)"
-                    )
-                , Attr.style "color"
-                    (if model.baseLocked then
-                        "#cbd5e1"
-
-                     else
-                        "#fbbf24"
-                    )
-                , Attr.style "cursor" "pointer"
-                , Attr.style "pointer-events" "auto"
-                , Attr.attribute "title"
-                    (if model.baseLocked then
-                        tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
-
-                     else
-                        tr lang "Base unlocked (click to lock chassis)" "Alusta avattu (klikkaa lukitaksesi alusta)"
-                    )
-                , Attr.attribute "aria-label"
-                    (if model.baseLocked then
-                        tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
-
-                     else
-                        tr lang "Base unlocked (click to lock chassis)" "Alusta avattu (klikkaa lukitaksesi alusta)"
-                    )
-                ]
-                [ (if model.baseLocked then
-                    FeatherIcons.lock
-
-                   else
-                    FeatherIcons.unlock
-                  )
-                    |> FeatherIcons.withSize 18
-                    |> FeatherIcons.toHtml []
-                ]
             ]
         , div [ Attr.style "margin-left" "auto", Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "gap" "4px" ]
             [ iconButton (tr lang "Show the whole car" "Näytä koko auto") FeatherIcons.maximize (Just FitView)
@@ -826,6 +770,71 @@ noticeView model =
             text ""
 
 
+{-| Base lock toggle, shown at the far right of the palette row.
+-}
+lockButton : Model -> Html Msg
+lockButton model =
+    let
+        lang =
+            model.language
+
+        locked =
+            model.baseLocked
+
+        label =
+            if locked then
+                tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
+
+            else
+                tr lang "Base unlocked (click to lock chassis)" "Alusta avattu (klikkaa lukitaksesi alusta)"
+    in
+    button
+        [ Attr.type_ "button"
+        , onClick ToggleBaseLock
+        , Attr.style "display" "inline-flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "justify-content" "center"
+        , Attr.style "width" "40px"
+        , Attr.style "height" "40px"
+        , Attr.style "flex-shrink" "0"
+        , Attr.style "border-radius" "12px"
+        , Attr.style "border"
+            (if locked then
+                "1px solid rgba(255, 255, 255, 0.2)"
+
+             else
+                "1px solid #f59e0b"
+            )
+        , Attr.style "background"
+            (if locked then
+                "rgba(15, 23, 42, 0.82)"
+
+             else
+                "rgba(245, 158, 11, 0.25)"
+            )
+        , Attr.style "color"
+            (if locked then
+                "#cbd5e1"
+
+             else
+                "#fbbf24"
+            )
+        , Attr.style "cursor" "pointer"
+        , Attr.style "pointer-events" "auto"
+        , Attr.title label
+        , Attr.attribute "aria-label" label
+        ]
+        [ (if locked then
+            FeatherIcons.lock
+
+           else
+            FeatherIcons.unlock
+          )
+            |> FeatherIcons.withSize 18
+            |> FeatherIcons.toHtml []
+        ]
+
+
 {-| Render bottom panel according to active tab.
 -}
 bottomPanel : Model -> Html Msg
@@ -835,7 +844,7 @@ bottomPanel model =
             dock model
 
         AllBricksTab ->
-            viewAllBricksDrawer model
+            dock model
 
         BasesTab ->
             viewBasesDrawer model
@@ -852,14 +861,32 @@ dockHeight =
     126
 
 
+{-| Height of the full catalog panel, shown above the palette row while open.
+-}
+catalogDrawerHeight : Int
+catalogDrawerHeight =
+    240
+
+
 dock : Model -> Html Msg
 dock model =
+    let
+        catalogOpen =
+            model.activeTab == AllBricksTab
+
+        height =
+            if catalogOpen then
+                dockHeight + catalogDrawerHeight
+
+            else
+                dockHeight
+    in
     div
         [ Attr.style "position" "absolute"
         , Attr.style "left" "0"
         , Attr.style "right" "0"
         , Attr.style "bottom" "0"
-        , Attr.style "height" (px dockHeight)
+        , Attr.style "height" (px height)
         , Attr.style "box-sizing" "border-box"
         , Attr.style "display" "flex"
         , Attr.style "flex-direction" "column"
@@ -868,9 +895,16 @@ dock model =
         , Attr.style "background" "rgba(15, 23, 42, 0.94)"
         , Attr.style "border-top" "1px solid rgba(148, 163, 184, 0.25)"
         ]
-        [ modelingControls model
-        , paletteRow model
-        ]
+        ((if catalogOpen then
+            [ viewAllBricksDrawer model ]
+
+          else
+            []
+         )
+            ++ [ modelingControls model
+               , paletteRow model
+               ]
+        )
 
 
 paletteRow : Model -> Html Msg
@@ -885,6 +919,9 @@ paletteRow model =
             partCard model True model.activePart
                 :: List.map (partCard model False) otherRecent
 
+        catalogOpen =
+            model.activeTab == AllBricksTab
+
         allBricksBtn =
             button
                 [ Attr.type_ "button"
@@ -898,13 +935,20 @@ paletteRow model =
                 , Attr.style "justify-content" "center"
                 , Attr.style "border-radius" "10px"
                 , Attr.style "border" "2px dashed rgba(250, 200, 10, 0.6)"
-                , Attr.style "background" "rgba(250, 200, 10, 0.15)"
+                , Attr.style "background"
+                    (if catalogOpen then
+                        "rgba(250, 200, 10, 0.35)"
+
+                     else
+                        "rgba(250, 200, 10, 0.15)"
+                    )
                 , Attr.style "color" Brand.legoYellow
                 , Attr.style "cursor" "pointer"
                 , Attr.attribute "aria-label" (tr model.language "All bricks" "Kaikki palikat")
+                , Attr.attribute "aria-pressed" (if catalogOpen then "true" else "false")
                 , Attr.title (tr model.language "Browse all categorized bricks" "Selaa kaikkia osia kategorioittain")
                 ]
-                [ span [ Attr.style "font-size" "22px" ] [ text "📦" ] ]
+                [ FeatherIcons.box |> FeatherIcons.withSize 22 |> FeatherIcons.toHtml [] ]
     in
     div
         [ Attr.style "display" "flex"
@@ -933,6 +977,14 @@ paletteRow model =
             , Attr.attribute "aria-label" (tr model.language "Bricks" "Palikat")
             ]
             (allBricksBtn :: renderedBricks)
+        , div
+            [ Attr.style "width" "1px"
+            , Attr.style "height" "48px"
+            , Attr.style "background" "rgba(255, 255, 255, 0.18)"
+            , Attr.style "flex-shrink" "0"
+            ]
+            []
+        , lockButton model
         ]
 
 
@@ -1352,13 +1404,19 @@ viewAllBricksDrawer model =
                     (List.map renderCard catParts)
                 ]
     in
-    div (drawerStyle 320)
-        [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "12px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
-            [ div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "justify-content" "space-between", Attr.style "gap" "8px", Attr.style "flex-wrap" "wrap" ]
-                [ h3 [ Attr.style "font-size" "14px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "margin" "0" ]
-                    [ text (tr lang "📦 All Available Bricks" "📦 Kaikki saatavilla olevat palikat") ]
-                , colourRow model
-                ]
+    div
+        [ Attr.style "flex-shrink" "0"
+        , Attr.style "height" (px catalogDrawerHeight)
+        , Attr.style "box-sizing" "border-box"
+        , Attr.style "overflow-y" "auto"
+        , Attr.style "padding" "10px 12px"
+        , Attr.style "border-radius" "12px"
+        , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
+        , Attr.style "background" "rgba(5, 19, 29, 0.96)"
+        ]
+        [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "12px" ]
+            [ h3 [ Attr.style "font-size" "14px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "margin" "0" ]
+                [ text (tr lang "📦 All Available Bricks" "📦 Kaikki saatavilla olevat palikat") ]
             , div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "16px" ]
                 (List.map categorySection partCategories)
             ]
