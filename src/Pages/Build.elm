@@ -880,7 +880,8 @@ drawerHeight model compact =
         max compact (model.height - 120)
 
     else
-        compact
+        -- Phones get twice the compact height, but leave room for the 3D view.
+        max compact (min (2 * compact) (model.height - 200))
 
 
 canvasHeight : Model -> Int

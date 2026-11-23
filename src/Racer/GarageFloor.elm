@@ -11,8 +11,6 @@ Features:
   - Checkered racing pit stall with alternating charcoal and steel tiles.
   - High-visibility yellow and black diagonal hazard perimeter stripes.
   - Centerline and pit stop tire alignment markings.
-  - Rear industrial workshop wall with baseboard kick-plate and
-    3D steel structural I-beam columns.
   - Soft multi-ring contact shadow directly beneath the car.
   - Entire environment is offset by `floorY` so car tires sit directly ON TOP
     of the floor surface without sinking into it.
@@ -118,24 +116,6 @@ verticalQuadZ z x1 x2 y1 y2 col =
 
         v4 =
             { position = vec3 x1 y2 z, color = col }
-    in
-    quad v1 v2 v3 v4
-
-
-verticalQuadX : Float -> Float -> Float -> Float -> Float -> Vec4 -> List ( Vertex, Vertex, Vertex )
-verticalQuadX x z1 z2 y1 y2 col =
-    let
-        v1 =
-            { position = vec3 x y1 z1, color = col }
-
-        v2 =
-            { position = vec3 x y1 z2, color = col }
-
-        v3 =
-            { position = vec3 x y2 z2, color = col }
-
-        v4 =
-            { position = vec3 x y2 z1, color = col }
     in
     quad v1 v2 v3 v4
 
@@ -385,102 +365,6 @@ floorMesh =
 
 
 
--- ── Workshop Rear Wall & Structure ────────────────────────────────────────────
-
-
-baseboardColor : Vec4
-baseboardColor =
-    vec4 0.14 0.16 0.2 1.0
-
-
-pillarRed : Vec4
-pillarRed =
-    vec4 0.84 0.22 0.18 1.0
-
-
-pillarDarkRed : Vec4
-pillarDarkRed =
-    vec4 0.52 0.12 0.1 1.0
-
-
-girderColor : Vec4
-girderColor =
-    vec4 0.16 0.18 0.23 1.0
-
-
-buildWallTriangles : List ( Vertex, Vertex, Vertex )
-buildWallTriangles =
-    let
-        wallZ =
-            260.0
-
-        minX =
-            -420.0
-
-        maxX =
-            420.0
-
-        -- Baseboard / Kick-plate (Y = 0 to 22)
-        baseboard =
-            List.concat
-                [ verticalQuadZ wallZ minX maxX 0.0 18.0 baseboardColor
-                , verticalQuadZ wallZ minX maxX 18.0 22.0 hazardYellow
-                ]
-
-        -- Top heavy industrial overhead girder (Y = 227 to 252)
-        topGirder =
-            List.concat
-                [ verticalQuadZ wallZ minX maxX 227.0 252.0 girderColor
-                , verticalQuadZ wallZ minX maxX 238.0 241.0 hazardYellow
-                ]
-
-        -- 4 Vertical 3D I-Beam Pillars with protruding front flange
-        pillarPositions =
-            [ -280.0, -95.0, 95.0, 280.0 ]
-
-        pillarHalfW =
-            12.0
-
-        pillarDepth =
-            8.0
-
-        frontZ =
-            wallZ - pillarDepth
-
-        pillars =
-            pillarPositions
-                |> List.concatMap
-                    (\px ->
-                        let
-                            x1 =
-                                px - pillarHalfW
-
-                            x2 =
-                                px + pillarHalfW
-                        in
-                        List.concat
-                            [ -- Front flange face
-                              verticalQuadZ frontZ x1 x2 0.0 252.0 pillarRed
-                            , -- Left side face
-                              verticalQuadX x1 frontZ wallZ 0.0 252.0 pillarDarkRed
-                            , -- Right side face
-                              verticalQuadX x2 wallZ frontZ 0.0 252.0 pillarDarkRed
-                            ]
-                    )
-    in
-    List.concat
-        [ baseboard
-        , topGirder
-        , pillars
-        ]
-
-
-wallMesh : Mesh Vertex
-wallMesh =
-    WebGL.triangles buildWallTriangles
-
-
-
 -- ── Soft Contact Shadow ───────────────────────────────────────────────────────
 
 
@@ -580,7 +464,6 @@ shadowMesh =
 {-| WebGL entities for the complete garage workshop environment:
 
   - Checkered floor & pit stall
-  - Rear industrial workshop wall & pillars
   - Soft contact shadow under vehicle
 
 Offset by `floorY` so the garage sits directly at the lowest contact point of the car.
@@ -606,13 +489,9 @@ entities floorY camera aspect =
         floorEntity =
             WebGL.entityWith settings vertexShader fragmentShader floorMesh uniforms
 
-        wallEntity =
-            WebGL.entityWith settings vertexShader fragmentShader wallMesh uniforms
-
         shadowEntity =
             WebGL.entityWith settings vertexShader fragmentShader shadowMesh uniforms
     in
     [ floorEntity
-    , wallEntity
     , shadowEntity
     ]
