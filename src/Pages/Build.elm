@@ -218,6 +218,24 @@ setLanguage language model =
 update : Msg -> Model -> ( Model, Cmd Msg, Outcome )
 update msg model =
     let
+        ( next, cmd, outcome ) =
+            updateModel msg model
+    in
+    if next.activeTab /= model.activeTab then
+        -- Any change of drawer changes the canvas height, so resize it here.
+        let
+            ( resized, resizeCmd ) =
+                runCore (Core.update (Core.ViewportMsg (Viewport.WindowResize next.width (canvasHeight next)))) next
+        in
+        ( resized, Cmd.batch [ cmd, resizeCmd ], outcome )
+
+    else
+        ( next, cmd, outcome )
+
+
+updateModel : Msg -> Model -> ( Model, Cmd Msg, Outcome )
+updateModel msg model =
+    let
         stay ( m, c ) =
             ( m, c, Stay )
     in
@@ -921,7 +939,7 @@ dock model =
         , Attr.style "left" "0"
         , Attr.style "right" "0"
         , Attr.style "bottom" "0"
-        , Attr.style "height" (px height)
+        , Attr.style "height" ("calc(" ++ px height ++ " + env(safe-area-inset-bottom, 0px))")
         , Attr.style "box-sizing" "border-box"
         , Attr.style "display" "flex"
         , Attr.style "flex-direction" "column"
@@ -980,7 +998,13 @@ paletteRow model =
                 , Attr.style "color" Brand.legoYellow
                 , Attr.style "cursor" "pointer"
                 , Attr.attribute "aria-label" (tr model.language "All bricks" "Kaikki palikat")
-                , Attr.attribute "aria-pressed" (if catalogOpen then "true" else "false")
+                , Attr.attribute "aria-pressed"
+                    (if catalogOpen then
+                        "true"
+
+                     else
+                        "false"
+                    )
                 , Attr.title (tr model.language "Browse all categorized bricks" "Selaa kaikkia osia kategorioittain")
                 ]
                 [ FeatherIcons.box |> FeatherIcons.withSize 22 |> FeatherIcons.toHtml [] ]
@@ -1056,8 +1080,8 @@ modelingControls model =
                  , Attr.style "display" "inline-flex"
                  , Attr.style "align-items" "center"
                  , Attr.style "justify-content" "center"
-                 , Attr.style "width" "34px"
-                 , Attr.style "height" "34px"
+                 , Attr.style "width" "44px"
+                 , Attr.style "height" "44px"
                  , Attr.style "flex-shrink" "0"
                  , Attr.style "border-radius" "10px"
                  , Attr.style "border"
@@ -1483,21 +1507,29 @@ baseThumbRow thumbnails base =
         ]
         (baseThumbParts base
             |> List.take 8
-            |> List.filterMap
+            |> List.map
                 (\( file, color ) ->
-                    Dict.get (PartCard.thumbnailKey file color) thumbnails
-                        |> Maybe.map
-                            (\url ->
-                                Html.img
-                                    [ Attr.src url
-                                    , Attr.alt ""
-                                    , Attr.style "flex" "1 1 0"
-                                    , Attr.style "min-width" "0"
-                                    , Attr.style "max-height" "100%"
-                                    , Attr.style "object-fit" "contain"
-                                    ]
-                                    []
-                            )
+                    case Dict.get (PartCard.thumbnailKey file color) thumbnails of
+                        Just url ->
+                            Html.img
+                                [ Attr.src url
+                                , Attr.alt ""
+                                , Attr.style "flex" "1 1 0"
+                                , Attr.style "min-width" "0"
+                                , Attr.style "max-height" "100%"
+                                , Attr.style "object-fit" "contain"
+                                ]
+                                []
+
+                        Nothing ->
+                            div
+                                [ Attr.style "flex" "1 1 0"
+                                , Attr.style "min-width" "0"
+                                , Attr.style "height" "100%"
+                                , Attr.style "border-radius" "6px"
+                                , Attr.style "background" "rgba(148, 163, 184, 0.12)"
+                                ]
+                                []
                 )
         )
 
@@ -1713,13 +1745,14 @@ viewReviewDrawer model =
         fact lbl val =
             div
                 [ Attr.style "flex" "1"
+                , Attr.style "min-width" "0"
                 , Attr.style "padding" "8px 10px"
                 , Attr.style "border-radius" "10px"
                 , Attr.style "background" "rgba(15, 23, 42, 0.75)"
                 , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
                 ]
                 [ div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8" ] [ text lbl ]
-                , div [ Attr.style "font-size" "15px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoWhite ] [ text val ]
+                , div [ Attr.style "font-size" "15px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoWhite, Attr.style "overflow-wrap" "anywhere" ] [ text val ]
                 ]
 
         -- Icon button that adds a missing part, drawn with its real LDraw thumbnail.
