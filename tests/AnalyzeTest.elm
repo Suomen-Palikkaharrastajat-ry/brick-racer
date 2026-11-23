@@ -3,7 +3,7 @@ module AnalyzeTest exposing (suite)
 {-| Unit tests for the pure validation helpers of `Racer.Analyze`: grounded
 wheels, centre-of-mass support, turntable linkage, fix actions, lint stars, the
 stud-contact attachment graph and the cleanup checks (duplicate, far and
-off-grid parts, surplus wheels).
+off-grid parts, surplus wheels) and the even wheel count.
 -}
 
 import Dict
@@ -30,6 +30,7 @@ suite =
         , snapSuite
         , farSuite
         , surplusWheelSuite
+        , wheelCountSuite
         ]
 
 
@@ -124,19 +125,19 @@ groundedSuite =
                     , \c -> Expect.equal [] (List.filter (\code -> code == TooFewWheels 4 || code == TooFewWheels 5) c)
                     ]
                     codes
-        , test "two lifted wheels leave too few wheels, with the rim and tyre fix" <|
+        , test "three lifted wheels leave too few wheels, with the rim and tyre fix" <|
             \_ ->
                 let
                     issues =
                         Analyze.buildValidationReport
-                            (contextWith [ wheelAt 1 -30 50 0, wheelAt 2 30 50 0, wheelAt 3 -30 -50 15, wheelAt 4 30 -50 15 ])
+                            (contextWith [ wheelAt 1 -30 50 0, wheelAt 2 30 50 15, wheelAt 3 -30 -50 15, wheelAt 4 30 -50 15 ])
                 in
                 Expect.all
-                    [ \i -> Expect.equal True (List.member (WheelOffGround 2) (List.map .code i))
+                    [ \i -> Expect.equal True (List.member (WheelOffGround 3) (List.map .code i))
                     , \i ->
                         Expect.equal [ ( Blocker, Just (AddParts [ "4624.dat", "3641.dat" ]) ) ]
                             (i
-                                |> List.filter (\issue -> issue.code == TooFewWheels 2)
+                                |> List.filter (\issue -> issue.code == TooFewWheels 1)
                                 |> List.map (\issue -> ( issue.severity, issue.fix ))
                             )
                     ]
@@ -577,4 +578,91 @@ surplusWheelSuite =
                         |> List.filter (\issue -> issue.code == ExtraWheels 4)
                         |> List.map (\issue -> ( issue.severity, issue.fix ))
                     )
+        ]
+
+
+{-| The blockers of a car standing on `wheels`, as `( code, fix )`.
+-}
+blockersOn : List WheelSpec -> List ( ValidationCode, Maybe Fix )
+blockersOn wheels =
+    Analyze.buildValidationReport (contextWith wheels)
+        |> List.filter (\issue -> issue.severity == Blocker)
+        |> List.map (\issue -> ( issue.code, issue.fix ))
+
+
+{-| A two-wheel car: one wheel on the centreline in front, one behind.
+-}
+inlineTwo : List WheelSpec
+inlineTwo =
+    [ wheelAt 1 0 50 0, wheelAt 2 0 -50 0 ]
+
+
+wheelCountSuite : Test
+wheelCountSuite =
+    describe "even wheel count"
+        [ test "no wheel is too few, with the rim and tyre fix" <|
+            \_ -> Expect.equal [ ( TooFewWheels 0, Just (AddParts Analyze.wheelPairFiles) ) ] (blockersOn [])
+        , test "one wheel is too few, with the rim and tyre fix" <|
+            \_ -> Expect.equal [ ( TooFewWheels 1, Just (AddParts Analyze.wheelPairFiles) ) ] (blockersOn [ wheelAt 1 0 50 0 ])
+        , test "two wheels one behind the other have no blocker" <|
+            \_ -> Expect.equal [] (blockersOn inlineTwo)
+        , test "two wheels side by side on one axle are collinear" <|
+            \_ -> Expect.equal [ ( CollinearStance, Nothing ) ] (blockersOn [ wheelAt 1 -30 0 0, wheelAt 2 30 0 0 ])
+        , test "two wheels 10 LDU apart fore-aft are collinear" <|
+            \_ -> Expect.equal [ ( CollinearStance, Nothing ) ] (blockersOn [ wheelAt 1 0 5 0, wheelAt 2 0 -5 0 ])
+        , test "three wheels are an odd count that shows the wheel without a partner" <|
+            \_ ->
+                Expect.equal [ ( WheelCountNotEven 3, Just (Select [ 10, 11 ]) ) ]
+                    (blockersOn [ wheelAt 1 0 50 0, wheelAt 2 -30 -50 0, wheelAt 3 30 -50 0 ])
+        , test "four wheels have no blocker" <|
+            \_ -> Expect.equal [] (blockersOn fourWheels)
+        , test "five wheels are an odd count that shows the wheel without a partner" <|
+            \_ ->
+                Expect.equal [ ( WheelCountNotEven 5, Just (Select [ 50, 51 ]) ) ]
+                    (blockersOn (fourWheels ++ [ wheelAt 5 0 0 0 ]))
+        , test "six wheels on three axles have no blocker and no extra wheels" <|
+            \_ ->
+                let
+                    codes =
+                        codesOf (contextWith (fourWheels ++ [ wheelAt 5 -30 0 0, wheelAt 6 30 0 0 ]))
+                in
+                Expect.all
+                    [ \_ -> Expect.equal [] (blockersOn (fourWheels ++ [ wheelAt 5 -30 0 0, wheelAt 6 30 0 0 ]))
+                    , \c -> Expect.equal [] (List.filter (\code -> code == ExtraWheels 0) c)
+                    ]
+                    codes
+        , test "a mirrored pair is not unpaired; a lone wheel is" <|
+            \_ ->
+                Expect.equal [ 3 ]
+                    (List.map .id (Analyze.unpairedWheels [ wheelAt 1 -30 -50 0, wheelAt 2 30 -50 0, wheelAt 3 0 50 0 ]))
+        , test "a two-wheel car with its front wheel on a turntable earns the steering bonus" <|
+            \_ ->
+                let
+                    ctx =
+                        contextWith inlineTwo
+
+                    codes =
+                        codesOf
+                            { ctx
+                                | steering =
+                                    TurntableBogie
+                                        { pivotPosLdu = vec3 0 20 50
+                                        , pivotPosM = Types.vec3LduToMeters (vec3 0 20 50)
+                                        , bogiePlacementIds = [ 10, 11 ]
+                                        }
+                            }
+                in
+                Expect.all
+                    [ \c -> Expect.equal True (List.member RealSteeringBonus c)
+                    , \c -> Expect.equal False (List.member SteeringNotLinked c)
+                    , \_ -> Expect.equal [] (blockersOn inlineTwo)
+                    ]
+                    codes
+        , test "a two-wheel car rates like a four-wheel car" <|
+            \_ ->
+                let
+                    stars wheels =
+                        Analyze.starRating (Analyze.buildValidationReport (contextWith wheels)) True
+                in
+                Expect.equal (stars fourWheels) (stars inlineTwo)
         ]

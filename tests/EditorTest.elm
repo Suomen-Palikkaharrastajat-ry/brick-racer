@@ -117,13 +117,13 @@ cannotSitOnStuds =
     [ ( "alpine-crawler", "3031.dat" ) ]
 
 
-{-| Drivable on 3 or 4 wheels with no blocker, and the only loose part is the
+{-| Drivable on 2, 4 or 6 wheels with no blocker, and the only loose part is the
 one just added (the first id after the base document's).
 -}
 drivesWithOnlyAddedPartLoose : Base -> VehicleSpec -> Bool
 drivesWithOnlyAddedPartLoose base spec =
     spec.isDrivable
-        && (List.length spec.wheels == 3 || List.length spec.wheels == 4)
+        && List.member (List.length spec.wheels) [ 2, 4, 6 ]
         && spec.loosePlacementIds
         == [ base.document.nextId ]
         && List.isEmpty (List.filter (\i -> i.severity == Blocker) spec.issues)
@@ -140,7 +140,7 @@ builtCarTest base =
                 |> Result.map .document
     in
     describe base.id
-        [ test "drives on 3 or 4 wheels with no loose part" <|
+        [ test "drives on 2, 4 or 6 wheels with no loose part" <|
             \_ ->
                 let
                     spec =
@@ -210,7 +210,7 @@ analyse doc =
 drives : VehicleSpec -> Bool
 drives spec =
     spec.isDrivable
-        && (List.length spec.wheels == 3 || List.length spec.wheels == 4)
+        && List.member (List.length spec.wheels) [ 2, 4, 6 ]
         && List.isEmpty spec.loosePlacementIds
         && List.isEmpty (List.filter (\i -> i.severity == Blocker) spec.issues)
 

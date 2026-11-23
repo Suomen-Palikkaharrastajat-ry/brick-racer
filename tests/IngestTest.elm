@@ -475,7 +475,7 @@ analyzeSuite =
                     , \_ -> Expect.equal [] spec.loosePlacementIds
                     ]
                     ()
-        , test "Two-wheel model triggers TooFewWheels blocker and isDrivable == False" <|
+        , test "Two wheels side by side on one axle trigger the CollinearStance blocker and isDrivable == False" <|
             \_ ->
                 let
                     twoWheeler =
@@ -495,7 +495,8 @@ analyzeSuite =
                     , \_ -> Expect.equal 2 (List.length spec.wheels)
                     , \_ ->
                         Expect.equal True
-                            (List.any (\i -> i.severity == Blocker && i.code == TooFewWheels 2) spec.issues)
+                            (List.any (\i -> i.severity == Blocker && i.code == CollinearStance) spec.issues)
+                    , \_ -> Expect.equal False (List.any (\i -> i.code == TooFewWheels 2) spec.issues)
                     ]
                     ()
         , test "Belly-dragging brick below tires emits BellyScrape warning while staying drivable" <|

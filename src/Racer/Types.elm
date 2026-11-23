@@ -385,12 +385,15 @@ type ValidationSeverity
 
 The cleanup codes carry the flattened placement ids they name (`LooseParts`,
 `DuplicateParts`, `FarParts`, `OffGrid`); `ExtraWheels` carries the mass in
-grams that removing the surplus wheels would save.
+grams that removing the surplus wheels would save. `TooFewWheels` and
+`WheelCountNotEven` carry the number of grounded wheels: a car needs an even
+number of them, at least two.
 
 -}
 type ValidationCode
     = EmptyModel
     | TooFewWheels Int
+    | WheelCountNotEven Int
     | CollinearStance
     | BellyScrape Float
     | HighCenterOfMass Float

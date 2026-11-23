@@ -26,6 +26,7 @@ module Racer.Analyze exposing
     , steeringLinked
     , surplusWheelClusters
     , turntablePairFiles
+    , unpairedWheels
     , wheelPairFiles
     , yUpFlip
     )
@@ -2050,9 +2051,11 @@ boxesPenetrate tol minA maxA minB maxB =
     depthOn Vec3.getX > tol && depthOn Vec3.getY > tol && depthOn Vec3.getZ > tol
 
 
-{-| The surplus wheel clusters: beyond the first wheel at each corner (left,
-middle or right, by the hub's Car Space X beyond 5 LDU, and front or rear by
-`isFront`). Grounded wheels are kept before lifted ones, then lower ids first.
+{-| The surplus wheel clusters: a wheel on the same side (left, middle or right,
+by the hub's Car Space X beyond 5 LDU) as a wheel already kept, whose hub is
+closer fore-aft than the two radii together, so their tyres overlap on one
+corner. Axles spread further apart (a six-wheel car's middle axle) are not
+surplus. Grounded wheels are kept before lifted ones, then lower ids first.
 -}
 surplusWheelClusters : List WheelSpec -> List WheelSpec
 surplusWheelClusters wheels =
@@ -2067,14 +2070,12 @@ surplusWheelClusters wheels =
             else
                 0
 
-        corner w =
-            ( side w
-            , if w.isFront then
-                1
-
-              else
-                0
-            )
+        sameCorner a b =
+            side a
+                == side b
+                && abs (Vec3.getZ a.localHubPosLdu - Vec3.getZ b.localHubPosLdu)
+                < a.radiusLdu
+                + b.radiusLdu
 
         keepOrder w =
             ( if isWheelGrounded w then
@@ -2088,19 +2089,60 @@ surplusWheelClusters wheels =
     wheels
         |> List.sortBy keepOrder
         |> List.foldl
-            (\w ( taken, surplus ) ->
-                if Set.member (corner w) taken then
-                    ( taken, w :: surplus )
+            (\w ( kept, surplus ) ->
+                if List.any (sameCorner w) kept then
+                    ( kept, w :: surplus )
 
                 else
-                    ( Set.insert (corner w) taken, surplus )
+                    ( w :: kept, surplus )
             )
-            ( Set.empty, [] )
+            ( [], [] )
         |> Tuple.second
         |> List.sortBy .id
 
 
-{-| Part files the "Add wheels" fix adds: the small rim and its tyre.
+{-| The wheels left without a mirror partner: wheels are paired greedily (lower
+ids first) with a wheel on the other side of the centreline, hubs within 6 LDU
+of mirrored across and 10 LDU fore-aft. An odd number of wheels always leaves at
+least one.
+-}
+unpairedWheels : List WheelSpec -> List WheelSpec
+unpairedWheels wheels =
+    let
+        mirrors a b =
+            abs (Vec3.getX a.localHubPosLdu + Vec3.getX b.localHubPosLdu)
+                <= 6.0
+                && abs (Vec3.getZ a.localHubPosLdu - Vec3.getZ b.localHubPosLdu)
+                <= 10.0
+    in
+    wheels
+        |> List.sortBy .id
+        |> List.foldl
+            (\w pending ->
+                if List.any (mirrors w) pending then
+                    removeFirst (mirrors w) pending
+
+                else
+                    pending ++ [ w ]
+            )
+            []
+
+
+removeFirst : (a -> Bool) -> List a -> List a
+removeFirst pred list =
+    case list of
+        [] ->
+            []
+
+        x :: rest ->
+            if pred x then
+                rest
+
+            else
+                x :: removeFirst pred rest
+
+
+{-| Part files the "Add wheels" fix adds: the small rim and its tyre, one wheel.
 -}
 wheelPairFiles : List String
 wheelPairFiles =
@@ -2226,11 +2268,19 @@ buildValidationReport ctx =
                 []
 
         blockerWheels =
-            if ctx.placementCount > 0 && wheelCount < 3 then
+            if ctx.placementCount > 0 && wheelCount < 2 then
                 [ { severity = Blocker
                   , code = TooFewWheels wheelCount
-                  , detail = "Need at least 3 wheels on the ground to balance and steer down the hill."
+                  , detail = "Need at least 2 wheels on the ground to roll down the hill."
                   , fix = Just (AddParts wheelPairFiles)
+                  }
+                ]
+
+            else if modBy 2 wheelCount == 1 then
+                [ { severity = Blocker
+                  , code = WheelCountNotEven wheelCount
+                  , detail = "Need an even number of wheels on the ground (2, 4 or 6); add a partner for the odd wheel or remove it."
+                  , fix = Just (Select (List.concatMap .placementIds (unpairedWheels grounded)))
                   }
                 ]
 
@@ -2249,15 +2299,24 @@ buildValidationReport ctx =
                   }
                 ]
 
+        -- Two wheels have no track width: they stand one behind the other, so
+        -- only the wheelbase must spread.
+        collinear =
+            if wheelCount == 2 then
+                wheelBaseM < 0.1
+
+            else
+                wheelBaseM < 0.1 || trackWidthM < 0.1
+
         blockerStance =
-            if wheelCount >= 3 && (wheelBaseM < 0.1 || trackWidthM < 0.1) then
+            if wheelCount >= 2 && collinear then
                 [ plain Blocker CollinearStance "Wheels are aligned on one line; add front/rear axle spread." ]
 
             else
                 []
 
         supportIssues =
-            if wheelCount >= 3 && wheelBaseM >= 0.1 then
+            if wheelCount >= 2 && wheelBaseM >= 0.1 then
                 case comSupportMargin (Vec3.getZ ctx.comM) grounded of
                     Just margin ->
                         if margin < 0 then
@@ -2276,7 +2335,7 @@ buildValidationReport ctx =
                 []
 
         warningClearance =
-            if wheelCount >= 3 && ctx.groundClearanceLdu < -0.5 then
+            if wheelCount >= 2 && ctx.groundClearanceLdu < -0.5 then
                 [ plain Warning
                     (BellyScrape ctx.groundClearanceLdu)
                     ("Chassis drags below tires (-" ++ String.fromFloat (abs ctx.groundClearanceLdu) ++ " LDU).")
@@ -2289,7 +2348,7 @@ buildValidationReport ctx =
             Vec3.getY ctx.comM / (0.5 * max 0.25 trackWidthM)
 
         warningCoM =
-            if wheelCount >= 3 && tippyRatio > 1.35 then
+            if wheelCount >= 2 && tippyRatio > 1.35 then
                 [ plain Warning (HighCenterOfMass tippyRatio) "High center of gravity — shift weight into corners to avoid tipping." ]
 
             else

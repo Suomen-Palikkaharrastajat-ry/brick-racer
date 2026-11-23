@@ -326,16 +326,16 @@ raceAnywayButton lang =
             "Race Anyway"
 
 
-{-| Hint shown when fewer than 3 wheels block starting.
+{-| Hint shown when too few wheels, or an odd number of them, block starting.
 -}
 garageTooFewWheelsHint : Language -> String
 garageTooFewWheelsHint lang =
     case lang of
         Fi ->
-            "Lisää malliin vähintään 3 rengasta etu- ja taka-akselille Brick Playssa tai Studiossa."
+            "Lisää malliin parillinen määrä renkaita (2, 4 tai 6) Brick Playssa tai Studiossa."
 
         En ->
-            "Add at least 3 wheels across a front & rear axle in Brick Studio or Brick Play to race."
+            "Give the car an even number of wheels (2, 4 or 6) in Brick Studio or Brick Play to race."
 
 
 {-| Telemetry card labels in Garage.
@@ -470,10 +470,16 @@ validationTitle lang code =
             "Empty build"
 
         ( Fi, TooFewWheels n ) ->
-            "Liian vähän pyöriä (" ++ String.fromInt n ++ " / 3+)"
+            "Liian vähän pyöriä (" ++ String.fromInt n ++ " / 2+)"
 
         ( En, TooFewWheels n ) ->
-            "Too few wheels (" ++ String.fromInt n ++ " / 3+)"
+            "Too few wheels (" ++ String.fromInt n ++ " / 2+)"
+
+        ( Fi, WheelCountNotEven n ) ->
+            "Pariton määrä pyöriä (" ++ String.fromInt n ++ " / 2, 4, 6)"
+
+        ( En, WheelCountNotEven n ) ->
+            "Odd number of wheels (" ++ String.fromInt n ++ " / 2, 4, 6)"
 
         ( Fi, CollinearStance ) ->
             "Liian kapea tai yhden linjan akseliväli"
@@ -584,6 +590,18 @@ for codes whose title says enough.
 validationDetail : Language -> ValidationCode -> Maybe String
 validationDetail lang code =
     case ( lang, code ) of
+        ( Fi, TooFewWheels _ ) ->
+            Just "Autossa pitää olla vähintään kaksi maata koskettavaa pyörää."
+
+        ( En, TooFewWheels _ ) ->
+            Just "The car needs at least two wheels touching the ground."
+
+        ( Fi, WheelCountNotEven _ ) ->
+            Just "Maata koskettavia pyöriä pitää olla parillinen määrä (2, 4 tai 6). Näytä valitsee pyörät, joilla ei ole paria toisella puolella: lisää niille pari tai poista ne."
+
+        ( En, WheelCountNotEven _ ) ->
+            Just "The car needs an even number of wheels on the ground (2, 4 or 6). Show selects the wheels with no partner on the other side: add a partner or remove them."
+
         ( Fi, WheelOffGround _ ) ->
             Just "Ilmassa roikkuvat pyörät eivät kanna autoa eikä niitä lasketa pyörien määrään."
 
