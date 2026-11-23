@@ -43,6 +43,7 @@ import Racer.Types exposing (Fix(..), PresetBuild, ValidationCode(..), Validatio
 import Set
 import Studio.Colours as Colours
 import Studio.Core as Core
+import Studio.Health as Health
 import Studio.Shortcuts exposing (TurnDirection(..))
 import UI.PartCard as PartCard
 import Viewport
@@ -90,6 +91,7 @@ type Msg
     | AddPartList (List String)
     | SelectPlacements (List Int)
     | RemovePlacements (List Int)
+    | SnapPlacements (List Int)
     | Turn TurnDirection
     | Raise
     | Lower
@@ -367,6 +369,40 @@ updateModel msg model =
                             selectPlacements kept removed
                 in
                 ( shown, Cmd.batch [ selectCmd, removeCmd, showCmd ], Stay )
+
+        SnapPlacements ids ->
+            let
+                doc =
+                    Core.getDocument model.studio
+
+                -- Each part placed straight in the main model moves onto the
+                -- grid in one undo step (`Core.applyFixes`); runCore still
+                -- drops the step if it would split the base.
+                fixes =
+                    Document.mainPlacements doc
+                        |> List.filter
+                            (\p ->
+                                List.member p.id ids
+                                    && not (Document.isSubmodelReference p doc)
+                                    && not (isLockedBase model p)
+                            )
+                        |> List.map
+                            (\p ->
+                                { placement = p.id
+                                , from = p.matrix
+                                , to = Analyze.snapMatrix p.matrix
+                                , reason = Health.SnapToStud
+                                }
+                            )
+
+                closed =
+                    { model | activeTab = BuildBricksTab, notice = Nothing }
+            in
+            if List.isEmpty fixes then
+                stay (selectPlacements ids closed)
+
+            else
+                stay (runCore (Core.applyFixes fixes) closed)
 
         Turn direction ->
             stay (runCore (Core.turnSelected direction) model)
@@ -1957,6 +1993,9 @@ viewReviewDrawer model =
 
                         Remove ids ->
                             ( tr lang "Remove" "Poista", RemovePlacements ids )
+
+                        Snap ids ->
+                            ( tr lang "Snap" "Kohdista", SnapPlacements ids )
             in
             button
                 [ Attr.type_ "button"

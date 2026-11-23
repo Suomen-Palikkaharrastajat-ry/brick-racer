@@ -412,14 +412,17 @@ type ValidationCode
 
 {-| An action the car editor can offer to resolve a `ValidationIssue`.
 
-`AddParts` lists part files to add one after another, `Select` and `Remove`
-name placement ids (flattened, as `Racer.Analyze` numbers them).
+`AddParts` lists part files to add one after another, `Select`, `Remove` and
+`Snap` name placement ids (flattened, as `Racer.Analyze` numbers them). `Snap`
+moves each named part onto the brick grid (`Racer.Analyze.snapMatrix`); the
+analyzer offers it only when `Racer.Analyze.snapIsSafe` holds.
 
 -}
 type Fix
     = AddParts (List String)
     | Select (List Int)
     | Remove (List Int)
+    | Snap (List Int)
 
 
 {-| One structured validation diagnostic produced by `Racer.Analyze`.

@@ -20,6 +20,8 @@ module Racer.Analyze exposing
     , isFarOutside
     , isOffGrid
     , isWheelGrounded
+    , snapIsSafe
+    , snapMatrix
     , starRating
     , steeringLinked
     , surplusWheelClusters
@@ -40,8 +42,8 @@ Takes a parsed LDraw `Document`, `PartCache`, and `PartIndex` and extracts:
   - Mass, Center of Mass (CoM), diagonal inertia, frontal drag area, ground clearance,
   - An attachment graph from real stud, anti-stud, pin, axle and rim-tyre
     contacts (`LDraw.Connectivity`) to find the parts not joined to the car,
-  - Cleanup checks: duplicate parts, far-away parts, off-grid parts and surplus
-    wheels,
+  - Cleanup checks: duplicate parts, far-away parts, off-grid parts (with a
+    safe snap back onto the grid when one exists) and surplus wheels,
   - Split `Render.Scene.Scene` sub-assemblies (`chassis`, `steeringBogie`, per-wheel meshes)
     ready for animated WebGL rendering.
 
@@ -319,6 +321,10 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
                 |> List.filter (\r -> isOffGrid r.placement.part r.placement.matrix)
                 |> List.map (.placement >> .id)
 
+        offGridSnapSafe =
+            not (List.isEmpty offGridIds)
+                && snapSafeFor cache partIndex modelToCarMatrix doc carRecords offGridIds
+
         issues =
             buildValidationReport
                 { placementCount = List.length placements
@@ -332,6 +338,7 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
                 , duplicateIds = findDuplicateParts carRecords
                 , farIds = farIds
                 , offGridIds = offGridIds
+                , offGridSnapSafe = offGridSnapSafe
                 , placementMassGrams = Dict.fromList (List.map (\r -> ( r.placement.id, r.massGrams )) carRecords)
                 }
 
@@ -1683,8 +1690,10 @@ computeInertia totalMassKg comLdu records wheelBaseM trackWidthM =
 
 The id lists name flattened placements: `looseIds` from `findLoosePlacements`,
 `duplicateIds` from `findDuplicateParts`, `farIds` (`isFarOutside` the base
-component) and `offGridIds` (`isOffGrid`). `placementMassGrams` weighs the
-placements, for the mass the surplus wheels would save.
+component) and `offGridIds` (`isOffGrid`). `offGridSnapSafe` is whether
+snapping every off-grid part (`snapIsSafe`) is safe, so the off-grid issue
+offers `Snap` instead of `Select`. `placementMassGrams` weighs the placements,
+for the mass the surplus wheels would save.
 
 -}
 type alias ValidationContext =
@@ -1699,6 +1708,7 @@ type alias ValidationContext =
     , duplicateIds : List Int
     , farIds : List Int
     , offGridIds : List Int
+    , offGridSnapSafe : Bool
     , placementMassGrams : Dict Int Float
     }
 
@@ -1842,6 +1852,202 @@ isOffGrid partFile matrix =
     in
     not exempt
         && not (onStep 10 m.m14 && onStep 8 m.m24 && onStep 10 m.m34 && yawOnGrid)
+
+
+{-| The LDraw world `matrix` moved onto the brick grid: X and Z to the nearest
+multiple of 10 LDU, Y to the nearest multiple of 8 LDU (Elm `round`, so a
+half step goes toward `+infinity`), and the yaw to the nearest quarter turn.
+
+The yaw is read the way `isOffGrid` reads it (the local X axis in the XZ plane,
+or the local Z axis when X points nearly straight up or down) and the part is
+turned about the world Y axis through its own origin, so any tilt is kept.
+Rotation entries within 1.0e-6 of an integer are made exact.
+
+-}
+snapMatrix : Mat4 -> Mat4
+snapMatrix matrix =
+    let
+        m =
+            Mat4.toRecord matrix
+
+        yaw =
+            if sqrt (m.m11 * m.m11 + m.m31 * m.m31) >= 0.3 then
+                atan2 (negate m.m31) m.m11
+
+            else
+                atan2 m.m13 m.m33
+
+        quarter =
+            pi / 2
+
+        turned =
+            Mat4.mul
+                (Mat4.makeRotate (quarter * toFloat (round (yaw / quarter)) - yaw) (vec3 0 1 0))
+                (Mat4.fromRecord { m | m14 = 0, m24 = 0, m34 = 0 })
+                |> Mat4.toRecord
+
+        exact v =
+            let
+                r =
+                    round v
+            in
+            if abs (v - toFloat r) > 1.0e-6 then
+                v
+
+            else if r == 0 then
+                0
+
+            else
+                toFloat r
+
+        toStep step v =
+            let
+                r =
+                    round (v / step)
+            in
+            if r == 0 then
+                0
+
+            else
+                step * toFloat r
+    in
+    Mat4.fromRecord
+        { m11 = exact turned.m11
+        , m12 = exact turned.m12
+        , m13 = exact turned.m13
+        , m14 = toStep 10 m.m14
+        , m21 = exact turned.m21
+        , m22 = exact turned.m22
+        , m23 = exact turned.m23
+        , m24 = toStep 8 m.m24
+        , m31 = exact turned.m31
+        , m32 = exact turned.m32
+        , m33 = exact turned.m33
+        , m34 = toStep 10 m.m34
+        , m41 = 0
+        , m42 = 0
+        , m43 = 0
+        , m44 = 1
+        }
+
+
+{-| Whether snapping the placements `ids` of `doc` onto the grid (`snapMatrix`)
+is safe, measured with `cache` and `partIndex` as `analyzeDocument` measures
+them (subfiles and procedural fallback boxes included).
+
+It is safe when all of these hold:
+
+  - every id is a part placed straight in the main model (not a group, not a
+    part inside one) that `isOffGrid` reports, so hinges, turntables, jumpers,
+    rims, tyres and pins, which are never off grid, are never snapped;
+  - no placement that is attached to the car before the snap is loose after it
+    (`findLoosePlacements` on the attachment graph recomputed with the snapped
+    matrices); a loose part that the snap seats on studs is fine;
+  - no snapped part's box overlaps another part's box by more than
+    `snapOverlapLdu` along all three axes (a stud sitting in the part above is
+    4 LDU, so stacking does not count).
+
+-}
+snapIsSafe : PartCache -> PartIndex -> Document -> List Int -> Bool
+snapIsSafe rawCache partIndex doc ids =
+    let
+        cache =
+            buildFallbackCache doc
+                (List.foldl
+                    (\( name, lines ) acc -> Dict.insert name (Loaded lines) acc)
+                    rawCache
+                    (Document.subfiles doc)
+                )
+
+        records =
+            List.map (inspectPlacement cache partIndex) (Document.flattenedPlacements doc)
+
+        ( modelToCar, _ ) =
+            computeNormalizationTransform []
+                records
+                (pairConcentricWheels (List.filterMap (classifyWheelPart partIndex) records))
+    in
+    snapSafeFor cache partIndex modelToCar doc (List.map (retransformRecord modelToCar) records) ids
+
+
+{-| `snapIsSafe` on the records `analyzeDocument` already has: `carRecords` are
+the flattened placements of `doc` in Car Space by `modelToCar`.
+-}
+snapSafeFor : PartCache -> PartIndex -> Mat4 -> Document -> List PlacementRecord -> List Int -> Bool
+snapSafeFor cache partIndex modelToCar doc carRecords ids =
+    let
+        wanted =
+            Set.fromList ids
+
+        movable =
+            Document.mainPlacements doc
+                |> List.filter
+                    (\p ->
+                        Set.member p.id wanted
+                            && not (Document.isSubmodelReference p doc)
+                            && isOffGrid p.part p.matrix
+                    )
+                |> List.map .id
+                |> Set.fromList
+
+        snapRecord r =
+            if Set.member r.placement.id movable then
+                let
+                    placement =
+                        r.placement
+                in
+                retransformRecord modelToCar
+                    (inspectPlacement cache partIndex { placement | matrix = snapMatrix placement.matrix })
+
+            else
+                r
+
+        snapped =
+            List.map snapRecord carRecords
+
+        looseBefore =
+            Set.fromList (findLoosePlacements carRecords)
+
+        looseAfter =
+            Set.fromList (findLoosePlacements snapped)
+
+        keepsContact =
+            List.all
+                (\r -> Set.member r.placement.id looseBefore || not (Set.member r.placement.id looseAfter))
+                carRecords
+
+        clashes moved =
+            List.any
+                (\other ->
+                    other.placement.id
+                        /= moved.placement.id
+                        && boxesPenetrate snapOverlapLdu moved.carMinCorner moved.carMaxCorner other.carMinCorner other.carMaxCorner
+                )
+                snapped
+    in
+    not (Set.isEmpty wanted)
+        && (Set.size movable == Set.size wanted)
+        && keepsContact
+        && not (List.any clashes (List.filter (\r -> Set.member r.placement.id movable) snapped))
+
+
+{-| How deep (LDU) two boxes may overlap along every axis before a snapped part
+counts as inside another: a stud reaching 4 LDU into the part above is allowed.
+-}
+snapOverlapLdu : Float
+snapOverlapLdu =
+    4.5
+
+
+{-| Whether two boxes overlap by more than `tol` along all three axes.
+-}
+boxesPenetrate : Float -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> Bool
+boxesPenetrate tol minA maxA minB maxB =
+    let
+        depthOn get =
+            min (get maxA) (get maxB) - max (get minA) (get minB)
+    in
+    depthOn Vec3.getX > tol && depthOn Vec3.getY > tol && depthOn Vec3.getZ > tol
 
 
 {-| The surplus wheel clusters: beyond the first wheel at each corner (left,
@@ -2141,7 +2347,15 @@ buildValidationReport ctx =
         infoCleanup =
             cleanupInfo DuplicateParts Remove ctx.duplicateIds " part(s) placed twice in the same spot."
                 ++ cleanupInfo FarParts Select ctx.farIds " part(s) far away from the car."
-                ++ cleanupInfo OffGrid Select ctx.offGridIds " part(s) off the stud grid."
+                ++ cleanupInfo OffGrid
+                    (if ctx.offGridSnapSafe then
+                        Snap
+
+                     else
+                        Select
+                    )
+                    ctx.offGridIds
+                    " part(s) off the stud grid."
 
         warningMissing =
             if ctx.missingCount > 0 then

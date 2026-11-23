@@ -9,6 +9,7 @@ off-grid parts, surplus wheels).
 import Dict
 import Expect
 import LDraw.Catalog as Catalog
+import LDraw.Document as Document
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 exposing (vec3)
 import Racer.Analyze as Analyze exposing (PlacementRecord, ValidationContext)
@@ -26,6 +27,7 @@ suite =
         , attachmentSuite
         , duplicateSuite
         , gridSuite
+        , snapSuite
         , farSuite
         , surplusWheelSuite
         ]
@@ -79,6 +81,7 @@ contextWith wheels =
     , duplicateIds = []
     , farIds = []
     , offGridIds = []
+    , offGridSnapSafe = False
     , placementMassGrams = Dict.empty
     }
 
@@ -440,6 +443,90 @@ gridSuite =
                     )
         , test "an unknown part is checked too" <|
             \_ -> Expect.equal True (Analyze.isOffGrid "99999.dat" (at 3 0 0))
+        ]
+
+
+{-| Whether two matrices agree entry by entry within 1.0e-9.
+-}
+sameEntries : Mat4 -> Mat4 -> Bool
+sameEntries a b =
+    let
+        entries m =
+            let
+                r =
+                    Mat4.toRecord m
+            in
+            [ r.m11, r.m12, r.m13, r.m14, r.m21, r.m22, r.m23, r.m24, r.m31, r.m32, r.m33, r.m34, r.m41, r.m42, r.m43, r.m44 ]
+    in
+    List.all identity (List.map2 (\x y -> abs (x - y) <= 1.0e-9) (entries a) (entries b))
+
+
+{-| A one-file document of `( part, x, y, z )` placements (identity rotation,
+colour 4), and the ids `Document.parse` gave them, in order.
+-}
+docOf : List ( String, ( Float, Float, Float ) ) -> ( Document.Document, List Int )
+docOf parts =
+    let
+        line ( part, ( x, y, z ) ) =
+            "1 4 " ++ String.fromFloat x ++ " " ++ String.fromFloat y ++ " " ++ String.fromFloat z ++ " 1 0 0 0 1 0 0 0 1 " ++ part
+
+        doc =
+            Document.parse ("0 Name: Snap\n" ++ String.join "\n" (List.map line parts) ++ "\n")
+    in
+    ( doc, List.map .id (Document.mainPlacements doc) )
+
+
+{-| Whether snapping the placement at `index` of `docOf parts` is safe, with an
+empty cache (procedural fallback boxes).
+-}
+snapSafeAt : Int -> List ( String, ( Float, Float, Float ) ) -> Bool
+snapSafeAt index parts =
+    let
+        ( doc, ids ) =
+            docOf parts
+    in
+    Analyze.snapIsSafe Dict.empty Catalog.emptyPartIndex doc (List.drop index ids |> List.take 1)
+
+
+snapSuite : Test
+snapSuite =
+    describe "snapping off-grid parts"
+        [ test "a 2 x 4 brick 3 LDU over in X and 1 LDU off in Y snaps to the nearest stud and plate" <|
+            \_ -> Expect.equal True (sameEntries (at 0 -24 0) (Analyze.snapMatrix (at 3 -23 0)))
+        , test "X and Z round to 10 LDU, Y to 8 LDU" <|
+            \_ -> Expect.equal True (sameEntries (at 20 16 -30) (Analyze.snapMatrix (at 16 13 -27)))
+        , test "a part turned 20 degrees snaps back to straight and a part turned 80 degrees to a quarter turn" <|
+            \_ ->
+                Expect.equal [ True, True ]
+                    [ sameEntries (at 10 0 0) (Analyze.snapMatrix (Mat4.mul (at 12 0 0) (Mat4.makeRotate (pi / 9) (vec3 0 1 0))))
+                    , sameEntries (Mat4.makeRotate (pi / 2) (vec3 0 1 0)) (Analyze.snapMatrix (Mat4.makeRotate (4 * pi / 9) (vec3 0 1 0)))
+                    ]
+        , test "a snapped part is on grid" <|
+            \_ ->
+                Expect.equal False
+                    (Analyze.isOffGrid "3001.dat" (Analyze.snapMatrix (Mat4.mul (at 3 -23 7) (Mat4.makeRotate 0.3 (vec3 0 1 0)))))
+        , test "a brick lifted 1 LDU and slid 3 LDU off the brick below is safe to snap onto its studs" <|
+            \_ -> Expect.equal True (snapSafeAt 1 [ ( "3001.dat", ( 0, 0, 0 ) ), ( "3001.dat", ( 3, -23, 0 ) ) ])
+        , test "a brick 3 LDU beside another snaps inside it, so it is not safe" <|
+            \_ -> Expect.equal False (snapSafeAt 1 [ ( "3001.dat", ( 0, 0, 0 ) ), ( "3001.dat", ( 3, 0, 0 ) ) ])
+        , test "hinges and rims are never snapped" <|
+            \_ ->
+                Expect.equal [ False, False ]
+                    [ snapSafeAt 1 [ ( "3001.dat", ( 0, 0, 0 ) ), ( "3937.dat", ( 3, -23, 0 ) ) ]
+                    , snapSafeAt 1 [ ( "4600.dat", ( 0, 0, 0 ) ), ( "4624.dat", ( 33, 5, 3 ) ) ]
+                    ]
+        , test "a safe snap is offered as a snap fix, otherwise the parts are shown" <|
+            \_ ->
+                let
+                    ctx =
+                        contextWith fourWheels
+
+                    offGridFix safe =
+                        Analyze.buildValidationReport { ctx | offGridIds = [ 5 ], offGridSnapSafe = safe }
+                            |> List.filter (\issue -> issue.code == OffGrid [ 5 ])
+                            |> List.map .fix
+                in
+                Expect.equal [ [ Just (Snap [ 5 ]) ], [ Just (Select [ 5 ]) ] ] [ offGridFix True, offGridFix False ]
         ]
 
 
