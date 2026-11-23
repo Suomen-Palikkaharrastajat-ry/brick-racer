@@ -26,8 +26,9 @@ import FeatherIcons
 import Game.Ports as GamePorts
 import Html exposing (Html, button, div, h3, input, span, text, textarea)
 import Html.Attributes as Attr
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, onMouseLeave)
 import I18n exposing (Language(..))
+import Json.Decode as Decode
 import LDraw.Catalog as Catalog exposing (PartIndex)
 import LDraw.ColorData as ColorData
 import LDraw.Colors as Colors
@@ -107,6 +108,8 @@ type Msg
     | SelectBase Base
     | ToggleBaseLock
     | PasteTextChanged String
+    | PaletteLeft
+    | CanvasTapped
     | CatalogFilterChanged String
     | SubmitPaste
     | RequestFileUpload
@@ -223,11 +226,90 @@ setLanguage language model =
 
 {-| Handle an editor message.
 -}
+
+
+{-| Move the active part to the front of the palette. The palette keeps its
+order while the user taps the same card, and this runs once the user has moved on.
+-}
+commitRecent : Model -> Model
+commitRecent model =
+    { model
+        | recentParts =
+            (model.activePart :: List.filter (\f -> f /= model.activePart) model.recentParts)
+                |> List.take 7
+    }
+
+
+{-| Messages that mean the user has moved on from the palette card they tapped.
+-}
+endsPaletteTap : Msg -> Bool
+endsPaletteTap msg =
+    case msg of
+        SelectTab _ ->
+            True
+
+        PaletteLeft ->
+            True
+
+        CanvasTapped ->
+            True
+
+        PickColour _ ->
+            True
+
+        Turn _ ->
+            True
+
+        Raise ->
+            True
+
+        Lower ->
+            True
+
+        DeleteSelected ->
+            True
+
+        Undo ->
+            True
+
+        Redo ->
+            True
+
+        FitView ->
+            True
+
+        ToggleBaseLock ->
+            True
+
+        SelectBase _ ->
+            True
+
+        SelectPreset _ ->
+            True
+
+        _ ->
+            False
+
+
 update : Msg -> Model -> ( Model, Cmd Msg, Outcome )
 update msg model =
     let
+        shouldCommit =
+            case msg of
+                AddPart file ->
+                    file /= model.activePart
+
+                _ ->
+                    endsPaletteTap msg
+
         ( next, cmd, outcome ) =
-            updateModel msg model
+            updateModel msg
+                (if shouldCommit then
+                    commitRecent model
+
+                 else
+                    model
+                )
     in
     if next.activeTab /= model.activeTab then
         -- Any change of drawer changes the canvas height, so resize it here.
@@ -297,15 +379,9 @@ updateModel msg model =
                         En ->
                             "➕ Added: " ++ partName
 
-                newRecent =
-                    file
-                        :: List.filter (\f -> f /= file) model.recentParts
-                        |> List.take 7
-
                 updatedModel =
                     { model
                         | activePart = file
-                        , recentParts = newRecent
                         , activeTab = BuildBricksTab
                         , notice = Just noticeText
                     }
@@ -531,6 +607,12 @@ updateModel msg model =
 
         PasteTextChanged textVal ->
             ( { model | pasteText = textVal, pasteError = Nothing }, Cmd.none, Stay )
+
+        PaletteLeft ->
+            stay ( model, Cmd.none )
+
+        CanvasTapped ->
+            stay ( model, Cmd.none )
 
         CatalogFilterChanged query ->
             ( { model | catalogFilter = query }, Cmd.none, Stay )
@@ -818,6 +900,7 @@ view model =
             , Attr.style "width" (px model.width)
             , Attr.style "height" (px (canvasHeight model))
             , Attr.style "touch-action" "none"
+            , Html.Events.on "pointerdown" (Decode.succeed CanvasTapped)
             ]
             [ Html.map StudioMsg
                 (Core.viewWithExtra
@@ -1091,14 +1174,17 @@ dock model =
 paletteRow : Model -> Html Msg
 paletteRow model =
     let
-        otherRecent =
-            model.recentParts
-                |> List.filter (\f -> f /= model.activePart)
-                |> List.take 6
+        shownParts =
+            (if List.member model.activePart model.recentParts then
+                model.recentParts
+
+             else
+                model.activePart :: model.recentParts
+            )
+                |> List.take 7
 
         renderedBricks =
-            partCard model True model.activePart
-                :: List.map (partCard model False) otherRecent
+            List.map (\f -> partCard model (f == model.activePart) f) shownParts
 
         catalogOpen =
             model.activeTab == AllBricksTab
@@ -1143,6 +1229,7 @@ paletteRow model =
         , Attr.style "gap" "8px"
         , Attr.style "width" "100%"
         , Attr.style "box-sizing" "border-box"
+        , onMouseLeave PaletteLeft
         ]
         [ colourRow model
         , div
