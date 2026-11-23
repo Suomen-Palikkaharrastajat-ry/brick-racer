@@ -36,13 +36,13 @@ import LDraw.Resolve exposing (PartCache)
 import Ports
 import Racer.Analyze as Analyze
 import Racer.Editor as Editor exposing (Base, PartEntry)
+import Racer.GarageFloor as GarageFloor
 import Racer.I18n as RI18n
 import Racer.Ingest as Ingest
 import Racer.Types exposing (PresetBuild, SteeringMechanism(..), ValidationSeverity(..))
 import Set
 import Studio.Colours as Colours
 import Studio.Core as Core
-import Studio.Floor as Floor
 import Studio.Shortcuts exposing (TurnDirection(..))
 import Svg
 import Svg.Attributes as SvgAttr
@@ -569,7 +569,7 @@ tabDrawerHeight : BuilderTab -> Int
 tabDrawerHeight tab =
     case tab of
         BuildBricksTab ->
-            132
+            138
 
         AllBricksTab ->
             320
@@ -587,12 +587,19 @@ canvasHeight model =
 -}
 view : Model -> Html Msg
 view model =
+    let
+        analyzed =
+            Analyze.analyzeDocument "Car" (Core.getDocument model.studio) model.partCache model.partIndex
+
+        floorY =
+            analyzed.spec.wheelContactYLdu
+    in
     div
         [ Attr.class "brick-editor"
         , Attr.style "position" "fixed"
         , Attr.style "inset" "0"
         , Attr.style "overflow" "hidden"
-        , Attr.style "background" "var(--color-brand, #05131D)"
+        , Attr.style "background" "radial-gradient(ellipse 85% 65% at 50% 18%, #1f2e3d 0%, #0d1722 55%, #050b10 100%)"
         , Attr.style "color" "#f8fafc"
         , Attr.style "font-family" "var(--font-sans, system-ui, sans-serif)"
         , Attr.style "user-select" "none"
@@ -612,17 +619,12 @@ view model =
                     , height = canvasHeight model
                     , extraEntities =
                         \camera aspect ->
-                            [ Floor.entity camera aspect ]
+                            GarageFloor.entities floorY camera aspect
                     }
                     model.studio
                 )
             ]
         , topBar model
-        , if model.activeTab == BuildBricksTab then
-            selectionBar model
-
-          else
-            text ""
         , noticeView model
         , bottomPanel model
         ]
@@ -642,24 +644,28 @@ topBar model =
             button
                 [ Attr.type_ "button"
                 , onClick (SelectTab tab)
+                , Attr.attribute "aria-label" label
+                , Attr.title label
                 , Attr.style "display" "inline-flex"
                 , Attr.style "align-items" "center"
-                , Attr.style "gap" "4px"
-                , Attr.style "padding" "5px 10px"
-                , Attr.style "border-radius" "10px"
+                , Attr.style "justify-content" "center"
+                , Attr.style "width" "40px"
+                , Attr.style "height" "40px"
+                , Attr.style "flex-shrink" "0"
+                , Attr.style "border-radius" "12px"
                 , Attr.style "border"
                     (if isActive then
-                        "1px solid " ++ Brand.legoYellow
+                        "2px solid " ++ Brand.legoYellow
 
                      else
-                        "1px solid rgba(255, 255, 255, 0.15)"
+                        "1px solid rgba(255, 255, 255, 0.18)"
                     )
                 , Attr.style "background"
                     (if isActive then
                         Brand.legoYellow
 
                      else
-                        "rgba(15, 23, 42, 0.75)"
+                        "rgba(15, 23, 42, 0.82)"
                     )
                 , Attr.style "color"
                     (if isActive then
@@ -668,15 +674,11 @@ topBar model =
                      else
                         "#e2e8f0"
                     )
-                , Attr.style "font-size" "12px"
-                , Attr.style "font-weight" "700"
                 , Attr.style "cursor" "pointer"
                 , Attr.style "pointer-events" "auto"
                 , Attr.style "transition" "all 0.15s ease"
                 ]
-                [ icon |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml []
-                , span [] [ text label ]
-                ]
+                [ icon |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml [] ]
     in
     div
         [ Attr.style "position" "absolute"
@@ -708,9 +710,11 @@ topBar model =
                 , onClick ToggleBaseLock
                 , Attr.style "display" "inline-flex"
                 , Attr.style "align-items" "center"
-                , Attr.style "gap" "4px"
-                , Attr.style "padding" "5px 10px"
-                , Attr.style "border-radius" "10px"
+                , Attr.style "justify-content" "center"
+                , Attr.style "width" "40px"
+                , Attr.style "height" "40px"
+                , Attr.style "flex-shrink" "0"
+                , Attr.style "border-radius" "12px"
                 , Attr.style "border"
                     (if model.baseLocked then
                         "1px solid rgba(255, 255, 255, 0.2)"
@@ -720,7 +724,7 @@ topBar model =
                     )
                 , Attr.style "background"
                     (if model.baseLocked then
-                        "rgba(15, 23, 42, 0.75)"
+                        "rgba(15, 23, 42, 0.82)"
 
                      else
                         "rgba(245, 158, 11, 0.25)"
@@ -732,11 +736,16 @@ topBar model =
                      else
                         "#fbbf24"
                     )
-                , Attr.style "font-size" "11px"
-                , Attr.style "font-weight" "700"
                 , Attr.style "cursor" "pointer"
                 , Attr.style "pointer-events" "auto"
                 , Attr.attribute "title"
+                    (if model.baseLocked then
+                        tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
+
+                     else
+                        tr lang "Base unlocked (click to lock chassis)" "Alusta avattu (klikkaa lukitaksesi alusta)"
+                    )
+                , Attr.attribute "aria-label"
                     (if model.baseLocked then
                         tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
 
@@ -750,17 +759,8 @@ topBar model =
                    else
                     FeatherIcons.unlock
                   )
-                    |> FeatherIcons.withSize 14
+                    |> FeatherIcons.withSize 18
                     |> FeatherIcons.toHtml []
-                , span []
-                    [ text
-                        (if model.baseLocked then
-                            tr lang "Base locked" "Alusta lukittu"
-
-                         else
-                            tr lang "Base unlocked" "Alusta avattu"
-                        )
-                    ]
                 ]
             ]
         , div [ Attr.style "margin-left" "auto", Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "gap" "4px" ]
@@ -772,57 +772,14 @@ topBar model =
                     ++ [ onClick Finish
                        , Attr.style "background" Brand.legoYellow
                        , Attr.style "color" Brand.legoBlack
-                       , Attr.style "padding" "0 14px"
-                       , Attr.style "font-weight" "800"
-                       , Attr.style "gap" "6px"
+                       , Attr.style "border" "none"
                        , Attr.attribute "aria-label" (tr lang "To the garage" "Talliin")
+                       , Attr.title (tr lang "To the garage" "Talliin")
                        ]
                 )
-                [ FeatherIcons.check |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml []
-                , span [] [ text (tr lang "Garage" "Talliin") ]
-                ]
+                [ FeatherIcons.check |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [] ]
             ]
         ]
-
-
-selectionBar : Model -> Html Msg
-selectionBar model =
-    let
-        lang =
-            model.language
-
-        onBase =
-            baseSelected model
-    in
-    if Core.hasSelection model.studio then
-        div
-            [ Attr.style "position" "absolute"
-            , Attr.style "left" "50%"
-            , Attr.style "transform" "translateX(-50%)"
-            , Attr.style "bottom" (px (dockHeight + 10))
-            , Attr.style "display" "flex"
-            , Attr.style "gap" "6px"
-            , Attr.style "padding" "6px"
-            , Attr.style "border-radius" "14px"
-            , Attr.style "background" "rgba(15, 23, 42, 0.82)"
-            ]
-            [ iconButton (tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (Just (Turn TurnLeft))
-            , iconButton (tr lang "Turn right" "Käännä oikealle") FeatherIcons.rotateCw (Just (Turn TurnRight))
-            , iconButton (tr lang "Raise" "Nosta") FeatherIcons.arrowUp (Just Raise)
-            , iconButton (tr lang "Lower" "Laske") FeatherIcons.arrowDown (Just Lower)
-            , iconButton
-                (if onBase then
-                    tr lang "The base cannot be deleted" "Alustaa ei voi poistaa"
-
-                 else
-                    tr lang "Delete" "Poista"
-                )
-                FeatherIcons.trash2
-                (enabledIf (not onBase) DeleteSelected)
-            ]
-
-    else
-        text ""
 
 
 noticeView : Model -> Html Msg
@@ -871,7 +828,7 @@ bottomPanel model =
 
 dockHeight : Int
 dockHeight =
-    132
+    136
 
 
 dock : Model -> Html Msg
@@ -890,7 +847,132 @@ dock model =
         , Attr.style "background" "rgba(15, 23, 42, 0.94)"
         , Attr.style "border-top" "1px solid rgba(148, 163, 184, 0.25)"
         ]
-        [ colourRow model, partsStrip model ]
+        [ dockControlsRow model, partsStrip model ]
+
+
+dockControlsRow : Model -> Html Msg
+dockControlsRow model =
+    div
+        [ Attr.style "display" "flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "justify-content" "center"
+        , Attr.style "gap" "10px"
+        , Attr.style "overflow-x" "auto"
+        , Attr.style "padding" "0 4px"
+        ]
+        [ modelingControls model
+        , div
+            [ Attr.style "width" "1px"
+            , Attr.style "height" "24px"
+            , Attr.style "background" "rgba(255, 255, 255, 0.18)"
+            , Attr.style "flex-shrink" "0"
+            ]
+            []
+        , colourRow model
+        ]
+
+
+modelingControls : Model -> Html Msg
+modelingControls model =
+    let
+        lang =
+            model.language
+
+        hasSel =
+            Core.hasSelection model.studio
+
+        onBase =
+            baseSelected model
+
+        modelToolBtn label icon maybeMsg =
+            let
+                enabled =
+                    maybeMsg /= Nothing
+
+                clickAttrs =
+                    case maybeMsg of
+                        Just msg ->
+                            [ onClick msg ]
+
+                        Nothing ->
+                            []
+            in
+            button
+                ([ Attr.type_ "button"
+                 , Attr.attribute "aria-label" label
+                 , Attr.title label
+                 , Attr.disabled (not enabled)
+                 , Attr.style "display" "inline-flex"
+                 , Attr.style "align-items" "center"
+                 , Attr.style "justify-content" "center"
+                 , Attr.style "width" "34px"
+                 , Attr.style "height" "34px"
+                 , Attr.style "flex-shrink" "0"
+                 , Attr.style "border-radius" "10px"
+                 , Attr.style "border"
+                    (if enabled then
+                        "1px solid rgba(255, 255, 255, 0.25)"
+
+                     else
+                        "1px solid rgba(255, 255, 255, 0.08)"
+                    )
+                 , Attr.style "background"
+                    (if enabled then
+                        "rgba(30, 41, 59, 0.85)"
+
+                     else
+                        "rgba(15, 23, 42, 0.4)"
+                    )
+                 , Attr.style "color"
+                    (if enabled then
+                        "#f8fafc"
+
+                     else
+                        "#475569"
+                    )
+                 , Attr.style "cursor"
+                    (if enabled then
+                        "pointer"
+
+                     else
+                        "default"
+                    )
+                 , Attr.style "opacity"
+                    (if enabled then
+                        "1"
+
+                     else
+                        "0.35"
+                    )
+                 , Attr.style "touch-action" "manipulation"
+                 , Attr.style "transition" "all 0.15s ease"
+                 ]
+                    ++ clickAttrs
+                )
+                [ icon |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [] ]
+    in
+    div
+        [ Attr.attribute "role" "toolbar"
+        , Attr.attribute "aria-label" (tr lang "Part modeling tools" "Osan muokkaustyökalut")
+        , Attr.style "display" "flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "gap" "4px"
+        , Attr.style "flex-shrink" "0"
+        ]
+        [ modelToolBtn (tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (enabledIf hasSel (Turn TurnLeft))
+        , modelToolBtn (tr lang "Turn right" "Käännä oikealle") FeatherIcons.rotateCw (enabledIf hasSel (Turn TurnRight))
+        , modelToolBtn (tr lang "Raise" "Nosta") FeatherIcons.arrowUp (enabledIf hasSel Raise)
+        , modelToolBtn (tr lang "Lower" "Laske") FeatherIcons.arrowDown (enabledIf hasSel Lower)
+        , modelToolBtn
+            (if onBase then
+                tr lang "The base cannot be deleted" "Alustaa ei voi poistaa"
+
+             else
+                tr lang "Delete" "Poista"
+            )
+            FeatherIcons.trash2
+            (enabledIf (hasSel && not onBase) DeleteSelected)
+        ]
 
 
 colourRow : Model -> Html Msg
