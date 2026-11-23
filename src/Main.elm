@@ -27,6 +27,7 @@ import LDraw.Document as Document exposing (Document)
 import LDraw.Parser as Parser
 import LDraw.Resolve as Resolve exposing (PartCache, ResolverConfig)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Pages.Build as Build
 import Pages.Garage as Garage
 import Pages.Menu as Menu
 import Pages.Race as Race
@@ -35,6 +36,7 @@ import Ports
 import Racer.Analyze as Analyze exposing (CarMeshBundle)
 import Racer.Audio as Audio
 import Racer.Camera as RacerCamera
+import Racer.Editor as Editor
 import Racer.HUD as HUD exposing (HudAlert)
 import Racer.I18n as RI18n
 import Racer.Ingest as Ingest
@@ -83,6 +85,7 @@ type alias Flags =
     , savedAudioMuted : Bool
     , savedLeaderboardJson : String
     , baseUrl : String
+    , supportsPointerEvents : Bool
     }
 
 
@@ -93,6 +96,7 @@ type Page
     | LoadGaragePage GarageState
     | RacePage RaceState
     | FinishLeaderboardPage ResultsState
+    | BuildPage Build.Model
 
 
 {-| Vehicle inspection state for `LoadGaragePage`.
@@ -223,6 +227,8 @@ type alias StaticMeshes =
 type alias Model =
     { resolverConfig : ResolverConfig
     , ldrawBase : String
+    , ldrawFallbackBase : String
+    , supportsPointerEvents : Bool
     , indicesBase : String
     , partCache : PartCache
     , partIndex : PartIndex
@@ -301,6 +307,9 @@ type Msg
     | HashChanged String
     | RequestFileUpload
     | SelectPreset PresetBuild
+    | StartBuild String
+    | EditInBuilder
+    | BuildMsg Build.Msg
     | SelectTrack TrackId
     | ChangeSeed String
     | RandomSeed
@@ -374,6 +383,8 @@ init flags =
             refreshProps
                 { resolverConfig = resolverCfg
                 , ldrawBase = flags.ldrawBase
+                , ldrawFallbackBase = flags.ldrawFallbackBase
+                , supportsPointerEvents = flags.supportsPointerEvents
                 , indicesBase = flags.indicesBase
                 , partCache = Resolve.initCache
                 , partIndex = Catalog.emptyPartIndex
@@ -469,7 +480,20 @@ update msg model =
             ( applyViewportSize w h model, Cmd.none )
 
         ViewportResized { width, height } ->
-            ( applyViewportSize (max 320 width) (max 240 height) model, Cmd.none )
+            let
+                sized =
+                    applyViewportSize (max 320 width) (max 240 height) model
+            in
+            case sized.page of
+                BuildPage build ->
+                    let
+                        ( nextBuild, buildCmd ) =
+                            Build.resize sized.viewportWidth sized.viewportHeight build
+                    in
+                    ( { sized | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
+
+                _ ->
+                    ( sized, Cmd.none )
 
         PartIndexLoaded result ->
             case result of
@@ -783,6 +807,47 @@ update msg model =
                     presetTitle model.language preset
             in
             loadDocumentIntoGarage title doc Nothing Nothing True model
+
+        StartBuild baseId ->
+            case List.filter (\b -> b.id == baseId) Editor.bases |> List.head of
+                Just base ->
+                    openBuilder base base.document model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        EditInBuilder ->
+            case model.page of
+                LoadGaragePage garage ->
+                    case Editor.baseOf garage.document of
+                        Just base ->
+                            openBuilder base garage.document model
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        BuildMsg buildMsg ->
+            case model.page of
+                BuildPage build ->
+                    let
+                        ( nextBuild, buildCmd, outcome ) =
+                            Build.update buildMsg build
+                    in
+                    case outcome of
+                        Build.Stay ->
+                            ( { model | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
+
+                        Build.Quit ->
+                            ( { model | page = MenuPage }, Cmd.none )
+
+                        Build.Finished doc ->
+                            loadDocumentIntoGarage (builtCarTitle model.language nextBuild.base) doc Nothing Nothing True model
+
+                _ ->
+                    ( model, Cmd.none )
 
         SelectTrack nextTrackId ->
             let
@@ -1116,6 +1181,10 @@ handleKeyDown keyEvent model =
 
                 else
                     ( { model | pressedKeys = Set.insert norm model.pressedKeys }, Cmd.none )
+
+            BuildPage _ ->
+                -- The editor's studio handles its own keys.
+                ( model, Cmd.none )
 
             _ ->
                 if not keyEvent.repeat && norm == "2" then
@@ -1928,6 +1997,9 @@ reanalyzeActiveVehicle model =
         MenuPage ->
             model
 
+        BuildPage _ ->
+            model
+
 
 {-| Parts of a build still to fetch, and how far the rest has loaded.
 -}
@@ -2650,6 +2722,9 @@ activeDocument page =
         FinishLeaderboardPage r ->
             Just r.document
 
+        BuildPage _ ->
+            Nothing
+
 
 nonEmptyMaybe : String -> Maybe String
 nonEmptyMaybe raw =
@@ -2703,9 +2778,18 @@ subscriptions model =
 
                 _ ->
                     Sub.none
+
+        buildSub =
+            case model.page of
+                BuildPage build ->
+                    Sub.map BuildMsg (Build.subscriptions build)
+
+                _ ->
+                    Sub.none
     in
     Sub.batch
         [ animSub
+        , buildSub
         , GamePorts.viewportResized ViewportResized
         , GamePorts.fileContentReceived FileContentReceived
         , GamePorts.fileLoadError FileLoadError
@@ -2769,6 +2853,7 @@ view model =
                 , onSubmitPaste = SubmitPaste
                 , onRequestFileUpload = RequestFileUpload
                 , onSelectPreset = SelectPreset
+                , onStartBuild = StartBuild
                 , onSelectTrack = SelectTrack
                 , onChangeSeed = ChangeSeed
                 , onRandomSeed = RandomSeed
@@ -2801,6 +2886,12 @@ view model =
                 , roomCode = model.roomCodeInput
                 }
                 { onBackToMenu = BackToMenu
+                , onEditCar =
+                    if Editor.baseOf garage.document /= Nothing then
+                        Just EditInBuilder
+
+                    else
+                        Nothing
                 , onStartRace = GarageToRace
                 , onStartHostMultiplayer = StartHostMultiplayer
                 , onJoinMultiplayer = JoinMultiplayer
@@ -2933,6 +3024,9 @@ view model =
                 , remoteCar = remoteCarLook model
                 }
 
+        BuildPage build ->
+            Html.map BuildMsg (Build.view build)
+
         FinishLeaderboardPage res ->
             Results.view
                 { language = model.language
@@ -2952,6 +3046,46 @@ view model =
                 , onInspectGarage = InspectInGarage
                 , onBackToMenu = BackToMenu
                 }
+
+
+{-| Open the car editor on a build standing on `base`.
+-}
+openBuilder : Editor.Base -> Document -> Model -> ( Model, Cmd Msg )
+openBuilder base doc model =
+    let
+        ( build, buildCmd ) =
+            Build.init
+                { ldrawBase = model.ldrawBase
+                , ldrawFallbackBase = model.ldrawFallbackBase
+                , supportsPointerEvents = model.supportsPointerEvents
+                , language = model.language
+                , width = model.viewportWidth
+                , height = model.viewportHeight
+                }
+                base
+                doc
+    in
+    ( { model
+        | page = BuildPage build
+        , pressedKeys = Set.empty
+        , touch = emptyTouch
+        , shareCopiedNotice = False
+        , pasteError = Nothing
+      }
+    , Cmd.batch [ Cmd.map BuildMsg buildCmd, silenceAudioCmd ]
+    )
+
+
+{-| The name of a car built in the editor: the base it stands on.
+-}
+builtCarTitle : Language -> Editor.Base -> String
+builtCarTitle lang base =
+    case lang of
+        Fi ->
+            "Oma auto: " ++ base.nameFi
+
+        En ->
+            "My " ++ base.nameEn
 
 
 enterGarageFromRaceOrResults : Document -> String -> VehicleSpec -> CarMeshBundle -> Model -> ( Model, Cmd Msg )

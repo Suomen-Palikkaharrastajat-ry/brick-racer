@@ -6,7 +6,8 @@ module Pages.Menu exposing
 
 {-| Title & vehicle import screen for Brick Racer (`MenuPage`).
 
-Lets players paste any `#b/...` or `#model=...` URL exported from `brick-play` or
+Lets players build a car on one of the starter bases in the car editor
+(`Pages.Build`), paste any `#b/...` or `#model=...` URL exported from `brick-play` or
 `brick-studio`, open or drop `.ldr`/`.mpd`/`.io` files, pick from starter soapbox
 builds, select one of the three countryside courses + seed, and view local PBs.
 
@@ -17,6 +18,7 @@ import Html exposing (Html, button, div, h1, h2, input, p, span, text, textarea)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
 import I18n exposing (Language(..))
+import Racer.Editor as Editor
 import Racer.I18n as RI18n
 import Racer.Ingest as Ingest
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
@@ -49,6 +51,7 @@ type alias MenuActions msg =
     , onSubmitPaste : msg
     , onRequestFileUpload : msg
     , onSelectPreset : PresetBuild -> msg
+    , onStartBuild : String -> msg
     , onSelectTrack : TrackId -> msg
     , onChangeSeed : String -> msg
     , onRandomSeed : msg
@@ -114,7 +117,8 @@ view data actions =
             , div [ Tw.classes [ Tw.grid, Tw.grid_cols_1, Bp.lg [ Tw.grid_cols_12 ], Tw.gap Th.s6 ] ]
                 [ -- Left: Vehicle Import & Starter Racers (7 cols)
                   div [ Tw.classes [ Bp.lg [ Tw.col_span_7 ], Tw.flex, Tw.flex_col, Tw.gap Th.s5 ] ]
-                    [ viewImportCard data actions
+                    [ viewBuildCard lang actions
+                    , viewImportCard data actions
                     , viewPresetsCard lang actions
                     ]
 
@@ -174,6 +178,46 @@ viewImportCard data actions =
             , span [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ]
                 [ text (RI18n.dropHintLabel lang) ]
             ]
+        ]
+
+
+viewBuildCard : Language -> MenuActions msg -> Html msg
+viewBuildCard lang actions =
+    div
+        [ Tw.classes [ Tw.rounded_n2xl, Tw.p Th.s5, Tw.border, Tw.flex, Tw.flex_col, Tw.gap Th.s3 ]
+        , Attr.style "background" "rgba(15, 23, 42, 0.72)"
+        , Attr.style "border-color" "rgba(250, 204, 21, 0.45)"
+        ]
+        [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
+            [ FeatherIcons.tool |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml []
+            , h2 [ Tw.classes [ Tw.text_lg, Tw.font_bold ] ] [ text (RI18n.buildCarHeading lang) ]
+            ]
+        , p [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#cbd5e1" ] [ text (RI18n.buildCarHint lang) ]
+        , div [ Tw.classes [ Tw.grid, Tw.grid_cols_2, Bp.sm [ Tw.grid_cols_4 ], Tw.gap Th.s2 ] ]
+            (List.map (baseButton lang actions.onStartBuild) Editor.bases)
+        ]
+
+
+baseButton : Language -> (String -> msg) -> Editor.Base -> Html msg
+baseButton lang onStart base =
+    button
+        [ Attr.type_ "button"
+        , onClick (onStart base.id)
+        , Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.border, Tw.font_bold, Tw.text_sm ]
+        , Attr.style "text-align" "left"
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background" "rgba(250, 204, 21, 0.14)"
+        , Attr.style "border-color" "rgba(250, 204, 21, 0.5)"
+        , Attr.style "color" "#fef9c3"
+        ]
+        [ text
+            (case lang of
+                Fi ->
+                    base.nameFi
+
+                En ->
+                    base.nameEn
+            )
         ]
 
 

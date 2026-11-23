@@ -2,8 +2,8 @@
 
 Four alternative car undercarriages a player can start a Brick Racer build
 from. Each is a chassis underside: a plate frame, four rim + tyre wheels on
-two axles, and studs on top to build the body on. They are the samples a later
-vehicle editor's fixed parts list will be drawn from.
+two axles, and studs on top to build the body on. The car editor (`Pages.Build`,
+"Build your own car" in the menu) starts every car from one of them.
 
 | File | Name | Parts | Wheels | Steering found by `Racer.Analyze` | Bounds in LDU (x / y / z) |
 |---|---|---|---|---|---|
@@ -59,13 +59,24 @@ Every rim and its tyre share one origin, which is how Brick Studio's
   `FixedAxleFallback`; `Studio.Health` finds no misaligned or overlapping
   part; every studded part sits on studs. The test runs the analyzer offline,
   with its procedural fallback meshes for the wheels.
-- `tests/StarterBases.elm` embeds the files for the test. Regenerate it after
-  changing a file: `node starters/embed-starters.mjs`.
+- `src/Racer/StarterBases.elm` embeds the files for the car editor and the
+  tests. Regenerate it after changing a file: `node starters/embed-starters.mjs`.
 - With the real catalog parts, each sample was loaded into the game's garage
   (`#model=` link): all four show "4 (4 rubber)" wheels, no warnings, and the
   turntable kart shows "Turntable Bogie". With real part bounds, the rim and
   tyre centres of each wheel are 0 LDU apart (7 LDU for 55982/56891, inside
   the analyzer's 8 LDU pairing limit).
+
+## In the car editor
+
+The editor (`src/Pages/Build.elm`, rules in `src/Racer/Editor.elm`) opens a
+starter as it is: the base stays one grouped submodel. The player adds parts
+from a fixed list of 49 parts in 8 colours on top of it; the base can be
+moved and turned as a whole but never ungrouped, deleted, recoloured or
+copied (every edit that would split it is dropped). "Garage" loads the build
+like any other model, so its `#b/...` link opens the garage, and "Edit car"
+there opens it in the editor again. `tests/EditorTest.elm` and
+`tests/BuildPageTest.elm` check this.
 
 ## Regenerating
 

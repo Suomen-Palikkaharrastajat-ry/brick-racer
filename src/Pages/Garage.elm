@@ -58,6 +58,7 @@ type alias GarageViewData =
 -}
 type alias GarageActions msg =
     { onBackToMenu : msg
+    , onEditCar : Maybe msg
     , onStartRace : msg
     , onStartHostMultiplayer : SessionMode -> msg
     , onJoinMultiplayer : String -> msg
@@ -188,6 +189,23 @@ view data actions =
 
               else
                 text ""
+            , case actions.onEditCar of
+                Just onEdit ->
+                    button
+                        [ Attr.type_ "button"
+                        , onClick onEdit
+                        , Tw.classes [ Tw.px Th.s3, Tw.py Th.s2, Tw.rounded_xl, Tw.font_bold, Tw.text_sm, Tw.border, Tw.flex, Tw.items_center, Tw.justify_center, Tw.gap Th.s2 ]
+                        , Attr.style "cursor" "pointer"
+                        , Attr.style "background" "rgba(250, 204, 21, 0.16)"
+                        , Attr.style "border-color" "rgba(250, 204, 21, 0.6)"
+                        , Attr.style "color" "#fef9c3"
+                        ]
+                        [ FeatherIcons.tool |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml []
+                        , text (RI18n.editCarButton lang)
+                        ]
+
+                Nothing ->
+                    text ""
             , div []
                 [ h1 [ Tw.classes [ Tw.text_n2xl, Tw.font_extrabold ] ] [ text data.vehicle.name ]
                 , p [ Tw.classes [ Tw.text_xs, Tw.mt Th.s0_dot_5 ], Attr.style "color" "#94a3b8" ]

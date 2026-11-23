@@ -1,5 +1,6 @@
 import './main.css'
 import { bootGame } from './vendor/packages/brick-frame-game/runtime/game-boot.js'
+import { initThumbnails } from './vendor/packages/brick-frame-viewport/runtime/thumbnail-pipeline.js'
 import { createAudioEngine } from './audio.js'
 import { Elm } from './src/Main.elm'
 import { migrateRetiredTrackBestTimes } from './leaderboard-migration.js'
@@ -35,7 +36,7 @@ if (window.matchMedia?.('(pointer: coarse)').matches) {
 
 // Tilt steering is the shared calibrated `tilt-steer.js`: on by default on
 // phones, the player's saved choice wins (see `steer-mode.js`).
-bootGame({
+const { ports } = bootGame({
   elm: Elm.Main,
   env: import.meta.env,
   storagePrefix: 'racer',
@@ -43,3 +44,7 @@ bootGame({
   playerPrefix: 'Racer ',
   tiltSteer: tiltSteerOptions,
 })
+
+// Part pictures for the car editor's dock (`Pages.Build`), from the same
+// catalog the game loads its parts from.
+initThumbnails(ports, import.meta.env.VITE_LDRAW_BASE || 'https://catalog.palikkaharrastajat.fi/raw')

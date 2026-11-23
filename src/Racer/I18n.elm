@@ -2,6 +2,8 @@ module Racer.I18n exposing
     ( audioMutedLabel
     , audioUnmutedLabel
     , backToMenuLabel
+    , buildCarHeading
+    , buildCarHint
     , camChaseLabel
     , camHoodLabel
     , camOrbitLabel
@@ -13,6 +15,7 @@ module Racer.I18n exposing
     , defaultPresetSectionTitle
     , dropHintLabel
     , dropZoneButton
+    , editCarButton
     , elevationRemainingLabel
     , finishedHeadline
     , garageClearanceLabel
@@ -905,3 +908,39 @@ tiltDisabledLabel lang =
 
         En ->
             "Tilt steering off (tap to tilt)"
+
+
+{-| Heading of the menu card that opens the car editor.
+-}
+buildCarHeading : Language -> String
+buildCarHeading lang =
+    case lang of
+        Fi ->
+            "Rakenna oma auto"
+
+        En ->
+            "Build your own car"
+
+
+{-| Hint under the car editor heading: pick a base to build on.
+-}
+buildCarHint : Language -> String
+buildCarHint lang =
+    case lang of
+        Fi ->
+            "Valitse alusta. Pyörät ovat valmiina, rakenna korin palikoista ja väritä se."
+
+        En ->
+            "Pick a base. The wheels are on already: build the body and colour it."
+
+
+{-| Garage button that opens the car in the car editor again.
+-}
+editCarButton : Language -> String
+editCarButton lang =
+    case lang of
+        Fi ->
+            "Muokkaa autoa"
+
+        En ->
+            "Edit car"
