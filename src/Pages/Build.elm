@@ -1666,12 +1666,20 @@ viewReviewDrawer model =
 
         -- Five stars: a blocker costs two, a warning one. A car that cannot be
         -- driven yet is capped at two stars.
+        bonuses =
+            List.length (List.filter (\i -> i.severity == Bonus) spec.issues)
+
+        -- No stars while a blocker stands; otherwise three stars, minus one per
+        -- warning, plus one per bonus. Not drivable caps the rating at two.
         starCount =
             let
                 score =
-                    max 1 (min 5 (5 - 2 * blockers - warnings))
+                    max 1 (min 5 (3 - warnings + bonuses))
             in
-            if spec.isDrivable then
+            if blockers > 0 then
+                0
+
+            else if spec.isDrivable then
                 score
 
             else

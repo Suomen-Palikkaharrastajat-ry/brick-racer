@@ -1523,7 +1523,7 @@ buildValidationReport ctx =
 
         warningMissing =
             if ctx.missingCount > 0 then
-                [ { severity = Warning
+                [ { severity = Info
                   , code = MissingPartGeometry ctx.missingCount
                   , detail = String.fromInt ctx.missingCount ++ " part file(s) using placeholder boxes."
                   }
