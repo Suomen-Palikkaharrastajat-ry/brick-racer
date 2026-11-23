@@ -164,35 +164,36 @@ The LDraw origin of 6014b is on its hub face, 6 LDU from the rim's centre
 (its geometry runs from z = -20 to z = 8), while 56890's origin is its centre.
 A tyre that really sits on the rim therefore has its origin at the rim's
 local (0, 0, -6). `LDraw.Connectivity` puts the 6014b `WheelRim` point and box
-at the origin instead, so `Studio.Health` sees such a pair as overlapping.
-Until that entry is fixed upstream (in brick-studio), only this exact pairing
-is let through.
+at the origin instead, so `Studio.Health` sees such a pair as overlapping and
+the tyre as misaligned (it would snap the tyre 6 LDU off the rim). Until that
+entry is fixed upstream (in brick-studio), only this exact pairing is let
+through.
 
 -}
 isOffsetRimTyre : Document -> Health.Issue -> Bool
 isOffsetRimTyre doc issue =
+    let
+        placements =
+            Document.mainPlacements doc
+
+        find id =
+            List.filter (\p -> p.id == id) placements |> List.head
+
+        partName p =
+            String.toLower p.part
+
+        mountedOn rim tyre =
+            partName rim
+                == "6014b.dat"
+                && partName tyre
+                == "56890.dat"
+                && Vec3.distance
+                    (Mat4.transform rim.matrix (Vec3.vec3 0 0 -6))
+                    (Mat4.transform tyre.matrix (Vec3.vec3 0 0 0))
+                <= 0.5
+    in
     case issue of
         Health.Overlapping { first, second } ->
-            let
-                placements =
-                    Document.mainPlacements doc
-
-                find id =
-                    List.filter (\p -> p.id == id) placements |> List.head
-
-                partName p =
-                    String.toLower p.part
-
-                mountedOn rim tyre =
-                    partName rim
-                        == "6014b.dat"
-                        && partName tyre
-                        == "56890.dat"
-                        && Vec3.distance
-                            (Mat4.transform rim.matrix (Vec3.vec3 0 0 -6))
-                            (Mat4.transform tyre.matrix (Vec3.vec3 0 0 0))
-                        <= 0.5
-            in
             case ( find first, find second ) of
                 ( Just a, Just b ) ->
                     mountedOn a b || mountedOn b a
@@ -200,8 +201,13 @@ isOffsetRimTyre doc issue =
                 _ ->
                     False
 
-        Health.Misaligned _ ->
-            False
+        Health.Misaligned { placement } ->
+            case find placement of
+                Just tyre ->
+                    List.any (\rim -> mountedOn rim tyre) placements
+
+                Nothing ->
+                    False
 
 
 headerPartCount : String -> Maybe Int
