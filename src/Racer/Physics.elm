@@ -7,6 +7,7 @@ module Racer.Physics exposing
     , maxHealth
     , obstacleImpactDamage
     , recoveryTowSpeed
+    , remoteSmashes
     , respawnAtCheckpoint
     , rightVector
     , stepFixed
@@ -1072,6 +1073,68 @@ type alias WallRes =
     , damage : Float
     , events : List PhysicsEvent
     }
+
+
+{-| The scenery another racer smashes, seen only through what the room shares
+of their car: its position, heading (`yaw`), speed and distance down the
+course (`progressS`). Their own physics smashes the piece on their screen; this
+finds the same pieces here, so a smash shows on every screen.
+
+A piece counts when the car is inside it while going at least its break speed:
+a car that only bumps a piece is pushed back out of it by its own physics, so
+only a car that ploughs through one is seen inside it. The car's radius is the
+one `resolveObstacles` uses, a little smaller, since `spec` is only the look
+this page has for that car.
+
+-}
+remoteSmashes :
+    GeneratedTrack
+    -> VehicleSpec
+    -> { position : Vec3, yaw : Float, speed : Float, progressS : Float }
+    -> List PhysicsEvent
+remoteSmashes track spec car =
+    let
+        halfTrack =
+            max 0.25 (spec.trackWidthM * 0.5)
+
+        carRadius =
+            0.85 * clamp 0.52 1.15 (max halfTrack (spec.wheelBaseM * 0.35))
+
+        carY =
+            Vec3.getY car.position
+
+        carTopY =
+            carY + max 0.45 (Vec3.getY spec.boundsMaxLdu / 160.0)
+
+        direction =
+            forwardVector car.yaw
+
+        inside obs =
+            let
+                dx =
+                    Vec3.getX car.position - Vec3.getX obs.position
+
+                dz =
+                    Vec3.getZ car.position - Vec3.getZ obs.position
+
+                minDist =
+                    carRadius + obs.radiusM
+            in
+            (carY <= Vec3.getY obs.position + obs.heightM)
+                && (carTopY >= Vec3.getY obs.position - 0.5)
+                && (dx * dx + dz * dz < minDist * minDist)
+                && (car.speed >= breakSpeedFor obs.kind)
+    in
+    Track.obstaclesNear track car.progressS 24.0
+        |> List.filter inside
+        |> List.map
+            (\obs ->
+                ScenerySmashed
+                    { obstacleId = obs.id
+                    , impactSpeed = car.speed
+                    , direction = direction
+                    }
+            )
 
 
 {-| Minimum impact speed (m/s) at which a scenery piece shatters instead of

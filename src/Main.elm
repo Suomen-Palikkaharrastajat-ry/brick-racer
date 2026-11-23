@@ -151,6 +151,7 @@ type alias RaceState =
     , shake : Float
     , player2 : Maybe PlayerTwoState
     , multiplayer : Maybe RoomState
+    , roomHitCooldown : Float
     }
 
 
@@ -1822,10 +1823,215 @@ stepFrame deltaMs model =
                             Nothing ->
                                 Cmd.none
                 in
-                ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
+                applyRoomContacts dt ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
 
         _ ->
             ( model, Cmd.none )
+
+
+{-| Whether this race is the local hot-seat split screen: two players on one
+device, each with half of it. An online room never is: there every player is on
+their own device, and their own view fills it.
+-}
+localSplitScreen : Model -> Bool
+localSplitScreen model =
+    model.raceMode == SplitScreenTwoPlayer && model.multiplayer == Nothing
+
+
+{-| Sideways offset (m) of this player's start spot in an online room: the two
+players of a two-player room start where the hot-seat players do, the players
+of a bigger room side by side 1.3 m apart (more than two cars' contact
+distance) in slot order.
+-}
+roomStartOffset : RoomState -> Float
+roomStartOffset room =
+    let
+        slotIndex =
+            clamp 0 7 (room.mySlot - 1)
+    in
+    if room.maxPlayers <= 2 then
+        if slotIndex == 0 then
+            -1.8
+
+        else
+            1.8
+
+    else
+        let
+            side =
+                if modBy 2 slotIndex == 0 then
+                    -1.0
+
+                else
+                    1.0
+        in
+        side * (0.65 + 1.3 * toFloat (slotIndex // 2))
+
+
+{-| What the other racers of an online room do in this page's race.
+
+The room only shares each car's position, heading, speed and progress, never
+events, so collisions are worked out again on every page from that shared
+state: each page smashes the scenery another car is seen ploughing through
+(`Physics.remoteSmashes`), and bumps its own car off another car it runs into
+(`resolveCarsCollision`, keeping only this car's half). The other page does the
+same with this car's telemetry, so both screens show the smash, the bricks and
+the bump.
+
+-}
+applyRoomContacts : Float -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+applyRoomContacts dt ( model, cmd ) =
+    case model.page of
+        RacePage race ->
+            case race.multiplayer of
+                Just room ->
+                    let
+                        ( contacted, cmds ) =
+                            roomContacts dt room model race
+                    in
+                    ( { model | page = RacePage contacted }, Cmd.batch (cmd :: cmds) )
+
+                Nothing ->
+                    ( model, cmd )
+
+        _ ->
+            ( model, cmd )
+
+
+roomContacts : Float -> RoomState -> Model -> RaceState -> ( RaceState, List (Cmd Msg) )
+roomContacts dt room model race =
+    let
+        others =
+            List.filter (\p -> p.slot /= room.mySlot) room.players
+
+        lookOf =
+            remoteCarLook model
+
+        telemetryCar p =
+            { position = p.position
+            , yaw = Vec3.getY p.rotation
+            , speed = p.speed
+            , progressS = p.progress * race.track.totalLengthM
+            }
+
+        smashes =
+            others
+                |> List.concatMap
+                    (\p ->
+                        Physics.remoteSmashes race.track
+                            (lookOf p.vehicleId |> Maybe.map .spec |> Maybe.withDefault race.vehicle)
+                            (telemetryCar p)
+                    )
+
+        ( smashed, smashCmds ) =
+            List.foldl (roomSmash race.physics.position) ( race, [] ) smashes
+
+        cooled =
+            { smashed | roomHitCooldown = max 0.0 (smashed.roomHitCooldown - dt) }
+    in
+    if cooled.subPhase == ActiveDriving then
+        List.foldl (bumpRoomCar lookOf) ( cooled, smashCmds ) (List.filter (\p -> not p.finished) others)
+
+    else
+        ( cooled, smashCmds )
+
+
+{-| Another racer's smash, seen on this page: the piece goes and its bricks
+fly, with a pop that fades with distance from this car. No banner or camera
+shake: those are for the racer who hit it.
+-}
+roomSmash :
+    Vec3
+    -> PhysicsEvent
+    -> ( RaceState, List (Cmd Msg) )
+    -> ( RaceState, List (Cmd Msg) )
+roomSmash listener ev ( race, cmds ) =
+    case ev of
+        ScenerySmashed smash ->
+            case shatterScenery smash race of
+                Just ( shattered, at ) ->
+                    let
+                        loudness =
+                            clamp 0.0 1.0 (1.0 - Vec3.distance listener at / 40.0)
+                    in
+                    ( shattered
+                    , if loudness > 0.05 then
+                        Ports.playSfx { kind = "smash", intensity = loudness * clamp 0.3 1.0 (smash.impactSpeed / 14.0) } :: cmds
+
+                      else
+                        cmds
+                    )
+
+                Nothing ->
+                    ( race, cmds )
+
+        _ ->
+            ( race, cmds )
+
+
+{-| This car running into another racer's car, as last seen in the room: this
+car takes its half of the push and the damage, and both cars' bricks fly. A
+short cooldown keeps one bump from counting again while the other car's next
+telemetry is still on its way.
+-}
+bumpRoomCar :
+    (String -> Maybe { spec : VehicleSpec, meshes : CarMeshBundle })
+    -> Multiplayer.RemotePlayer
+    -> ( RaceState, List (Cmd Msg) )
+    -> ( RaceState, List (Cmd Msg) )
+bumpRoomCar lookOf p ( race, cmds ) =
+    let
+        local =
+            race.physics
+
+        other =
+            { local
+                | position = p.position
+                , velocity = Vec3.scale p.speed (Physics.forwardVector (Vec3.getY p.rotation))
+            }
+
+        res =
+            resolveCarsCollision local other
+    in
+    if res.collided && race.roomHitCooldown <= 0.0 then
+        if res.impactSpeed > 1.8 then
+            let
+                midPos =
+                    Vec3.scale 0.5 (Vec3.add res.p1.position p.position)
+
+                palette =
+                    race.meshes.debrisColors
+                        ++ (lookOf p.vehicleId |> Maybe.map (\look -> look.meshes.debrisColors) |> Maybe.withDefault [])
+
+                ( pieces, nextSeed ) =
+                    spawnDebrisBurst race.debrisSeed midPos res.p1.progressS palette
+            in
+            ( { race
+                | physics = res.p1
+                , debris = List.take maxDebrisPieces (pieces ++ race.debris)
+                , debrisSeed = nextSeed
+                , shake = min 1.0 (race.shake + 0.5)
+                , roomHitCooldown = roomHitCooldownSeconds
+              }
+            , Ports.playSfx { kind = "smash", intensity = clamp 0.4 1.0 (res.impactSpeed / 8.0) } :: cmds
+            )
+
+        else
+            ( { race | physics = res.p1, roomHitCooldown = roomHitCooldownSeconds }, cmds )
+
+    else if res.collided then
+        -- Still cooling down from the last bump: only keep the cars apart.
+        ( { race | physics = { local | position = res.p1.position } }, cmds )
+
+    else
+        ( { race | physics = res.p1 }, cmds )
+
+
+{-| Seconds after a bump with another room car before the next one counts.
+-}
+roomHitCooldownSeconds : Float
+roomHitCooldownSeconds =
+    0.35
 
 
 stepRaceFrame : Float -> RaceState -> Model -> ( Model, Cmd Msg )
@@ -2562,14 +2768,21 @@ startRaceFromDoc title doc vehicle meshes model =
             ensureTrackBuilt model.trackId model.seed model
 
         isSplit =
-            model.raceMode == SplitScreenTwoPlayer
+            localSplitScreen model
 
         physics =
             if isSplit then
                 Physics.initPhysicsWithOffset -1.8 cachedTrack.track vehicle
 
             else
-                Physics.initPhysics cachedTrack.track vehicle
+                case model.multiplayer of
+                    Just room ->
+                        -- Every room racer starts in their own spot on the line,
+                        -- so the cars do not start inside each other.
+                        Physics.initPhysicsWithOffset (roomStartOffset room) cachedTrack.track vehicle
+
+                    Nothing ->
+                        Physics.initPhysics cachedTrack.track vehicle
 
         isWide =
             modelWithTrack.viewportWidth >= modelWithTrack.viewportHeight
@@ -2644,6 +2857,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , shake = 0.0
             , player2 = maybeP2
             , multiplayer = model.multiplayer
+            , roomHitCooldown = 0.0
             }
 
         nextModel =
@@ -2878,7 +3092,7 @@ sampleP1Input model =
             Set.member k model.pressedKeys
 
         isSplit =
-            model.raceMode == SplitScreenTwoPlayer
+            localSplitScreen model
 
         keyLeft =
             held "a" || (not isSplit && held "ArrowLeft") || model.touch.left
@@ -3438,35 +3652,56 @@ smashScenery :
     -> ( RaceState, List (Cmd Msg) )
     -> ( RaceState, List (Cmd Msg) )
 smashScenery lang smash ( race, cmds ) =
-    case List.filter (\o -> o.id == smash.obstacleId) race.track.obstacles |> List.head of
+    case shatterScenery smash race of
         Nothing ->
             ( race, cmds )
 
-        Just obs ->
+        Just ( shattered, _ ) ->
             let
-                nextTrack =
-                    Track.removeObstacles [ obs.id ] race.track
-
-                ( pieces, nextSeed ) =
-                    spawnSceneryDebris race.debrisSeed obs smash.impactSpeed smash.direction
-
                 alert =
-                    case race.hudAlert of
+                    case shattered.hudAlert of
                         Just existing ->
                             Just existing
 
                         Nothing ->
                             Just { title = RI18n.smashBanner lang, subtitle = Nothing, positive = True, timer = 0.7 }
             in
-            ( { race
-                | track = nextTrack
-                , bundle = TerrainMesh.rebuildChunkScenery nextTrack obs.s race.bundle
-                , debris = List.take maxDebrisPieces (pieces ++ race.debris)
-                , debrisSeed = nextSeed
-                , shake = min 1.0 (race.shake + 0.3 + smash.impactSpeed / 30.0)
+            ( { shattered
+                | shake = min 1.0 (shattered.shake + 0.3 + smash.impactSpeed / 30.0)
                 , hudAlert = alert
               }
             , Ports.playSfx { kind = "smash", intensity = clamp 0.3 1.0 (smash.impactSpeed / 14.0) } :: cmds
+            )
+
+
+{-| Take a smashed scenery piece off the race track, rebuild just its chunk's
+scenery mesh and scatter its bricks; with where the piece stood. `Nothing` when
+the piece is already gone (e.g. hit by both players).
+-}
+shatterScenery :
+    { obstacleId : Int, impactSpeed : Float, direction : Vec3 }
+    -> RaceState
+    -> Maybe ( RaceState, Vec3 )
+shatterScenery smash race =
+    List.filter (\o -> o.id == smash.obstacleId) race.track.obstacles
+        |> List.head
+        |> Maybe.map
+            (\obs ->
+                let
+                    nextTrack =
+                        Track.removeObstacles [ obs.id ] race.track
+
+                    ( pieces, nextSeed ) =
+                        spawnSceneryDebris race.debrisSeed obs smash.impactSpeed smash.direction
+                in
+                ( { race
+                    | track = nextTrack
+                    , bundle = TerrainMesh.rebuildChunkScenery nextTrack obs.s race.bundle
+                    , debris = List.take maxDebrisPieces (pieces ++ race.debris)
+                    , debrisSeed = nextSeed
+                  }
+                , obs.position
+                )
             )
 
 

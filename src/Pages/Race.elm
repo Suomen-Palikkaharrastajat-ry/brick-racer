@@ -1,8 +1,10 @@
 module Pages.Race exposing (RaceOrbitActions, SplitScreenData, view)
 
 {-| Live downhill 3D racing viewport composition (`RacePage`).
-Supports single-player full-bleed racing, dual-player local split-screen driving,
-and online rooms: one full view alone, a grid of every player's view otherwise.
+Supports single-player full-bleed racing, dual-player local split-screen driving
+(two players sharing one device), and online rooms. In an online room every
+player races on their own device, so their own chase view fills the whole
+screen and the other racers are cars in that view.
 -}
 
 import DesignTokens.Colors as Brand
@@ -51,7 +53,7 @@ type alias RaceOrbitActions msg =
 
 
 {-| Render the full-viewport WebGL racing scene and overlaid HUD, with optional
-Player 2 split-screen dual viewports or online room grids.
+Player 2 split-screen dual viewports, or an online room's cars and room bar.
 -}
 view :
     TrackRenderBundle
@@ -76,7 +78,7 @@ view bundle track spec meshes props shadowMesh physics debris camera width heigh
     div [ Attr.class "is-racing relative w-full h-full overflow-hidden" ]
         [ case maybeMulti of
             Just room ->
-                viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
+                viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
 
             Nothing ->
                 case maybeSplit of
@@ -111,7 +113,11 @@ lookFor actions spec meshes p =
             ( spec, meshes )
 
 
-viewMultiplayerSinglePlayer :
+{-| An online room's race on this device: the local player's chase view fills
+the screen, with the same camera, size and aspect as a single-player race, and
+every other racer is a car in it.
+-}
+viewRoomRace :
     TrackRenderBundle
     -> GeneratedTrack
     -> VehicleSpec
@@ -129,7 +135,7 @@ viewMultiplayerSinglePlayer :
     -> RoomState
     -> MultiplayerActions msg
     -> Html msg
-viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
+viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
     let
         localCar =
             { spec = spec
@@ -192,33 +198,13 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         allCars =
             localCar :: remoteCars
 
-        layout =
-            Grid.layoutFor (Grid.orientation width height) (List.length room.players)
-
         portrait =
-            Grid.orientation width height == Grid.Portrait
+            width < height
 
-        -- In portrait the first row of tiles lies under the timer and toolbar,
-        -- so its badges move into the HUD column, one per grid column.
-        badgesInTiles shape index =
-            not portrait || index >= shape.cols
-
-        firstRowBadges =
-            case ( portrait, layout ) of
-                ( True, Grid.Tiles shape ) ->
-                    [ div
-                        [ Attr.style "display" "grid"
-                        , Attr.style "grid-template-columns" ("repeat(" ++ String.fromInt shape.cols ++ ", minmax(0, 1fr))")
-                        , Tw.classes [ Tw.gap Th.s2, Tw.w_full ]
-                        ]
-                        (Grid.selfFirst .slot room.mySlot room.players
-                            |> List.take shape.cols
-                            |> List.map (\p -> div [ Tw.classes [ Tw.min_w Th.s0 ] ] [ tileBadge inFlowBadge room p ])
-                        )
-                    ]
-
-                _ ->
-                    []
+        -- Name, colour and speed of every racer, the local player's first.
+        racerBadges =
+            Grid.selfFirst .slot room.mySlot room.players
+                |> List.map (racerBadge room)
 
         mouseDecoder msgCtor =
             Decode.map2 msgCtor
@@ -243,17 +229,15 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" Brand.legoBlack
         ]
-        [ case layout of
-            Grid.Tiles shape ->
-                viewPlayerGrid bundle track allCars props shadowMesh debris physics width height room (badgesInTiles shape)
-
-            Grid.SingleView ->
-                Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
+        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
         , if portrait then
             -- Portrait is too narrow for floating badges beside the timer and
             -- the health bar: stack them into the HUD column instead.
             HUD.viewHudOverlayWith
-                { belowTopBar = roomBar room multiActions :: firstRowBadges
+                { belowTopBar =
+                    [ roomBar room multiActions
+                    , div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.gap Th.s2, Tw.w_full ] ] racerBadges
+                    ]
                 , aboveFooter = rosterSlot room
                 }
                 hudData
@@ -263,6 +247,12 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
             div []
                 [ roomHeader room multiActions
                 , HUD.viewHudOverlay hudData hudActions
+                , div
+                    [ Tw.classes [ Tw.absolute, Tw.z_20, Tw.flex, Tw.flex_col, Tw.gap Th.s1_dot_5, Tw.pointer_events_none ]
+                    , Attr.style "top" "4.5rem"
+                    , Attr.style "left" "1rem"
+                    ]
+                    racerBadges
                 , rosterStrip room
                 ]
         , case room.status of
@@ -377,116 +367,20 @@ rosterSlot room =
             []
 
 
-{-| Every player's view in one grid that fills the screen (`Grid.gridShape`),
-the local player's first. Each tile follows one car from behind.
+{-| Name, colour and speed of a racer in the room, the name cut short rather
+than running into the next badge.
 -}
-viewPlayerGrid :
-    TrackRenderBundle
-    -> GeneratedTrack
-    -> List RenderCarSlot
-    -> Props
-    -> WebGL.Mesh TerrainVertex
-    -> List DebrisPiece
-    -> PhysicsState
-    -> Int
-    -> Int
-    -> RoomState
-    -> (Int -> Bool)
-    -> Html msg
-viewPlayerGrid bundle track cars props shadowMesh debris physics width height room badgeInTile =
-    let
-        shape =
-            Grid.gridShape (Grid.orientation width height) (List.length room.players)
-
-        tileW =
-            max 160 (width // shape.cols)
-
-        tileH =
-            max 120 (height // shape.rows)
-
-        tile index p =
-            let
-                ( yaw, pos ) =
-                    if p.slot == room.mySlot then
-                        ( physics.yaw, physics.position )
-
-                    else
-                        ( (Vec3.toRecord p.rotation).y, p.position )
-            in
-            div
-                [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.overflow_hidden, Tw.border ]
-                , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
-                , Attr.style "background" Brand.legoBlack
-                ]
-                [ Render.renderRaceViewportMulti bundle track cars props shadowMesh debris (tileCamera tileH pos yaw) tileW tileH []
-                , if badgeInTile index then
-                    tileBadge overTile room p
-
-                  else
-                    text ""
-                ]
-    in
-    div
-        [ Tw.classes [ Tw.absolute, Tw.w_full, Tw.h_full ]
-        , Attr.style "top" "0"
-        , Attr.style "left" "0"
-        , Attr.style "display" "grid"
-        , Attr.style "grid-template-columns" ("repeat(" ++ String.fromInt shape.cols ++ ", minmax(0, 1fr))")
-        , Attr.style "grid-template-rows" ("repeat(" ++ String.fromInt shape.rows ++ ", minmax(0, 1fr))")
-        ]
-        (List.indexedMap tile (Grid.selfFirst .slot room.mySlot room.players))
-
-
-{-| Chase camera for one tile: behind the car at `target`, facing `yaw`.
--}
-tileCamera : Int -> Vec3.Vec3 -> Float -> Camera
-tileCamera tileH target yaw =
-    Camera.init
-        |> Camera.setViewportHeight (toFloat (max 1 tileH))
-        |> Camera.setSceneRadius 450.0
-        |> (\c ->
-                { c
-                    | azimuth = yaw + pi
-                    , elevation = 0.28
-                    , distance = 5.0
-                    , target = target
-                }
-           )
-
-
-{-| Tile badge in the top-left corner of its tile.
--}
-overTile : List (Html.Attribute msg)
-overTile =
-    [ Tw.classes [ Tw.absolute, Tw.z_20 ]
-    , Attr.style "top" "0.5rem"
-    , Attr.style "left" "0.5rem"
-    ]
-
-
-{-| Tile badge in the HUD column: as wide as its grid column at most, the
-name cut short rather than running into the next badge.
--}
-inFlowBadge : List (Html.Attribute msg)
-inFlowBadge =
-    [ Tw.classes [ Tw.w_fit, Tw.max_w_full, Tw.overflow_hidden, Tw.whitespace_nowrap ] ]
-
-
-{-| Name, colour and speed of a player, on their tile. `placement` positions it.
--}
-tileBadge : List (Html.Attribute msg) -> RoomState -> RemotePlayer -> Html msg
-tileBadge placement room p =
+racerBadge : RoomState -> RemotePlayer -> Html msg
+racerBadge room p =
     let
         isMe =
             p.slot == room.mySlot
     in
     div
-        (placement
-            ++ [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
-               , Attr.style "background" "rgba(15, 23, 42, 0.85)"
-               , Attr.style "border-color" (Multiplayer.slotColor p.slot)
-               ]
-        )
+        [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2, Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.border, Tw.w_fit, Tw.max_w_full, Tw.overflow_hidden, Tw.whitespace_nowrap ]
+        , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+        , Attr.style "border-color" (Multiplayer.slotColor p.slot)
+        ]
         [ span
             [ Tw.classes [ Tw.rounded_full, Tw.shrink_0 ]
             , Attr.style "width" "8px"
