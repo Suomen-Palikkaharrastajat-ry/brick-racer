@@ -1082,7 +1082,26 @@ determineForwardYaw records wheels =
                         pi / 2
 
                 Nothing ->
-                    if spanX > spanZ * 1.15 then
+                    -- Wheels roll across their spin axes, so when the axles
+                    -- clearly lie along one direction they set the heading;
+                    -- otherwise the longer side of the build is fore-aft.
+                    let
+                        axleAlong get =
+                            List.sum (List.map (\w -> abs (get w.spinAxisYUp)) wheels)
+
+                        axleX =
+                            axleAlong Vec3.getX
+
+                        axleZ =
+                            axleAlong Vec3.getZ
+                    in
+                    if axleX > 1.5 * axleZ then
+                        0.0
+
+                    else if axleZ > 1.5 * axleX then
+                        pi / 2
+
+                    else if spanX > spanZ * 1.15 then
                         pi / 2
 
                     else
