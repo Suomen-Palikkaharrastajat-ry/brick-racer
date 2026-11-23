@@ -1248,7 +1248,15 @@ paletteRow model =
             , Attr.style "padding-bottom" "2px"
             , Attr.attribute "aria-label" (tr model.language "Bricks" "Palikat")
             ]
-            (allBricksBtn :: renderedBricks)
+            [ div
+                [ Attr.style "display" "flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "gap" "6px"
+                , Attr.style "flex-shrink" "0"
+                , Attr.style "margin" "0 auto"
+                ]
+                (allBricksBtn :: renderedBricks)
+            ]
         , div
             [ Attr.style "width" "1px"
             , Attr.style "height" "48px"
