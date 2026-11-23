@@ -571,7 +571,6 @@ requestThumbnails model =
         wanted =
             List.map (\p -> ( p.file, model.colour )) Editor.parts
                 ++ List.map (\file -> ( file, model.colour )) missingPartFiles
-                ++ List.concatMap baseThumbParts Editor.bases
 
         missing =
             dedupe wanted
@@ -598,17 +597,6 @@ requestThumbnails model =
 missingPartFiles : List String
 missingPartFiles =
     [ "4600.dat", "3680.dat", "3829c01.dat", "4079.dat" ]
-
-
-{-| Base placements that have no colour of their own are drawn in light grey.
--}
-thumbnailColour : Int -> Int
-thumbnailColour color =
-    if color == 16 then
-        7
-
-    else
-        color
 
 
 dedupe : List a -> List a
@@ -1335,7 +1323,15 @@ viewBasesDrawer model =
                     , Attr.style "background" "#070c14"
                     , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
                     ]
-                    [ baseThumbRow model.thumbnails base ]
+                    [ Html.img
+                        [ Attr.src ("base-previews/" ++ base.id ++ ".png")
+                        , Attr.alt name
+                        , Attr.style "width" "100%"
+                        , Attr.style "height" "100%"
+                        , Attr.style "object-fit" "contain"
+                        ]
+                        []
+                    ]
                 , div []
                     [ div [ Attr.style "font-weight" "800", Attr.style "font-size" "13px" ] [ text ("🔨 " ++ name) ]
                     , div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8", Attr.style "margin-top" "2px" ]
@@ -1480,58 +1476,6 @@ viewAllBricksDrawer model =
                 (List.map categorySection partCategories)
             ]
         ]
-
-
-{-| The distinct part files and colours of a starter base.
--}
-baseThumbParts : Base -> List ( String, Int )
-baseThumbParts base =
-    Document.flattenedPlacements base.document
-        |> List.map (\p -> ( p.part, thumbnailColour p.color ))
-        |> dedupe
-
-
-{-| A base is drawn from the real LDraw renders of its own parts.
--}
-baseThumbRow : Dict String String -> Base -> Html msg
-baseThumbRow thumbnails base =
-    div
-        [ Attr.style "display" "flex"
-        , Attr.style "align-items" "center"
-        , Attr.style "justify-content" "center"
-        , Attr.style "gap" "4px"
-        , Attr.style "width" "100%"
-        , Attr.style "height" "100%"
-        , Attr.style "padding" "4px"
-        , Attr.style "box-sizing" "border-box"
-        ]
-        (baseThumbParts base
-            |> List.take 8
-            |> List.map
-                (\( file, color ) ->
-                    case Dict.get (PartCard.thumbnailKey file color) thumbnails of
-                        Just url ->
-                            Html.img
-                                [ Attr.src url
-                                , Attr.alt ""
-                                , Attr.style "flex" "1 1 0"
-                                , Attr.style "min-width" "0"
-                                , Attr.style "max-height" "100%"
-                                , Attr.style "object-fit" "contain"
-                                ]
-                                []
-
-                        Nothing ->
-                            div
-                                [ Attr.style "flex" "1 1 0"
-                                , Attr.style "min-width" "0"
-                                , Attr.style "height" "100%"
-                                , Attr.style "border-radius" "6px"
-                                , Attr.style "background" "rgba(148, 163, 184, 0.12)"
-                                ]
-                                []
-                )
-        )
 
 
 {-| Drawer for pasting or loading build files / QR scans.
