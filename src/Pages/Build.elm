@@ -851,22 +851,34 @@ subscriptions model =
 
 {-| Height of bottom panel depending on active tab.
 -}
-tabDrawerHeight : BuilderTab -> Int
-tabDrawerHeight tab =
+tabDrawerHeight : Model -> BuilderTab -> Int
+tabDrawerHeight model tab =
     case tab of
         BuildBricksTab ->
             dockHeight
 
         AllBricksTab ->
-            dockHeight + catalogDrawerHeight
+            dockHeight + drawerHeight model catalogDrawerHeight
 
         _ ->
-            280
+            drawerHeight model 280
+
+
+{-| Height of a drawer. On desktop-width screens it grows to nearly the full
+window, leaving a strip of the 3D view above it; phones keep the compact height.
+-}
+drawerHeight : Model -> Int -> Int
+drawerHeight model compact =
+    if model.width >= 768 then
+        max compact (model.height - 120)
+
+    else
+        compact
 
 
 canvasHeight : Model -> Int
 canvasHeight model =
-    max 160 (model.height - tabDrawerHeight model.activeTab)
+    max 160 (model.height - tabDrawerHeight model model.activeTab)
 
 
 {-| The builder view.
@@ -1138,7 +1150,7 @@ dock model =
 
         height =
             if catalogOpen then
-                dockHeight + catalogDrawerHeight
+                tabDrawerHeight model AllBricksTab
 
             else
                 dockHeight
@@ -1572,7 +1584,7 @@ viewBasesDrawer model =
                     ]
                 ]
     in
-    div (drawerStyle 280)
+    div (drawerStyle (drawerHeight model 280))
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "10px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
             [ h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase" ]
                 [ text (tr lang "Choose Starter Chassis" "Valitse aloituspohja") ]
@@ -1704,7 +1716,7 @@ viewAllBricksDrawer model =
     in
     div
         [ Attr.style "flex-shrink" "0"
-        , Attr.style "height" (px catalogDrawerHeight)
+        , Attr.style "height" (px (drawerHeight model catalogDrawerHeight))
         , Attr.style "box-sizing" "border-box"
         , Attr.style "overflow-y" "auto"
         , Attr.style "padding" "10px 12px"
@@ -1775,7 +1787,7 @@ viewImportDrawer model =
         lang =
             model.language
     in
-    div (drawerStyle 280)
+    div (drawerStyle (drawerHeight model 280))
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "10px", Attr.style "max-width" "680px", Attr.style "margin" "0 auto" ]
             [ h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase" ]
                 [ text (RI18n.openBuildTab lang) ]
@@ -2159,7 +2171,7 @@ viewReviewDrawer model =
                         spec.issues
                     )
     in
-    div (drawerStyle 280)
+    div (drawerStyle (drawerHeight model 280))
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "12px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
             [ div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "justify-content" "space-between", Attr.style "gap" "8px" ]
                 [ h3 [ Attr.style "font-size" "14px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "margin" "0" ]
