@@ -56,6 +56,44 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Expected Ok from encoded race hash, got " ++ Debug.toString err)
+        , test "roundtrips garage builder hash through encodeGarageHash -> decodeRaceInput" <|
+            \_ ->
+                let
+                    doc =
+                        case Ingest.findPresetById "pinewood-classic" of
+                            Just p ->
+                                Document.parse p.ldrText
+
+                            Nothing ->
+                                Document.empty
+
+                    encoded =
+                        Ingest.encodeGarageHash ForestTrail 555 doc
+                in
+                case Ingest.decodeRaceInput Nothing encoded of
+                    Ok decoded ->
+                        Expect.all
+                            [ \_ -> Expect.equal (Just ForestTrail) decoded.trackId
+                            , \_ -> Expect.equal (Just 555) decoded.seed
+                            , \_ -> Expect.equal True decoded.isGarage
+                            , \_ -> Expect.equal (List.length (Document.mainPlacements doc)) (List.length (Document.mainPlacements decoded.document))
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("Expected Ok from encoded garage hash, got " ++ Debug.toString err)
+        , test "decodes plain #garage hash to default soapbox preset with isGarage flag" <|
+            \_ ->
+                case Ingest.decodeRaceInput Nothing "#garage" of
+                    Ok decoded ->
+                        Expect.all
+                            [ \_ -> Expect.equal True decoded.isGarage
+                            , \_ -> Expect.equal False (List.isEmpty (Document.mainPlacements decoded.document))
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("Expected Ok from #garage hash, got " ++ Debug.toString err)
         , test "extracts #b/ payload from full Brick Play URL and combined track URL" <|
             \_ ->
                 let

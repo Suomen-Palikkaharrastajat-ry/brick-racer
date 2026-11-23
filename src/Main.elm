@@ -576,6 +576,53 @@ init flags =
             )
         )
 
+    else if parsedInit.isGarage then
+        let
+            decodedResult =
+                Ingest.decodeRaceInput bytesCandidate trimmedHash
+
+            initData =
+                case decodedResult of
+                    Ok decoded ->
+                        { doc = decoded.document
+                        , title = decoded.suggestedName
+                        , trackId = Maybe.withDefault initTrackId decoded.trackId
+                        , seed = Maybe.withDefault initSeed decoded.seed
+                        }
+
+                    Err _ ->
+                        { doc = Document.parse initPreset.ldrText
+                        , title = presetTitle lang initPreset
+                        , trackId = initTrackId
+                        , seed = initSeed
+                        }
+
+            analyzed =
+                Analyze.analyzeDocument initData.title initData.doc baseModel.partCache baseModel.partIndex
+
+            savedGarageState =
+                { document = initData.doc
+                , title = initData.title
+                , vehicle = analyzed.spec
+                , meshes = analyzed.meshes
+                , camera = RacerCamera.initGarageCamera baseModel.viewportHeight analyzed.spec
+                , wheelPreviewSpin = 0.0
+                }
+
+            modelForBuilder =
+                { baseModel
+                    | trackId = initData.trackId
+                    , seed = max 1 initData.seed
+                    , customCar = Just { title = initData.title, document = initData.doc }
+                    , selectedPresetId = Nothing
+                    , savedGarage = Just savedGarageState
+                }
+
+            ( builderModel, builderCmd ) =
+                openBuilder (Editor.baseOf initData.doc) initData.doc modelForBuilder
+        in
+        ( builderModel, Cmd.batch (builderCmd :: startupCmds) )
+
     else if bytesCandidate /= Nothing || not (String.isEmpty (String.replace "#" "" trimmedHash)) && (parsedInit.base64Payload /= Nothing || parsedInit.hasModelParam) then
         case Ingest.decodeRaceInput bytesCandidate trimmedHash of
             Ok decoded ->
@@ -1102,16 +1149,25 @@ update msg model =
                     ( model, Cmd.none )
 
             else
-                case Ingest.decodeRaceInput Nothing trimmed of
-                    Ok decoded ->
-                        let
-                            custom =
-                                Just { title = decoded.suggestedName, document = decoded.document }
-                        in
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { model | customCar = custom, selectedPresetId = Nothing }
-
-                    Err _ ->
+                case model.page of
+                    BuildPage _ ->
                         ( model, Cmd.none )
+
+                    _ ->
+                        case Ingest.decodeRaceInput Nothing trimmed of
+                            Ok decoded ->
+                                if decoded.isGarage then
+                                    openBuilder (Editor.baseOf decoded.document) decoded.document model
+
+                                else
+                                    let
+                                        custom =
+                                            Just { title = decoded.suggestedName, document = decoded.document }
+                                    in
+                                    loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { model | customCar = custom, selectedPresetId = Nothing }
+
+                            Err _ ->
+                                ( model, Cmd.none )
 
         RequestFileUpload ->
             ( model, GamePorts.requestFileUpload () )
@@ -1176,12 +1232,30 @@ update msg model =
                     in
                     case outcome of
                         Build.Stay ->
-                            ( { model | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
+                            let
+                                docBefore =
+                                    Build.document build
+
+                                docAfter =
+                                    Build.document nextBuild
+
+                                hashCmd =
+                                    if docBefore /= docAfter then
+                                        GamePorts.setUrlHash (Ingest.encodeGarageHash model.trackId model.seed docAfter)
+
+                                    else
+                                        Cmd.none
+                            in
+                            ( { model | page = BuildPage nextBuild }
+                            , Cmd.batch [ Cmd.map BuildMsg buildCmd, hashCmd ]
+                            )
 
                         Build.Quit ->
                             case model.savedGarage of
                                 Just garage ->
-                                    ( { model | page = SetupPage garage, savedGarage = Nothing }, Cmd.none )
+                                    ( { model | page = SetupPage garage, savedGarage = Nothing }
+                                    , GamePorts.setUrlHash (Ingest.encodeRaceHash model.trackId model.seed garage.document)
+                                    )
 
                                 Nothing ->
                                     let
@@ -1191,7 +1265,7 @@ update msg model =
                                         title =
                                             presetTitle model.language defaultPreset
                                     in
-                                    loadDocumentIntoGarage title doc Nothing Nothing False { model | selectedPresetId = Just defaultPreset.id }
+                                    loadDocumentIntoGarage title doc Nothing Nothing True { model | selectedPresetId = Just defaultPreset.id }
 
                         Build.Finished doc ->
                             let
@@ -3898,6 +3972,9 @@ openBuilder maybeBase doc model =
                 maybeBase
                 doc
                 |> Tuple.mapFirst (Build.setPartCacheAndIndex model.partCache model.partIndex)
+
+        hashCmd =
+            GamePorts.setUrlHash (Ingest.encodeGarageHash model.trackId model.seed doc)
     in
     ( { model
         | page = BuildPage build
@@ -3906,7 +3983,7 @@ openBuilder maybeBase doc model =
         , shareCopiedNotice = False
         , pasteError = Nothing
       }
-    , Cmd.batch [ Cmd.map BuildMsg buildCmd, silenceAudioCmd ]
+    , Cmd.batch [ Cmd.map BuildMsg buildCmd, silenceAudioCmd, hashCmd ]
     )
 
 

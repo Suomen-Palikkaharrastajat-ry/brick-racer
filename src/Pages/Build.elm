@@ -77,6 +77,8 @@ type alias Model =
     , pasteError : Maybe String
     , partCache : PartCache
     , partIndex : PartIndex
+    , activePart : String
+    , recentParts : List String
     }
 
 
@@ -166,6 +168,8 @@ init config maybeBase doc =
             , pasteError = Nothing
             , partCache = Dict.empty
             , partIndex = Catalog.emptyPartIndex
+            , activePart = "3001.dat"
+            , recentParts = [ "3001.dat", "3003.dat", "3020.dat", "3022.dat", "3039.dat", "4600.dat" ]
             }
 
         ( sized, sizeCmd ) =
@@ -268,8 +272,21 @@ update msg model =
 
                         En ->
                             "➕ Added: " ++ partName
+
+                newRecent =
+                    file
+                        :: List.filter (\f -> f /= file) model.recentParts
+                        |> List.take 7
+
+                updatedModel =
+                    { model
+                        | activePart = file
+                        , recentParts = newRecent
+                        , activeTab = BuildBricksTab
+                        , notice = Just noticeText
+                    }
             in
-            stay (runCore (Core.addPartAt file model.colour matrix) { model | notice = Just noticeText })
+            stay (runCore (Core.addPartAt file model.colour matrix) updatedModel)
 
         Turn direction ->
             stay (runCore (Core.turnSelected direction) model)
@@ -569,7 +586,7 @@ tabDrawerHeight : BuilderTab -> Int
 tabDrawerHeight tab =
     case tab of
         BuildBricksTab ->
-            138
+            126
 
         AllBricksTab ->
             320
@@ -828,7 +845,7 @@ bottomPanel model =
 
 dockHeight : Int
 dockHeight =
-    136
+    126
 
 
 dock : Model -> Html Msg
@@ -843,32 +860,79 @@ dock model =
         , Attr.style "display" "flex"
         , Attr.style "flex-direction" "column"
         , Attr.style "gap" "6px"
-        , Attr.style "padding" "8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))"
+        , Attr.style "padding" "6px max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left))"
         , Attr.style "background" "rgba(15, 23, 42, 0.94)"
         , Attr.style "border-top" "1px solid rgba(148, 163, 184, 0.25)"
         ]
-        [ dockControlsRow model, partsStrip model ]
+        [ modelingControls model
+        , paletteRow model
+        ]
 
 
-dockControlsRow : Model -> Html Msg
-dockControlsRow model =
+paletteRow : Model -> Html Msg
+paletteRow model =
+    let
+        otherRecent =
+            model.recentParts
+                |> List.filter (\f -> f /= model.activePart)
+                |> List.take 6
+
+        renderedBricks =
+            partCard model True model.activePart
+                :: List.map (partCard model False) otherRecent
+
+        allBricksBtn =
+            button
+                [ Attr.type_ "button"
+                , onClick (SelectTab AllBricksTab)
+                , Attr.style "flex-shrink" "0"
+                , Attr.style "height" "56px"
+                , Attr.style "padding" "0 12px"
+                , Attr.style "display" "flex"
+                , Attr.style "flex-direction" "column"
+                , Attr.style "align-items" "center"
+                , Attr.style "justify-content" "center"
+                , Attr.style "gap" "3px"
+                , Attr.style "border-radius" "10px"
+                , Attr.style "border" "2px dashed rgba(250, 200, 10, 0.6)"
+                , Attr.style "background" "rgba(250, 200, 10, 0.15)"
+                , Attr.style "color" Brand.legoYellow
+                , Attr.style "cursor" "pointer"
+                , Attr.style "white-space" "nowrap"
+                , Attr.title (tr model.language "Browse all categorized bricks" "Selaa kaikkia osia kategorioittain")
+                ]
+                [ span [ Attr.style "font-size" "18px" ] [ text "📦" ]
+                , span [ Attr.style "font-size" "10px", Attr.style "font-weight" "800" ]
+                    [ text (tr model.language "All Bricks..." "Kaikki palikat...") ]
+                ]
+    in
     div
         [ Attr.style "display" "flex"
         , Attr.style "align-items" "center"
-        , Attr.style "justify-content" "center"
-        , Attr.style "gap" "10px"
-        , Attr.style "overflow-x" "auto"
-        , Attr.style "padding" "0 4px"
+        , Attr.style "gap" "8px"
+        , Attr.style "width" "100%"
+        , Attr.style "box-sizing" "border-box"
         ]
-        [ modelingControls model
+        [ colourRow model
         , div
             [ Attr.style "width" "1px"
-            , Attr.style "height" "24px"
+            , Attr.style "height" "48px"
             , Attr.style "background" "rgba(255, 255, 255, 0.18)"
             , Attr.style "flex-shrink" "0"
             ]
             []
-        , colourRow model
+        , div
+            [ Attr.class "palette-scroll-x"
+            , Attr.style "display" "flex"
+            , Attr.style "align-items" "center"
+            , Attr.style "gap" "6px"
+            , Attr.style "overflow-x" "auto"
+            , Attr.style "overflow-y" "hidden"
+            , Attr.style "flex" "1"
+            , Attr.style "padding-bottom" "2px"
+            , Attr.attribute "aria-label" (tr model.language "Bricks" "Palikat")
+            ]
+            (renderedBricks ++ [ allBricksBtn ])
         ]
 
 
@@ -956,7 +1020,8 @@ modelingControls model =
         , Attr.attribute "aria-label" (tr lang "Part modeling tools" "Osan muokkaustyökalut")
         , Attr.style "display" "flex"
         , Attr.style "align-items" "center"
-        , Attr.style "gap" "4px"
+        , Attr.style "justify-content" "center"
+        , Attr.style "gap" "6px"
         , Attr.style "flex-shrink" "0"
         ]
         [ modelToolBtn (tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (enabledIf hasSel (Turn TurnLeft))
@@ -980,9 +1045,11 @@ colourRow model =
     div
         [ Attr.attribute "role" "listbox"
         , Attr.attribute "aria-label" (tr model.language "Colour" "Väri")
-        , Attr.style "display" "flex"
-        , Attr.style "justify-content" "center"
-        , Attr.style "gap" "6px"
+        , Attr.style "display" "grid"
+        , Attr.style "grid-template-columns" "repeat(4, 26px)"
+        , Attr.style "grid-template-rows" "repeat(2, 26px)"
+        , Attr.style "gap" "4px"
+        , Attr.style "flex-shrink" "0"
         ]
         (List.map (swatchView model) Editor.palette)
 
@@ -1014,23 +1081,23 @@ swatchView model swatch =
             )
         , Attr.attribute "aria-label" name
         , Attr.title name
-        , Attr.style "width" "34px"
-        , Attr.style "height" "34px"
-        , Attr.style "flex" "0 0 34px"
+        , Attr.style "width" "26px"
+        , Attr.style "height" "26px"
         , Attr.style "border-radius" "50%"
         , Attr.style "background" cssColour
         , Attr.style "cursor" "pointer"
         , Attr.style "touch-action" "manipulation"
+        , Attr.style "box-sizing" "border-box"
         , Attr.style "border"
             (if selected then
-                "3px solid " ++ Brand.legoYellow
+                "2.5px solid " ++ Brand.legoYellow
 
              else
-                "2px solid rgba(255, 255, 255, 0.35)"
+                "1.5px solid rgba(255, 255, 255, 0.4)"
             )
         , Attr.style "box-shadow"
             (if selected then
-                "0 0 0 2px " ++ Brand.legoBlack ++ " inset"
+                "0 0 0 1.5px " ++ Brand.legoBlack ++ " inset"
 
              else
                 "none"
@@ -1039,62 +1106,64 @@ swatchView model swatch =
         []
 
 
-partsStrip : Model -> Html Msg
-partsStrip model =
-    div
-        [ Attr.attribute "aria-label" (tr model.language "Parts" "Osat")
-        , Attr.class "palette-scroll-x"
-        , Attr.style "display" "flex"
-        , Attr.style "align-items" "center"
-        , Attr.style "gap" "6px"
-        , Attr.style "overflow-x" "auto"
-        , Attr.style "overflow-y" "hidden"
-        , Attr.style "scrollbar-width" "thin"
-        , Attr.style "-webkit-overflow-scrolling" "touch"
-        , Attr.style "padding-bottom" "2px"
-        ]
-        (button
-            [ Attr.type_ "button"
-            , onClick (SelectTab AllBricksTab)
-            , Attr.style "flex-shrink" "0"
-            , Attr.style "height" "56px"
-            , Attr.style "padding" "0 12px"
-            , Attr.style "display" "flex"
-            , Attr.style "flex-direction" "column"
-            , Attr.style "align-items" "center"
-            , Attr.style "justify-content" "center"
-            , Attr.style "gap" "3px"
-            , Attr.style "border-radius" "10px"
-            , Attr.style "border" "1px solid rgba(250, 200, 10, 0.5)"
-            , Attr.style "background" "rgba(250, 200, 10, 0.15)"
-            , Attr.style "color" Brand.legoYellow
-            , Attr.style "cursor" "pointer"
-            , Attr.style "white-space" "nowrap"
-            , Attr.title (tr model.language "Browse all categorized bricks" "Selaa kaikkia osia kategorioittain")
-            ]
-            [ span [ Attr.style "font-size" "16px" ] [ text "📦" ]
-            , span [ Attr.style "font-size" "10px", Attr.style "font-weight" "800" ] [ text (tr model.language "All Bricks" "Kaikki palikat") ]
-            ]
-            :: List.map (partCard model) Editor.parts
-        )
-
-
-partCard : Model -> PartEntry -> Html Msg
-partCard model entry =
+partCard : Model -> Bool -> String -> Html Msg
+partCard model isActive file =
     let
+        maybeEntry =
+            Editor.parts
+                |> List.filter (\p -> p.file == file)
+                |> List.head
+
         name =
-            tr model.language entry.nameEn entry.nameFi
+            case maybeEntry of
+                Just entry ->
+                    tr model.language entry.nameEn entry.nameFi
+
+                Nothing ->
+                    file
 
         number =
-            String.replace ".dat" "" entry.file
+            String.replace ".dat" "" file
+
+        cardAttrs =
+            if isActive then
+                [ Attr.style "border" ("2px solid " ++ Brand.legoYellow)
+                , Attr.style "box-shadow" "0 0 8px rgba(250, 200, 10, 0.4)"
+                ]
+
+            else
+                []
     in
     PartCard.compactView
-        { imageUrl = Dict.get (PartCard.thumbnailKey entry.file model.colour) model.thumbnails
-        , tooltip = name ++ " (" ++ number ++ ")"
-        , ariaLabel = tr model.language "Add " "Lisää " ++ name
-        , badge = Nothing
-        , onClick = Just (AddPart entry.file)
-        , attributes = []
+        { imageUrl = Dict.get (PartCard.thumbnailKey file model.colour) model.thumbnails
+        , tooltip =
+            name
+                ++ " ("
+                ++ number
+                ++ ")"
+                ++ (if isActive then
+                        " [" ++ tr model.language "Active" "Valittu" ++ "]"
+
+                    else
+                        ""
+                   )
+        , ariaLabel =
+            (if isActive then
+                "[★] "
+
+             else
+                ""
+            )
+                ++ tr model.language "Add " "Lisää "
+                ++ name
+        , badge =
+            if isActive then
+                Just { text = "★", muted = False }
+
+            else
+                Nothing
+        , onClick = Just (AddPart file)
+        , attributes = cardAttrs
         }
 
 

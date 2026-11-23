@@ -3,6 +3,7 @@ module Racer.Ingest exposing
     , IngestError(..)
     , ParsedHash
     , decodeRaceInput
+    , encodeGarageHash
     , encodeRaceHash
     , findPresetById
     , hashWithoutTrackParams
@@ -41,6 +42,7 @@ type alias ParsedHash =
     , base64Payload : Maybe String
     , rawFragment : String
     , hasModelParam : Bool
+    , isGarage : Bool
     }
 
 
@@ -51,6 +53,7 @@ type alias DecodedRaceInput =
     , suggestedName : String
     , trackId : Maybe TrackId
     , seed : Maybe Int
+    , isGarage : Bool
     }
 
 
@@ -77,7 +80,7 @@ decodeRaceInput maybeInitialBytes rawInput =
                 parsed =
                     parseHash trimmed
             in
-            documentResult "Imported Racer" parsed.trackId parsed.seed payload.document
+            documentResult "Imported Racer" parsed.trackId parsed.seed parsed.isGarage payload.document
 
         Nothing ->
             if String.isEmpty trimmed then
@@ -88,7 +91,7 @@ decodeRaceInput maybeInitialBytes rawInput =
                     doc =
                         Document.parse trimmed
                 in
-                documentResult (extractModelTitle doc) Nothing Nothing doc
+                documentResult (extractModelTitle doc) Nothing Nothing False doc
 
             else
                 let
@@ -99,7 +102,7 @@ decodeRaceInput maybeInitialBytes rawInput =
                     Just b64 ->
                         case decodeBase64Payload b64 of
                             Just doc ->
-                                documentResult (extractModelTitle doc) parsed.trackId parsed.seed doc
+                                documentResult (extractModelTitle doc) parsed.trackId parsed.seed parsed.isGarage doc
 
                             Nothing ->
                                 Err InvalidBinaryPayload
@@ -116,17 +119,29 @@ decodeRaceInput maybeInitialBytes rawInput =
                                         doc =
                                             Document.parse ldrText
                                     in
-                                    documentResult (extractModelTitle doc) parsed.trackId parsed.seed doc
+                                    documentResult (extractModelTitle doc) parsed.trackId parsed.seed parsed.isGarage doc
 
                                 Nothing ->
                                     Err InvalidModelText
+
+                        else if parsed.isGarage then
+                            let
+                                defaultDoc =
+                                    case presets of
+                                        first :: _ ->
+                                            Document.parse first.ldrText
+
+                                        [] ->
+                                            Document.empty
+                            in
+                            documentResult "Default Soapbox" parsed.trackId parsed.seed True defaultDoc
 
                         else
                             Err InvalidModelText
 
 
-documentResult : String -> Maybe TrackId -> Maybe Int -> Document -> Result IngestError DecodedRaceInput
-documentResult defaultName maybeTrack maybeSeed doc =
+documentResult : String -> Maybe TrackId -> Maybe Int -> Bool -> Document -> Result IngestError DecodedRaceInput
+documentResult defaultName maybeTrack maybeSeed isGarage doc =
     if List.isEmpty (Document.mainPlacements doc) then
         Err NoPlacementsInModel
 
@@ -148,6 +163,7 @@ documentResult defaultName maybeTrack maybeSeed doc =
             , suggestedName = title
             , trackId = maybeTrack
             , seed = maybeSeed
+            , isGarage = isGarage
             }
 
 
@@ -177,6 +193,54 @@ encodeRaceHash trackId seed doc =
         ++ String.fromInt seed
         ++ "&b/"
         ++ b64Url
+
+
+{-| Encode a track, seed, and LDraw document into a garage builder `#garage&track=...&seed=...&b/...` hash.
+-}
+encodeGarageHash : TrackId -> Int -> Document -> String
+encodeGarageHash trackId seed doc =
+    let
+        rawBytes =
+            HashPayload.encode
+                { mode = HashPayload.FreeBuilding
+                , document = doc
+                , kit = Nothing
+                }
+
+        compressed =
+            Flate.deflate rawBytes
+
+        b64Url =
+            Base64.fromBytes compressed
+                |> Maybe.map HashPayload.standardToBase64Url
+                |> Maybe.withDefault ""
+    in
+    "#garage&track="
+        ++ trackIdToString trackId
+        ++ "&seed="
+        ++ String.fromInt seed
+        ++ "&b/"
+        ++ b64Url
+
+
+isGarageSegment : String -> Bool
+isGarageSegment seg =
+    let
+        s =
+            String.toLower (String.trim seg)
+    in
+    s
+        == "garage"
+        || s
+        == "build"
+        || s
+        == "garage=1"
+        || s
+        == "build=1"
+        || String.startsWith "mode=garage" s
+        || String.startsWith "mode=build" s
+        || String.startsWith "view=garage" s
+        || String.startsWith "view=build" s
 
 
 {-| Parse a full URL or hash string into its racer track, seed, and payload fields.
@@ -219,16 +283,20 @@ parseHash rawInput =
         hasModelParam =
             List.any (\seg -> String.startsWith "model=" seg) segments
                 || String.contains "model=" fragment
+
+        isGarage =
+            List.any isGarageSegment segments
     in
     { trackId = trackId
     , seed = seed
     , base64Payload = base64Payload
     , rawFragment = fragment
     , hasModelParam = hasModelParam
+    , isGarage = isGarage
     }
 
 
-{-| Strip racer-specific `track=` and `seed=` params so `Studio.UrlPayload.decodeHash`
+{-| Strip racer-specific `track=`, `seed=`, `mode=`, and `garage` params so `Studio.UrlPayload.decodeHash`
 receives clean `model=...&parts=...&free=...` tokens.
 -}
 hashWithoutTrackParams : String -> String
@@ -244,9 +312,13 @@ hashWithoutTrackParams rawInput =
                     (\seg ->
                         let
                             t =
-                                String.trim seg
+                                String.toLower (String.trim seg)
                         in
-                        not (String.startsWith "track=" t) && not (String.startsWith "seed=" t)
+                        not (String.startsWith "track=" t)
+                            && not (String.startsWith "seed=" t)
+                            && not (String.startsWith "mode=" t)
+                            && not (String.startsWith "view=" t)
+                            && not (isGarageSegment t)
                     )
     in
     String.join "&" filtered
