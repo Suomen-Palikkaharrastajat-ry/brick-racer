@@ -25,6 +25,7 @@ import Html.Events exposing (onClick)
 import Http
 import I18n exposing (Language(..))
 import Json.Decode as Decode exposing (Decoder)
+import Json.Encode as Encode
 import LDraw.Catalog as Catalog exposing (PartIndex)
 import LDraw.Document as Document exposing (Document)
 import LDraw.Parser as Parser
@@ -152,6 +153,7 @@ type alias RaceState =
     , player2 : Maybe PlayerTwoState
     , multiplayer : Maybe RoomState
     , roomHitCooldown : Float
+    , roomEventsOut : List Encode.Value
     }
 
 
@@ -960,10 +962,10 @@ update msg model =
                     case model.page of
                         RacePage race ->
                             let
-                                updatedRace =
-                                    { race | multiplayer = Just room }
+                                ( updatedRace, eventCmds ) =
+                                    applyRoomEvents model room { race | multiplayer = Just room }
                             in
-                            ( { model | page = RacePage updatedRace, multiplayer = Just room }, Cmd.none )
+                            ( { model | page = RacePage updatedRace, multiplayer = Just room }, Cmd.batch eventCmds )
 
                         SetupPage garage ->
                             let
@@ -1824,6 +1826,7 @@ stepFrame deltaMs model =
                                 Cmd.none
                 in
                 applyRoomContacts dt ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
+                    |> sendRoomEvents
 
         _ ->
             ( model, Cmd.none )
@@ -1868,15 +1871,18 @@ roomStartOffset room =
         side * (0.65 + 1.3 * toFloat (slotIndex // 2))
 
 
-{-| What the other racers of an online room do in this page's race.
+{-| What the other racers of an online room do in this page's race, worked
+out from their shared position, heading, speed and progress.
 
-The room only shares each car's position, heading, speed and progress, never
-events, so collisions are worked out again on every page from that shared
-state: each page smashes the scenery another car is seen ploughing through
+Collisions are also told as room events (`applyRoomEvents`, `sendRoomEvents`):
+the racer whose car smashes a piece or bumps another car tells the room, and
+every page replays it. The inference here stays as the fallback for racers
+whose game does not send events, and for events still on their way: each page
+smashes the scenery another car is seen ploughing through
 (`Physics.remoteSmashes`), and bumps its own car off another car it runs into
-(`resolveCarsCollision`, keeping only this car's half). The other page does the
-same with this car's telemetry, so both screens show the smash, the bricks and
-the bump.
+(`resolveCarsCollision`, keeping only this car's half). Neither path applies a
+collision twice: a piece that is already gone does not shatter again, and a
+bump starts the cooldown that both paths respect.
 
 -}
 applyRoomContacts : Float -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
@@ -1994,11 +2000,24 @@ bumpRoomCar lookOf p ( race, cmds ) =
             resolveCarsCollision local other
     in
     if res.collided && race.roomHitCooldown <= 0.0 then
+        let
+            midPos =
+                Vec3.scale 0.5 (Vec3.add res.p1.position p.position)
+
+            told =
+                tellRoom
+                    (bumpEvent race.elapsedTime
+                        midPos
+                        { target = p.slot
+                        , impulse = Vec3.sub res.p2.velocity other.velocity
+                        , damage = carBumpDamage res.impactSpeed
+                        , impactSpeed = res.impactSpeed
+                        }
+                    )
+                    race
+        in
         if res.impactSpeed > 1.8 then
             let
-                midPos =
-                    Vec3.scale 0.5 (Vec3.add res.p1.position p.position)
-
                 palette =
                     race.meshes.debrisColors
                         ++ (lookOf p.vehicleId |> Maybe.map (\look -> look.meshes.debrisColors) |> Maybe.withDefault [])
@@ -2006,7 +2025,7 @@ bumpRoomCar lookOf p ( race, cmds ) =
                 ( pieces, nextSeed ) =
                     spawnDebrisBurst race.debrisSeed midPos res.p1.progressS palette
             in
-            ( { race
+            ( { told
                 | physics = res.p1
                 , debris = List.take maxDebrisPieces (pieces ++ race.debris)
                 , debrisSeed = nextSeed
@@ -2017,7 +2036,7 @@ bumpRoomCar lookOf p ( race, cmds ) =
             )
 
         else
-            ( { race | physics = res.p1, roomHitCooldown = roomHitCooldownSeconds }, cmds )
+            ( { told | physics = res.p1, roomHitCooldown = roomHitCooldownSeconds }, cmds )
 
     else if res.collided then
         -- Still cooling down from the last bump: only keep the cars apart.
@@ -2032,6 +2051,208 @@ bumpRoomCar lookOf p ( race, cmds ) =
 roomHitCooldownSeconds : Float
 roomHitCooldownSeconds =
     0.35
+
+
+{-| Keep a room event of this car's to send this frame (`sendRoomEvents`);
+nothing outside an online room.
+-}
+tellRoom : Encode.Value -> RaceState -> RaceState
+tellRoom event race =
+    case race.multiplayer of
+        Just _ ->
+            { race | roomEventsOut = event :: race.roomEventsOut }
+
+        Nothing ->
+            race
+
+
+{-| Send the room events this frame made (`Game.Ports.sendMultiplayerEvents`):
+the runtime gives each its id and sends it with this car's telemetry.
+-}
+sendRoomEvents : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+sendRoomEvents ( model, cmd ) =
+    case model.page of
+        RacePage race ->
+            if List.isEmpty race.roomEventsOut then
+                ( model, cmd )
+
+            else
+                ( { model | page = RacePage { race | roomEventsOut = [] } }
+                , Cmd.batch [ cmd, GamePorts.sendMultiplayerEvents (List.reverse race.roomEventsOut) ]
+                )
+
+        _ ->
+            ( model, cmd )
+
+
+{-| This car smashed a scenery piece (by its id in the course, which is the
+same on every page): what the other pages need to shatter it the same way.
+-}
+smashEvent : Float -> Vec3 -> { obstacleId : Int, impactSpeed : Float, direction : Vec3 } -> Encode.Value
+smashEvent at position smash =
+    Multiplayer.encodeEvent
+        { kind = "smash"
+        , at = at
+        , position = position
+        , fields =
+            [ ( "obstacleId", Encode.int smash.obstacleId )
+            , ( "impactSpeed", Encode.float smash.impactSpeed )
+            , ( "direction", encodeVec3 smash.direction )
+            ]
+        }
+
+
+{-| This car bumped the car of room slot `target`: the change of velocity
+(m/s) and the damage this page worked out for that car.
+-}
+bumpEvent : Float -> Vec3 -> { target : Int, impulse : Vec3, damage : Float, impactSpeed : Float } -> Encode.Value
+bumpEvent at position bump =
+    Multiplayer.encodeEvent
+        { kind = "bump"
+        , at = at
+        , position = position
+        , fields =
+            [ ( "target", Encode.int bump.target )
+            , ( "impulse", encodeVec3 bump.impulse )
+            , ( "damage", Encode.float bump.damage )
+            , ( "impactSpeed", Encode.float bump.impactSpeed )
+            ]
+        }
+
+
+encodeVec3 : Vec3 -> Encode.Value
+encodeVec3 v =
+    Encode.list Encode.float [ Vec3.getX v, Vec3.getY v, Vec3.getZ v ]
+
+
+decodeVec3 : Decoder Vec3
+decodeVec3 =
+    Decode.list Decode.float
+        |> Decode.andThen
+            (\list ->
+                case list of
+                    [ x, y, z ] ->
+                        Decode.succeed (vec3 x y z)
+
+                    _ ->
+                        Decode.fail "expected [x, y, z]"
+            )
+
+
+{-| A room event as this game reads it.
+-}
+type RoomCollision
+    = RoomSmash { obstacleId : Int, impactSpeed : Float, direction : Vec3 }
+    | RoomBump { target : Int, impulse : Vec3, damage : Float, impactSpeed : Float }
+
+
+roomCollisionOf : Multiplayer.RoomEvent -> Maybe RoomCollision
+roomCollisionOf ev =
+    let
+        decoder =
+            case ev.kind of
+                "smash" ->
+                    Decode.map3 (\id speed dir -> RoomSmash { obstacleId = id, impactSpeed = speed, direction = dir })
+                        (Decode.field "obstacleId" Decode.int)
+                        (Decode.field "impactSpeed" Decode.float)
+                        (Decode.field "direction" decodeVec3)
+
+                "bump" ->
+                    Decode.map4 (\target impulse damage speed -> RoomBump { target = target, impulse = impulse, damage = damage, impactSpeed = speed })
+                        (Decode.field "target" Decode.int)
+                        (Decode.field "impulse" decodeVec3)
+                        (Decode.field "damage" Decode.float)
+                        (Decode.field "impactSpeed" Decode.float)
+
+                _ ->
+                    Decode.fail "not a collision"
+    in
+    Decode.decodeValue decoder ev.data |> Result.toMaybe
+
+
+{-| Replay the other racers' collision events of a room state on this page.
+The runtime hands each event over once.
+
+  - A smash shatters the same piece, with its bricks and a pop (`roomSmash`);
+    a piece this page already smashed (seen through `Physics.remoteSmashes`)
+    stays gone.
+  - A bump of this car pushes it by the change of velocity the other page
+    worked out and costs the same damage, unless this page already counted
+    the bump itself (the cooldown is running): the first of the two wins.
+  - A bump between two other cars scatters their bricks here too.
+
+-}
+applyRoomEvents : Model -> RoomState -> RaceState -> ( RaceState, List (Cmd Msg) )
+applyRoomEvents model room race =
+    let
+        lookOf =
+            remoteCarLook model
+
+        colorsOfSlot slot =
+            room.players
+                |> List.filter (\p -> p.slot == slot)
+                |> List.head
+                |> Maybe.andThen (\p -> lookOf p.vehicleId)
+                |> Maybe.map (\look -> look.meshes.debrisColors)
+                |> Maybe.withDefault []
+
+        burst at palette impactSpeed ( r, cmds ) =
+            let
+                ( pieces, nextSeed ) =
+                    spawnDebrisBurst r.debrisSeed at r.physics.progressS palette
+
+                loudness =
+                    clamp 0.0 1.0 (1.0 - Vec3.distance r.physics.position at / 40.0)
+            in
+            ( { r | debris = List.take maxDebrisPieces (pieces ++ r.debris), debrisSeed = nextSeed }
+            , if loudness > 0.05 then
+                Ports.playSfx { kind = "smash", intensity = loudness * clamp 0.4 1.0 (impactSpeed / 8.0) } :: cmds
+
+              else
+                cmds
+            )
+
+        apply ev ( r, cmds ) =
+            case roomCollisionOf ev of
+                Just (RoomSmash smash) ->
+                    roomSmash r.physics.position (ScenerySmashed smash) ( r, cmds )
+
+                Just (RoomBump bump) ->
+                    if bump.target == room.mySlot then
+                        if r.subPhase == ActiveDriving && r.roomHitCooldown <= 0.0 then
+                            let
+                                phys =
+                                    r.physics
+
+                                pushed =
+                                    { r
+                                        | physics =
+                                            { phys
+                                                | velocity = Vec3.add phys.velocity bump.impulse
+                                                , integrity = max 0.0 (phys.integrity - bump.damage)
+                                            }
+                                        , roomHitCooldown = roomHitCooldownSeconds
+                                    }
+                            in
+                            if bump.damage > 0.0 then
+                                burst ev.position (r.meshes.debrisColors ++ colorsOfSlot ev.slot) bump.impactSpeed ( { pushed | shake = min 1.0 (r.shake + 0.5) }, cmds )
+
+                            else
+                                ( pushed, cmds )
+
+                        else
+                            ( r, cmds )
+
+                    else if bump.damage > 0.0 then
+                        burst ev.position (colorsOfSlot ev.slot ++ colorsOfSlot bump.target) bump.impactSpeed ( r, cmds )
+
+                    else
+                        ( r, cmds )
+
+                Nothing ->
+                    ( r, cmds )
+    in
+    List.foldl apply ( race, [] ) room.events
 
 
 stepRaceFrame : Float -> RaceState -> Model -> ( Model, Cmd Msg )
@@ -2858,6 +3079,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , player2 = maybeP2
             , multiplayer = model.multiplayer
             , roomHitCooldown = 0.0
+            , roomEventsOut = []
             }
 
         nextModel =
@@ -3360,11 +3582,7 @@ resolveCarsCollision p1 p2 =
                     abs velAlongNormal
 
                 damage =
-                    if impactSpeed > 1.8 then
-                        clamp 6.0 48.0 ((impactSpeed - 1.8) * 5.0)
-
-                    else
-                        0.0
+                    carBumpDamage impactSpeed
 
                 nextInteg1 =
                     max 0.0 (p1.integrity - damage)
@@ -3383,6 +3601,17 @@ resolveCarsCollision p1 p2 =
 
     else
         { p1 = p1, p2 = p2, impactSpeed = 0.0, collided = False }
+
+
+{-| Health each car loses in a bump at `impactSpeed` m/s: none up to 1.8 m/s.
+-}
+carBumpDamage : Float -> Float
+carBumpDamage impactSpeed =
+    if impactSpeed > 1.8 then
+        clamp 6.0 48.0 ((impactSpeed - 1.8) * 5.0)
+
+    else
+        0.0
 
 
 confettiPalette : List { r : Float, g : Float, b : Float }
@@ -3644,7 +3873,8 @@ spawnSceneryDebris seed obs impactSpeed direction =
 
 {-| Remove a smashed scenery piece from the race track, rebuild just its chunk's
 scenery mesh, scatter its bricks, and give a short camera shake, pop sound and
-banner. Ignores pieces that are already gone (e.g. hit by both players).
+banner. Ignores pieces that are already gone (e.g. hit by both players). In an
+online room the smash is also told to the other pages (`smashEvent`).
 -}
 smashScenery :
     Language
@@ -3656,7 +3886,7 @@ smashScenery lang smash ( race, cmds ) =
         Nothing ->
             ( race, cmds )
 
-        Just ( shattered, _ ) ->
+        Just ( shattered, at ) ->
             let
                 alert =
                     case shattered.hudAlert of
@@ -3670,6 +3900,7 @@ smashScenery lang smash ( race, cmds ) =
                 | shake = min 1.0 (shattered.shake + 0.3 + smash.impactSpeed / 30.0)
                 , hudAlert = alert
               }
+                |> tellRoom (smashEvent race.elapsedTime at smash)
             , Ports.playSfx { kind = "smash", intensity = clamp 0.3 1.0 (smash.impactSpeed / 14.0) } :: cmds
             )
 
