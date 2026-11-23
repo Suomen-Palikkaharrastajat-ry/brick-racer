@@ -155,7 +155,7 @@ parts =
     , part "4488.dat" "Wheel holder 2 x 2, 1 pin" "Pyöränpidike 2 x 2, 1 tappi"
     , part "4624.dat" "Small rim" "Pieni vanne"
     , part "3641.dat" "Small tyre" "Pieni rengas"
-    , part "6014.dat" "Balloon rim" "Ilmakumivanne"
+    , part "6014b.dat" "Balloon rim" "Ilmakumivanne"
     , part "56890.dat" "Balloon tyre" "Ilmakumirengas"
     , part "55981.dat" "Off-road rim" "Maastovanne"
     , part "56891.dat" "Off-road tyre" "Maastorengas"
@@ -172,7 +172,7 @@ starter bases.
 -}
 wheelParts : List String
 wheelParts =
-    [ "4624.dat", "3641.dat", "6014.dat", "56890.dat", "55981.dat", "56891.dat" ]
+    [ "4624.dat", "3641.dat", "6014b.dat", "56890.dat", "55981.dat", "56891.dat" ]
 
 
 

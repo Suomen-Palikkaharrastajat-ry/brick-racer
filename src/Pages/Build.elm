@@ -1381,7 +1381,7 @@ partCategories =
       }
     , { titleEn = "Wheels & Axles"
       , titleFi = "Pyörät ja akselit"
-      , partFiles = [ "3679.dat", "3680.dat", "4600.dat", "4488.dat", "4624.dat", "3641.dat", "6014.dat", "56890.dat", "55981.dat", "56891.dat" ]
+      , partFiles = [ "3679.dat", "3680.dat", "4600.dat", "4488.dat", "4624.dat", "3641.dat", "6014b.dat", "56890.dat", "55981.dat", "56891.dat" ]
       }
     ]
 
