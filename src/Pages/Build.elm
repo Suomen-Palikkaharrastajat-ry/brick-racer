@@ -108,6 +108,8 @@ type Msg
     | SelectBase Base
     | ToggleBaseLock
     | PasteTextChanged String
+    | CopySelected
+    | PasteSelected
     | PaletteLeft
     | CanvasTapped
     | CatalogFilterChanged String
@@ -154,7 +156,6 @@ init config maybeBase doc =
                         >> Core.setDragMode (Core.DragPartsOrPan Core.OneFingerPans)
                         >> Core.setTwoFingerOrbits True
                         >> Core.setGlueEditable False
-                        >> Core.setPasteEnabled False
                         >> Core.setNudgeSteps { horizontal = 20, vertical = 8 }
                     )
 
@@ -486,6 +487,12 @@ updateModel msg model =
 
         Lower ->
             stay (runCore Core.lowerSelected model)
+
+        CopySelected ->
+            stay (runCore (\studio -> ( Core.copySelection studio, Cmd.none, [] )) model)
+
+        PasteSelected ->
+            stay (runCore Core.pasteClipboard model)
 
         DeleteSelected ->
             if baseSelected model then
@@ -1374,6 +1381,16 @@ modelingControls model =
         , modelToolBtn (tr lang "Turn right" "Käännä oikealle") FeatherIcons.rotateCw (enabledIf hasSel (Turn TurnRight))
         , modelToolBtn (tr lang "Raise" "Nosta") FeatherIcons.arrowUp (enabledIf hasSel Raise)
         , modelToolBtn (tr lang "Lower" "Laske") FeatherIcons.arrowDown (enabledIf hasSel Lower)
+        , if model.width >= 640 then
+            modelToolBtn (tr lang "Copy" "Kopioi") FeatherIcons.copy (enabledIf hasSel CopySelected)
+
+          else
+            text ""
+        , if model.width >= 640 then
+            modelToolBtn (tr lang "Paste" "Liitä") FeatherIcons.clipboard (Just PasteSelected)
+
+          else
+            text ""
         , modelToolBtn
             (if onBase then
                 tr lang "The base cannot be deleted" "Alustaa ei voi poistaa"
