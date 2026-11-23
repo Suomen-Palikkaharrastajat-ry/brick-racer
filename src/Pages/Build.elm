@@ -73,6 +73,7 @@ type alias Model =
     , activeTab : BuilderTab
     , pasteText : String
     , pasteError : Maybe String
+    , catalogFilter : String
     , partCache : PartCache
     , partIndex : PartIndex
     , activePart : String
@@ -101,6 +102,7 @@ type Msg
     | SelectBase Base
     | ToggleBaseLock
     | PasteTextChanged String
+    | CatalogFilterChanged String
     | SubmitPaste
     | RequestFileUpload
     | OpenQrScanner
@@ -164,6 +166,7 @@ init config maybeBase doc =
             , activeTab = BuildBricksTab
             , pasteText = ""
             , pasteError = Nothing
+            , catalogFilter = ""
             , partCache = Dict.empty
             , partIndex = Catalog.emptyPartIndex
             , activePart = "3001.dat"
@@ -431,6 +434,9 @@ updateModel msg model =
 
         PasteTextChanged textVal ->
             ( { model | pasteText = textVal, pasteError = Nothing }, Cmd.none, Stay )
+
+        CatalogFilterChanged query ->
+            ( { model | catalogFilter = query }, Cmd.none, Stay )
 
         SubmitPaste ->
             case Ingest.decodeRaceInput Nothing model.pasteText of
@@ -1388,14 +1394,18 @@ viewAllBricksDrawer model =
         lang =
             model.language
 
+        filteredParts cat =
+            Editor.parts
+                |> List.filter (\p -> List.member p.file cat.partFiles)
+                |> List.filter (matchesFilter model.catalogFilter)
+
         categorySection cat =
             let
                 title =
                     tr lang cat.titleEn cat.titleFi
 
                 catParts =
-                    Editor.parts
-                        |> List.filter (\p -> List.member p.file cat.partFiles)
+                    filteredParts cat
 
                 renderCard entry =
                     let
@@ -1470,12 +1480,58 @@ viewAllBricksDrawer model =
         , Attr.style "background" "rgba(5, 19, 29, 0.96)"
         ]
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "12px" ]
-            [ h3 [ Attr.style "font-size" "14px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "margin" "0" ]
-                [ text (tr lang "📦 All Available Bricks" "📦 Kaikki saatavilla olevat palikat") ]
+            [ div
+                [ Attr.style "position" "sticky"
+                , Attr.style "top" "0"
+                , Attr.style "z-index" "1"
+                , Attr.style "display" "flex"
+                , Attr.style "justify-content" "center"
+                , Attr.style "padding-bottom" "2px"
+                , Attr.style "background" "rgba(5, 19, 29, 0.96)"
+                ]
+                [ input
+                    [ Attr.type_ "search"
+                    , Attr.value model.catalogFilter
+                    , onInput CatalogFilterChanged
+                    , Attr.placeholder (tr lang "Filter by name or number" "Suodata nimellä tai numerolla")
+                    , Attr.attribute "aria-label" (tr lang "Filter bricks" "Suodata palikoita")
+                    , Attr.attribute "autocomplete" "off"
+                    , Attr.attribute "autocapitalize" "none"
+                    , Attr.attribute "spellcheck" "false"
+                    , Attr.style "width" "100%"
+                    , Attr.style "max-width" "280px"
+                    , Attr.style "box-sizing" "border-box"
+                    , Attr.style "padding" "8px 12px"
+                    , Attr.style "border-radius" "10px"
+                    , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
+                    , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+                    , Attr.style "color" "#f8fafc"
+                    , Attr.style "font-size" "14px"
+                    ]
+                    []
+                ]
             , div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "16px" ]
-                (List.map categorySection partCategories)
+                (partCategories
+                    |> List.filter (\cat -> not (List.isEmpty (filteredParts cat)))
+                    |> List.map categorySection
+                )
             ]
         ]
+
+
+{-| Whether a catalog part matches the filter text, by English or Finnish name or by number.
+-}
+matchesFilter : String -> PartEntry -> Bool
+matchesFilter query entry =
+    let
+        q =
+            String.toLower (String.trim query)
+    in
+    q
+        == ""
+        || String.contains q (String.toLower entry.nameEn)
+        || String.contains q (String.toLower entry.nameFi)
+        || String.contains q (String.replace ".dat" "" entry.file)
 
 
 {-| Drawer for pasting or loading build files / QR scans.
