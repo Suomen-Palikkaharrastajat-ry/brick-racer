@@ -44,8 +44,6 @@ import Set
 import Studio.Colours as Colours
 import Studio.Core as Core
 import Studio.Shortcuts exposing (TurnDirection(..))
-import Svg
-import Svg.Attributes as SvgAttr
 import UI.PartCard as PartCard
 import Viewport
 
@@ -552,9 +550,14 @@ baseSelected model =
 requestThumbnails : Model -> Cmd Msg
 requestThumbnails model =
     let
+        wanted =
+            List.map (\p -> ( p.file, model.colour )) Editor.parts
+                ++ List.map (\file -> ( file, model.colour )) missingPartFiles
+                ++ List.concatMap baseThumbParts Editor.bases
+
         missing =
-            Editor.parts
-                |> List.filter (\p -> not (Dict.member (PartCard.thumbnailKey p.file model.colour) model.thumbnails))
+            dedupe wanted
+                |> List.filter (\( file, color ) -> not (Dict.member (PartCard.thumbnailKey file color) model.thumbnails))
     in
     if List.isEmpty missing then
         Cmd.none
@@ -562,14 +565,46 @@ requestThumbnails model =
     else
         Ports.requestThumbnails
             (List.map
-                (\p ->
-                    { file = p.file
-                    , color = model.colour
-                    , rgb = Colors.resolveColor model.colour 16 |> (\c -> [ c.r, c.g, c.b ])
+                (\( file, color ) ->
+                    { file = file
+                    , color = color
+                    , rgb = Colors.resolveColor color 16 |> (\c -> [ c.r, c.g, c.b ])
                     }
                 )
                 missing
             )
+
+
+{-| Parts the lint dialog offers to add when they are missing.
+-}
+missingPartFiles : List String
+missingPartFiles =
+    [ "4600.dat", "3680.dat", "3829c01.dat", "4079.dat" ]
+
+
+{-| Base placements that have no colour of their own are drawn in light grey.
+-}
+thumbnailColour : Int -> Int
+thumbnailColour color =
+    if color == 16 then
+        7
+
+    else
+        color
+
+
+dedupe : List a -> List a
+dedupe items =
+    List.foldl
+        (\item acc ->
+            if List.member item acc then
+                acc
+
+            else
+                acc ++ [ item ]
+        )
+        []
+        items
 
 
 {-| The studio's subscriptions, geometry worker, and thumbnails.
@@ -1276,7 +1311,7 @@ viewBasesDrawer model =
                     , Attr.style "background" "#070c14"
                     , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
                     ]
-                    [ basePreviewSvg base.id ]
+                    [ baseThumbRow model.thumbnails base ]
                 , div []
                     [ div [ Attr.style "font-weight" "800", Attr.style "font-size" "13px" ] [ text ("🔨 " ++ name) ]
                     , div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8", Attr.style "margin-top" "2px" ]
@@ -1423,95 +1458,48 @@ viewAllBricksDrawer model =
         ]
 
 
-{-| Dedicated schematic preview SVG for each starter chassis.
+{-| The distinct part files and colours of a starter base.
 -}
-basePreviewSvg : String -> Html msg
-basePreviewSvg baseId =
-    case baseId of
-        "turntable-kart" ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 160 90"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                ]
-                [ Svg.rect [ SvgAttr.width "160", SvgAttr.height "90", SvgAttr.fill "#090d16" ] []
-                , Svg.rect [ SvgAttr.x "32", SvgAttr.y "38", SvgAttr.width "86", SvgAttr.height "14", SvgAttr.rx "3", SvgAttr.fill "#334155", SvgAttr.stroke "#64748b", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "28", SvgAttr.y "18", SvgAttr.width "12", SvgAttr.height "54", SvgAttr.rx "2", SvgAttr.fill "#1e293b", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "20", SvgAttr.y "8", SvgAttr.width "28", SvgAttr.height "14", SvgAttr.rx "4", SvgAttr.fill "#0f172a", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "25", SvgAttr.y "11", SvgAttr.width "18", SvgAttr.height "8", SvgAttr.rx "2", SvgAttr.fill "#e2e8f0" ] []
-                , Svg.rect [ SvgAttr.x "20", SvgAttr.y "68", SvgAttr.width "28", SvgAttr.height "14", SvgAttr.rx "4", SvgAttr.fill "#0f172a", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "25", SvgAttr.y "71", SvgAttr.width "18", SvgAttr.height "8", SvgAttr.rx "2", SvgAttr.fill "#e2e8f0" ] []
-                , Svg.rect [ SvgAttr.x "114", SvgAttr.y "18", SvgAttr.width "12", SvgAttr.height "54", SvgAttr.rx "2", SvgAttr.fill "#1e293b", SvgAttr.stroke "#fac80a", SvgAttr.strokeWidth "1" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "10", SvgAttr.fill "#fac80a", SvgAttr.stroke "#fde047", SvgAttr.strokeWidth "2" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "3.5", SvgAttr.fill "#0f172a" ] []
-                , Svg.rect [ SvgAttr.x "106", SvgAttr.y "8", SvgAttr.width "28", SvgAttr.height "14", SvgAttr.rx "4", SvgAttr.fill "#0f172a", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "111", SvgAttr.y "11", SvgAttr.width "18", SvgAttr.height "8", SvgAttr.rx "2", SvgAttr.fill "#fac80a" ] []
-                , Svg.rect [ SvgAttr.x "106", SvgAttr.y "68", SvgAttr.width "28", SvgAttr.height "14", SvgAttr.rx "4", SvgAttr.fill "#0f172a", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "111", SvgAttr.y "71", SvgAttr.width "18", SvgAttr.height "8", SvgAttr.rx "2", SvgAttr.fill "#fac80a" ] []
-                ]
+baseThumbParts : Base -> List ( String, Int )
+baseThumbParts base =
+    Document.flattenedPlacements base.document
+        |> List.map (\p -> ( p.part, thumbnailColour p.color ))
+        |> dedupe
 
-        "pinewood-classic" ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 160 90"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                ]
-                [ Svg.rect [ SvgAttr.width "160", SvgAttr.height "90", SvgAttr.fill "#090d16" ] []
-                , Svg.rect [ SvgAttr.x "24", SvgAttr.y "36", SvgAttr.width "112", SvgAttr.height "18", SvgAttr.rx "3", SvgAttr.fill "#dc2626", SvgAttr.stroke "#ef4444", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "36", SvgAttr.y "20", SvgAttr.width "10", SvgAttr.height "50", SvgAttr.rx "2", SvgAttr.fill "#1e293b", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "114", SvgAttr.y "20", SvgAttr.width "10", SvgAttr.height "50", SvgAttr.rx "2", SvgAttr.fill "#1e293b", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "32", SvgAttr.y "12", SvgAttr.width "18", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#0f172a", SvgAttr.stroke "#334155", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "36", SvgAttr.y "14", SvgAttr.width "10", SvgAttr.height "6", SvgAttr.rx "1", SvgAttr.fill "#ef4444" ] []
-                , Svg.rect [ SvgAttr.x "32", SvgAttr.y "68", SvgAttr.width "18", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#0f172a", SvgAttr.stroke "#334155", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "36", SvgAttr.y "70", SvgAttr.width "10", SvgAttr.height "6", SvgAttr.rx "1", SvgAttr.fill "#ef4444" ] []
-                , Svg.rect [ SvgAttr.x "110", SvgAttr.y "12", SvgAttr.width "18", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#0f172a", SvgAttr.stroke "#334155", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "114", SvgAttr.y "14", SvgAttr.width "10", SvgAttr.height "6", SvgAttr.rx "1", SvgAttr.fill "#ef4444" ] []
-                , Svg.rect [ SvgAttr.x "110", SvgAttr.y "68", SvgAttr.width "18", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#0f172a", SvgAttr.stroke "#334155", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "114", SvgAttr.y "70", SvgAttr.width "10", SvgAttr.height "6", SvgAttr.rx "1", SvgAttr.fill "#ef4444" ] []
-                ]
 
-        "alpine-crawler" ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 160 90"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                ]
-                [ Svg.rect [ SvgAttr.width "160", SvgAttr.height "90", SvgAttr.fill "#090d16" ] []
-                , Svg.rect [ SvgAttr.x "28", SvgAttr.y "34", SvgAttr.width "104", SvgAttr.height "22", SvgAttr.rx "3", SvgAttr.fill "#1e293b", SvgAttr.stroke "#fac80a", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "50", SvgAttr.y "26", SvgAttr.width "60", SvgAttr.height "38", SvgAttr.rx "2", SvgAttr.fill "#334155", SvgAttr.stroke "#64748b", SvgAttr.strokeWidth "1" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "10", SvgAttr.fill "#fac80a", SvgAttr.stroke "#fde047", SvgAttr.strokeWidth "2" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "3.5", SvgAttr.fill "#0f172a" ] []
-                , Svg.rect [ SvgAttr.x "16", SvgAttr.y "5", SvgAttr.width "34", SvgAttr.height "16", SvgAttr.rx "4", SvgAttr.fill "#020617", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "2" ] []
-                , Svg.rect [ SvgAttr.x "22", SvgAttr.y "8", SvgAttr.width "22", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#94a3b8" ] []
-                , Svg.rect [ SvgAttr.x "16", SvgAttr.y "69", SvgAttr.width "34", SvgAttr.height "16", SvgAttr.rx "4", SvgAttr.fill "#020617", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "2" ] []
-                , Svg.rect [ SvgAttr.x "22", SvgAttr.y "72", SvgAttr.width "22", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#94a3b8" ] []
-                , Svg.rect [ SvgAttr.x "104", SvgAttr.y "5", SvgAttr.width "34", SvgAttr.height "16", SvgAttr.rx "4", SvgAttr.fill "#020617", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "2" ] []
-                , Svg.rect [ SvgAttr.x "110", SvgAttr.y "8", SvgAttr.width "22", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#fac80a" ] []
-                , Svg.rect [ SvgAttr.x "104", SvgAttr.y "69", SvgAttr.width "34", SvgAttr.height "16", SvgAttr.rx "4", SvgAttr.fill "#020617", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "2" ] []
-                , Svg.rect [ SvgAttr.x "110", SvgAttr.y "72", SvgAttr.width "22", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#fac80a" ] []
-                ]
-
-        "trike-wedge" ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 160 90"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                ]
-                [ Svg.rect [ SvgAttr.width "160", SvgAttr.height "90", SvgAttr.fill "#090d16" ] []
-                , Svg.polygon [ SvgAttr.points "28,24 28,66 126,45", SvgAttr.fill "#1e293b", SvgAttr.stroke "#38bdf8", SvgAttr.strokeWidth "2" ] []
-                , Svg.rect [ SvgAttr.x "24", SvgAttr.y "12", SvgAttr.width "10", SvgAttr.height "66", SvgAttr.rx "2", SvgAttr.fill "#334155", SvgAttr.stroke "#475569", SvgAttr.strokeWidth "1" ] []
-                , Svg.rect [ SvgAttr.x "16", SvgAttr.y "5", SvgAttr.width "26", SvgAttr.height "15", SvgAttr.rx "3", SvgAttr.fill "#0f172a", SvgAttr.stroke "#38bdf8", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "21", SvgAttr.y "8", SvgAttr.width "16", SvgAttr.height "9", SvgAttr.rx "1.5", SvgAttr.fill "#e2e8f0" ] []
-                , Svg.rect [ SvgAttr.x "16", SvgAttr.y "70", SvgAttr.width "26", SvgAttr.height "15", SvgAttr.rx "3", SvgAttr.fill "#0f172a", SvgAttr.stroke "#38bdf8", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "21", SvgAttr.y "73", SvgAttr.width "16", SvgAttr.height "9", SvgAttr.rx "1.5", SvgAttr.fill "#e2e8f0" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "9", SvgAttr.fill "#fac80a", SvgAttr.stroke "#fde047", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.circle [ SvgAttr.cx "120", SvgAttr.cy "45", SvgAttr.r "3", SvgAttr.fill "#0f172a" ] []
-                , Svg.rect [ SvgAttr.x "114", SvgAttr.y "36", SvgAttr.width "30", SvgAttr.height "18", SvgAttr.rx "4", SvgAttr.fill "#0f172a", SvgAttr.stroke "#fac80a", SvgAttr.strokeWidth "1.5" ] []
-                , Svg.rect [ SvgAttr.x "120", SvgAttr.y "40", SvgAttr.width "18", SvgAttr.height "10", SvgAttr.rx "2", SvgAttr.fill "#e2e8f0" ] []
-                ]
-
-        _ ->
-            Svg.svg [ SvgAttr.viewBox "0 0 160 90" ] []
+{-| A base is drawn from the real LDraw renders of its own parts.
+-}
+baseThumbRow : Dict String String -> Base -> Html msg
+baseThumbRow thumbnails base =
+    div
+        [ Attr.style "display" "flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "justify-content" "center"
+        , Attr.style "gap" "4px"
+        , Attr.style "width" "100%"
+        , Attr.style "height" "100%"
+        , Attr.style "padding" "4px"
+        , Attr.style "box-sizing" "border-box"
+        ]
+        (baseThumbParts base
+            |> List.take 8
+            |> List.filterMap
+                (\( file, color ) ->
+                    Dict.get (PartCard.thumbnailKey file color) thumbnails
+                        |> Maybe.map
+                            (\url ->
+                                Html.img
+                                    [ Attr.src url
+                                    , Attr.alt ""
+                                    , Attr.style "flex" "1 1 0"
+                                    , Attr.style "min-width" "0"
+                                    , Attr.style "max-height" "100%"
+                                    , Attr.style "object-fit" "contain"
+                                    ]
+                                    []
+                            )
+                )
+        )
 
 
 {-| Drawer for pasting or loading build files / QR scans.
@@ -1632,183 +1620,280 @@ viewReviewDrawer model =
         tooFewWheels =
             List.length spec.wheels < 3
 
-        hasBlocking =
-            List.any (\i -> i.severity == Blocker) spec.issues
+        blockers =
+            List.length (List.filter (\i -> i.severity == Blocker) spec.issues)
 
-        statTile lbl val =
+        warnings =
+            List.length (List.filter (\i -> i.severity == Warning) spec.issues)
+
+        hasBlocking =
+            blockers > 0
+
+        ready =
+            spec.isDrivable && not hasBlocking
+
+        -- Five stars: a blocker costs two, a warning one. A car that cannot be
+        -- driven yet is capped at two stars.
+        starCount =
+            let
+                score =
+                    max 1 (min 5 (5 - 2 * blockers - warnings))
+            in
+            if spec.isDrivable then
+                score
+
+            else
+                min 2 score
+
+        statusChip =
+            div
+                [ Attr.style "padding" "4px 10px"
+                , Attr.style "border-radius" "8px"
+                , Attr.style "font-size" "11px"
+                , Attr.style "font-weight" "800"
+                , Attr.style "white-space" "nowrap"
+                , Attr.style "background"
+                    (if ready then
+                        "rgba(34, 197, 94, 0.22)"
+
+                     else if hasBlocking then
+                        "rgba(239, 68, 68, 0.22)"
+
+                     else
+                        "rgba(245, 158, 11, 0.22)"
+                    )
+                , Attr.style "color"
+                    (if ready then
+                        "#22c55e"
+
+                     else if hasBlocking then
+                        "#ef4444"
+
+                     else
+                        "#f59e0b"
+                    )
+                ]
+                [ text
+                    (if ready then
+                        RI18n.readyToRaceBanner lang
+
+                     else if hasBlocking then
+                        RI18n.needsFixBanner lang
+
+                     else
+                        RI18n.needsPolishBanner lang
+                    )
+                ]
+
+        stars =
+            div
+                [ Attr.attribute "role" "img"
+                , Attr.attribute "aria-label" (tr lang "Quality" "Laatu" ++ ": " ++ String.fromInt starCount ++ " / 5")
+                , Attr.style "display" "flex"
+                , Attr.style "gap" "4px"
+                , Attr.style "font-size" "28px"
+                , Attr.style "line-height" "1"
+                ]
+                (List.map
+                    (\n ->
+                        span
+                            [ Attr.style "color"
+                                (if n <= starCount then
+                                    "#facc15"
+
+                                 else
+                                    "#334155"
+                                )
+                            ]
+                            [ text "★" ]
+                    )
+                    (List.range 1 5)
+                )
+
+        fact lbl val =
             div
                 [ Attr.style "flex" "1"
-                , Attr.style "padding" "8px 12px"
-                , Attr.style "border-radius" "8px"
+                , Attr.style "padding" "8px 10px"
+                , Attr.style "border-radius" "10px"
                 , Attr.style "background" "rgba(15, 23, 42, 0.75)"
                 , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
                 ]
                 [ div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8" ] [ text lbl ]
-                , div [ Attr.style "font-size" "14px", Attr.style "font-weight" "700", Attr.style "color" Brand.legoWhite, Attr.style "margin-top" "2px" ] [ text val ]
+                , div [ Attr.style "font-size" "15px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoWhite ] [ text val ]
                 ]
 
+        -- Icon button that adds a missing part, drawn with its real LDraw thumbnail.
         helperBtn label partFile =
             button
                 [ Attr.type_ "button"
                 , onClick (AddPart partFile)
-                , Attr.style "padding" "5px 10px"
-                , Attr.style "border-radius" "8px"
-                , Attr.style "background" "rgba(250, 200, 10, 0.15)"
-                , Attr.style "border" "1px solid rgba(250, 200, 10, 0.4)"
-                , Attr.style "color" Brand.legoYellow
-                , Attr.style "font-size" "11px"
-                , Attr.style "font-weight" "700"
+                , Attr.title label
+                , Attr.attribute "aria-label" label
+                , Attr.style "position" "relative"
+                , Attr.style "width" "56px"
+                , Attr.style "height" "56px"
+                , Attr.style "padding" "4px"
+                , Attr.style "display" "flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "justify-content" "center"
+                , Attr.style "border-radius" "10px"
+                , Attr.style "background" "rgba(15, 23, 42, 0.75)"
+                , Attr.style "border" "1px solid rgba(250, 200, 10, 0.5)"
                 , Attr.style "cursor" "pointer"
                 ]
-                [ text label ]
-    in
-    div (drawerStyle 280)
-        [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "10px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
-            [ div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "justify-content" "space-between" ]
-                [ h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase" ]
-                    [ text (RI18n.reviewTab lang) ]
-                , div
-                    [ Attr.style "padding" "4px 10px"
-                    , Attr.style "border-radius" "8px"
-                    , Attr.style "font-size" "11px"
-                    , Attr.style "font-weight" "800"
-                    , Attr.style "letter-spacing" "0.03em"
-                    , Attr.style "background"
-                        (if spec.isDrivable && not hasBlocking then
-                            "rgba(34, 197, 94, 0.22)"
+                [ case Dict.get (PartCard.thumbnailKey partFile model.colour) model.thumbnails of
+                    Just url ->
+                        Html.img
+                            [ Attr.src url
+                            , Attr.alt label
+                            , Attr.style "max-width" "100%"
+                            , Attr.style "max-height" "100%"
+                            , Attr.style "object-fit" "contain"
+                            ]
+                            []
 
-                         else if hasBlocking then
-                            "rgba(239, 68, 68, 0.22)"
-
-                         else
-                            "rgba(245, 158, 11, 0.22)"
-                        )
-                    , Attr.style "color"
-                        (if spec.isDrivable && not hasBlocking then
-                            "#22c55e"
-
-                         else if hasBlocking then
-                            "#ef4444"
-
-                         else
-                            "#f59e0b"
-                        )
+                    Nothing ->
+                        span [ Attr.style "font-size" "18px" ] [ text "🧱" ]
+                , span
+                    [ Attr.style "position" "absolute"
+                    , Attr.style "top" "-6px"
+                    , Attr.style "right" "-6px"
+                    , Attr.style "width" "18px"
+                    , Attr.style "height" "18px"
+                    , Attr.style "border-radius" "50%"
+                    , Attr.style "display" "flex"
+                    , Attr.style "align-items" "center"
+                    , Attr.style "justify-content" "center"
+                    , Attr.style "background" Brand.legoYellow
+                    , Attr.style "color" Brand.legoBlack
+                    , Attr.style "font-size" "13px"
+                    , Attr.style "font-weight" "900"
                     ]
-                    [ text
-                        (if spec.isDrivable && not hasBlocking then
-                            RI18n.readyToRaceBanner lang
-
-                         else if hasBlocking then
-                            RI18n.needsFixBanner lang
-
-                         else
-                            RI18n.needsPolishBanner lang
-                        )
-                    ]
+                    [ text "+" ]
                 ]
-            , div [ Attr.style "display" "grid", Attr.style "grid-template-columns" "repeat(4, 1fr)", Attr.style "gap" "8px" ]
-                [ statTile (RI18n.garageWheelsLabel lang) (String.fromInt (List.length spec.wheels) ++ " kpl")
-                , statTile (RI18n.garageSteeringLabel lang) (RI18n.steeringMechName lang spec.steering)
-                , statTile (RI18n.garageMassLabel lang) (String.fromInt (round (spec.totalMassKg * 1000.0)) ++ " g")
-                , statTile (RI18n.garageClearanceLabel lang) (String.fromFloat (roundFloat 1 (spec.groundClearanceM * 100.0)) ++ " cm")
-                ]
-            , -- Actionable Helper Buttons for Missing Elements
-              div [ Attr.style "display" "flex", Attr.style "flex-wrap" "wrap", Attr.style "gap" "6px" ]
+
+        missingButtons =
+            List.filterMap identity
                 [ if tooFewWheels then
-                    helperBtn (tr lang "➕ Add wheels" "➕ Lisää pyörät") "4600.dat"
+                    Just (helperBtn (tr lang "Add wheels" "Lisää pyörät") "4600.dat")
 
                   else
-                    text ""
+                    Nothing
                 , if spec.steering == FixedAxleFallback then
-                    helperBtn (tr lang "➕ Add turntable" "➕ Lisää kääntöpöytä") "3680.dat"
+                    Just (helperBtn (tr lang "Add turntable" "Lisää kääntöpöytä") "3680.dat")
 
                   else
-                    text ""
+                    Nothing
                 , if not hasSteeringWheel then
-                    helperBtn (tr lang "➕ Add steering wheel" "➕ Lisää ratti") "3829c01.dat"
+                    Just (helperBtn (tr lang "Add steering wheel" "Lisää ratti") "3829c01.dat")
 
                   else
-                    text ""
+                    Nothing
                 , if not hasSeat then
-                    helperBtn (tr lang "➕ Add seat" "➕ Lisää istuin") "4079.dat"
+                    Just (helperBtn (tr lang "Add seat" "Lisää istuin") "4079.dat")
 
                   else
-                    text ""
+                    Nothing
                 ]
-            , if List.isEmpty spec.issues then
-                div [ Attr.style "font-size" "12px", Attr.style "color" "#22c55e", Attr.style "padding-top" "2px" ]
-                    [ text (tr lang "✓ No issues found. Your car is ready to roll downhill!" "✓ Ei huomautuksia. Auto on valmis laskemaan mäkeä alas!") ]
 
-              else
-                div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "4px" ]
+        missingSection =
+            if List.isEmpty missingButtons then
+                text ""
+
+            else
+                div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "6px" ]
+                    [ sectionLabel (tr lang "Missing parts" "Puuttuvat osat")
+                    , div [ Attr.style "display" "flex", Attr.style "flex-wrap" "wrap", Attr.style "gap" "8px" ] missingButtons
+                    ]
+
+        severityColour issue =
+            if issue.severity == Blocker then
+                "#ef4444"
+
+            else if issue.severity == Bonus then
+                "#22c55e"
+
+            else
+                "#f59e0b"
+
+        issuesSection =
+            if List.isEmpty spec.issues then
+                div [ Attr.style "font-size" "13px", Attr.style "color" "#22c55e" ]
+                    [ text (tr lang "No issues found" "Ei huomautuksia") ]
+
+            else
+                div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "6px" ]
                     (List.map
                         (\issue ->
                             div
                                 [ Attr.style "display" "flex"
                                 , Attr.style "align-items" "center"
                                 , Attr.style "gap" "8px"
-                                , Attr.style "font-size" "12px"
-                                , Attr.style "color"
-                                    (if issue.severity == Blocker then
-                                        "#ef4444"
-
-                                     else if issue.severity == Bonus then
-                                        "#22c55e"
-
-                                     else
-                                        "#f59e0b"
-                                    )
+                                , Attr.style "font-size" "13px"
+                                , Attr.style "color" "#e2e8f0"
                                 ]
-                                [ span [ Attr.style "font-weight" "700" ]
-                                    [ text
-                                        (case issue.severity of
-                                            Blocker ->
-                                                "[ESTE]"
-
-                                            Warning ->
-                                                "[VAROITUS]"
-
-                                            Info ->
-                                                "[INFO]"
-
-                                            Bonus ->
-                                                "[BONUS]"
-                                        )
+                                [ span
+                                    [ Attr.style "width" "8px"
+                                    , Attr.style "height" "8px"
+                                    , Attr.style "border-radius" "50%"
+                                    , Attr.style "flex-shrink" "0"
+                                    , Attr.style "background" (severityColour issue)
                                     ]
+                                    []
                                 , text (RI18n.validationTitle lang issue.code)
                                 ]
                         )
                         spec.issues
                     )
-            , if spec.isDrivable && not hasBlocking then
-                div [ Attr.style "padding-top" "4px" ]
-                    [ button
-                        [ Attr.type_ "button"
-                        , onClick Finish
-                        , Attr.style "width" "100%"
-                        , Attr.style "padding" "10px 16px"
-                        , Attr.style "border-radius" "12px"
-                        , Attr.style "background" Brand.legoYellow
-                        , Attr.style "color" Brand.legoBlack
-                        , Attr.style "font-size" "14px"
-                        , Attr.style "font-weight" "800"
-                        , Attr.style "cursor" "pointer"
-                        , Attr.style "border" "none"
-                        , Attr.style "display" "flex"
-                        , Attr.style "align-items" "center"
-                        , Attr.style "justify-content" "center"
-                        , Attr.style "gap" "8px"
-                        , Attr.style "box-shadow" "0 4px 14px rgba(0, 0, 0, 0.3)"
-                        ]
-                        [ FeatherIcons.play |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml []
-                        , span [] [ text (RI18n.startRaceButton lang) ]
-                        ]
+    in
+    div (drawerStyle 280)
+        [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "12px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
+            [ div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "justify-content" "space-between", Attr.style "gap" "8px" ]
+                [ h3 [ Attr.style "font-size" "14px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "margin" "0" ]
+                    [ text title ]
+                , statusChip
+                ]
+            , stars
+            , div [ Attr.style "display" "flex", Attr.style "gap" "8px" ]
+                [ fact (RI18n.garageWheelsLabel lang) (String.fromInt (List.length spec.wheels) ++ " kpl")
+                , fact (RI18n.garageSteeringLabel lang) (RI18n.steeringMechName lang spec.steering)
+                , fact (RI18n.garageMassLabel lang) (String.fromInt (round (spec.totalMassKg * 1000.0)) ++ " g")
+                ]
+            , missingSection
+            , issuesSection
+            , if ready then
+                button
+                    [ Attr.type_ "button"
+                    , onClick Finish
+                    , Attr.style "width" "100%"
+                    , Attr.style "padding" "10px 16px"
+                    , Attr.style "border-radius" "12px"
+                    , Attr.style "background" Brand.legoYellow
+                    , Attr.style "color" Brand.legoBlack
+                    , Attr.style "font-size" "14px"
+                    , Attr.style "font-weight" "800"
+                    , Attr.style "cursor" "pointer"
+                    , Attr.style "border" "none"
+                    , Attr.style "display" "flex"
+                    , Attr.style "align-items" "center"
+                    , Attr.style "justify-content" "center"
+                    , Attr.style "gap" "8px"
+                    , Attr.style "box-shadow" "0 4px 14px rgba(0, 0, 0, 0.3)"
+                    ]
+                    [ FeatherIcons.play |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml []
+                    , span [] [ text (RI18n.startRaceButton lang) ]
                     ]
 
               else
                 text ""
             ]
         ]
+
+
+sectionLabel : String -> Html msg
+sectionLabel label =
+    div [ Attr.style "font-size" "11px", Attr.style "font-weight" "800", Attr.style "color" "#94a3b8", Attr.style "text-transform" "uppercase", Attr.style "letter-spacing" "0.5px" ]
+        [ text label ]
 
 
 drawerStyle : Int -> List (Html.Attribute Msg)
@@ -1889,15 +1974,6 @@ enabledIf condition msg =
 px : Int -> String
 px n =
     String.fromInt n ++ "px"
-
-
-roundFloat : Int -> Float -> Float
-roundFloat decimals val =
-    let
-        factor =
-            10.0 ^ toFloat decimals
-    in
-    toFloat (round (val * factor)) / factor
 
 
 baseName : Language -> Base -> String
