@@ -1,8 +1,9 @@
 # Starter car bases
 
-Four alternative car undercarriages a player can start a Brick Racer build
-from. Each is a chassis underside: a plate frame, four rim + tyre wheels on
-two axles, and studs on top to build the body on. The car editor (`Pages.Build`,
+Five alternative car undercarriages a player can start a Brick Racer build
+from. Each is a chassis underside: a plate frame, an even number of rim + tyre
+wheels (2 in line on `two-wheel-dart`, 6 on three axles on `six-wheel-hauler`,
+4 on two axles on the others), and studs on top to build the body on. The car editor (`Pages.Build`,
 "Build your own car" in the menu) starts every car from one of them.
 
 | File | Name | Parts | Wheels | Steering found by `Racer.Analyze` | Bounds in LDU (x / y / z) |

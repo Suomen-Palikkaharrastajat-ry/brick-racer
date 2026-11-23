@@ -69,10 +69,10 @@ suite =
                     , \ws -> Expect.equal True (List.all (\w -> Set.member w used) ws)
                     ]
                     Editor.wheelParts
-        , test "there are four bases, each found again in its own document" <|
+        , test "there are five bases, each found again in its own document" <|
             \_ ->
                 Expect.all
-                    [ \bs -> Expect.equal 4 (List.length bs)
+                    [ \bs -> Expect.equal 5 (List.length bs)
                     , \bs -> Expect.equal (List.map .id bs) (List.filterMap (\b -> Editor.baseOf b.document |> Maybe.map .id) bs)
                     ]
                     Editor.bases

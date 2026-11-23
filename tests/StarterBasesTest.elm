@@ -88,8 +88,9 @@ starterTest starter =
                     , \s -> Expect.atLeast 0.5 s.wheelBaseM
                     , \s ->
                         if starter.file == "two-wheel-dart.mpd" then
-                            -- Both wheels sit on the centreline, one behind the other.
-                            Expect.atMost 0.01 s.trackWidthM
+                            -- One wheel behind the other, each 7 LDU off the
+                            -- centreline on its holder's pin: 14 LDU apart.
+                            Expect.atMost 0.1 s.trackWidthM
 
                         else
                             Expect.atLeast 0.3 s.trackWidthM

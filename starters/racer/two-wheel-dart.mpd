@@ -1,0 +1,25 @@
+0 FILE two-wheel-dart.ldr
+0 Two-Wheel Dart Base
+0 Name: Two-Wheel Dart Base
+0 Author: Brick Family starter bases
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+0 // Parts: 12 (all inside the grouped submodel two-wheel-dart-base.ldr)
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 two-wheel-dart-base.ldr
+0 NOFILE
+0 FILE two-wheel-dart-base.ldr
+0 Two-Wheel Dart chassis
+0 Name: two-wheel-dart-base.ldr
+0 Author: Brick Family starter bases
+1 72 -40 -8 -60 1 0 0 0 1 0 0 0 1 3680.dat
+1 14 -40 -8 -60 1 0 0 0 1 0 0 0 1 3679.dat
+1 72 -40 0 -60 1 0 0 0 1 0 0 0 1 4488.dat
+1 15 -7 5 -60 0 0 1 0 1 0 -1 0 0 4624.dat
+1 0 -7 5 -60 0 0 1 0 1 0 -1 0 0 3641.dat
+1 72 40 0 60 -1 0 0 0 1 0 0 0 -1 4488.dat
+1 15 7 5 60 0 0 -1 0 1 0 1 0 0 4624.dat
+1 0 7 5 60 0 0 -1 0 1 0 1 0 0 3641.dat
+1 72 40 -8 60 1 0 0 0 1 0 0 0 1 3022.dat
+1 4 40 -16 40 0 0 1 0 1 0 -1 0 0 3795.dat
+1 4 -40 -16 -40 0 0 1 0 1 0 -1 0 0 3020.dat
+1 4 0 -24 -10 1 0 0 0 1 0 0 0 1 3666.dat
+0 NOFILE

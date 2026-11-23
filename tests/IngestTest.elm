@@ -432,21 +432,30 @@ analyzeSuite =
                             (List.any (\i -> i.code == FixedAxleTip) spec.issues)
                     ]
                     ()
-        , test "Trike Wedge detects 3 ground wheels (1 steerable front, 2 rear)" <|
+        , test "Two-Wheel Dart detects 2 ground wheels in line (1 steerable front, 1 rear)" <|
             \_ ->
                 let
                     doc =
-                        Ingest.findPresetById "trike-wedge"
+                        Ingest.findPresetById "two-wheel-dart"
                             |> Maybe.map (.ldrText >> Document.parse)
                             |> Maybe.withDefault Document.empty
 
                     spec =
-                        (Analyze.analyzeDocument "Trike" doc EmbeddedParts.cache Catalog.emptyPartIndex).spec
+                        (Analyze.analyzeDocument "Dart" doc EmbeddedParts.cache Catalog.emptyPartIndex).spec
+
+                    isTurntable =
+                        case spec.steering of
+                            TurntableBogie _ ->
+                                True
+
+                            _ ->
+                                False
                 in
                 Expect.all
                     [ \_ -> Expect.equal True spec.isDrivable
-                    , \_ -> Expect.equal 3 (List.length spec.wheels)
+                    , \_ -> Expect.equal 2 (List.length spec.wheels)
                     , \_ -> Expect.equal 1 (List.length (List.filter .isFront spec.wheels))
+                    , \_ -> Expect.equal True isTurntable
                     ]
                     ()
         , test "Alpine Trail Crawler has 4 off-road wheels, turntable steering, and zero loose parts" <|
