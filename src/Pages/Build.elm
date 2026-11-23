@@ -1323,7 +1323,7 @@ viewBasesDrawer model =
                 ]
                 [ div
                     [ Attr.style "width" "100%"
-                    , Attr.style "height" "75px"
+                    , Attr.style "aspect-ratio" "1 / 1"
                     , Attr.style "border-radius" "8px"
                     , Attr.style "overflow" "hidden"
                     , Attr.style "background" "#070c14"
@@ -1349,7 +1349,7 @@ viewBasesDrawer model =
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "10px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
             [ h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase" ]
                 [ text (tr lang "Choose Starter Chassis" "Valitse aloituspohja") ]
-            , div [ Attr.style "display" "grid", Attr.style "grid-template-columns" "repeat(auto-fill, minmax(200px, 1fr))", Attr.style "gap" "10px" ]
+            , div [ Attr.style "display" "grid", Attr.style "grid-template-columns" "repeat(2, minmax(0, 1fr))", Attr.style "gap" "10px" ]
                 (List.map renderBaseCard Editor.bases)
             ]
         ]
