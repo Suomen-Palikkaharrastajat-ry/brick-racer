@@ -86,6 +86,7 @@ module Racer.I18n exposing
     , tiltEnabledLabel
     , trackDescription
     , trackTitle
+    , validationDetail
     , validationTitle
     , waitingForHostToStart
     , waitingForPlayerTwo
@@ -527,6 +528,64 @@ validationTitle lang code =
 
         ( En, RealSteeringBonus ) ->
             "Articulated Mechanical Steering Detected!"
+
+        ( Fi, WheelOffGround n ) ->
+            String.fromInt n ++ " pyörää ei kosketa maata"
+
+        ( En, WheelOffGround n ) ->
+            String.fromInt n ++ " wheel(s) off the ground"
+
+        ( Fi, NoseOverRisk _ ) ->
+            "Painopiste lähellä akselia: voi keikahtaa"
+
+        ( En, NoseOverRisk _ ) ->
+            "Weight close to an axle: may nose over"
+
+        ( Fi, CoMOutsideSupport ) ->
+            "Painopiste pyörien ulkopuolella"
+
+        ( En, CoMOutsideSupport ) ->
+            "Centre of mass outside the wheels"
+
+        ( Fi, SteeringNotLinked ) ->
+            "Kääntöpöydässä ei ole pyöriä"
+
+        ( En, SteeringNotLinked ) ->
+            "Turntable has no wheels on it"
+
+
+{-| Localized explanation for the validation codes that need one; `Nothing`
+for codes whose title says enough.
+-}
+validationDetail : Language -> ValidationCode -> Maybe String
+validationDetail lang code =
+    case ( lang, code ) of
+        ( Fi, WheelOffGround _ ) ->
+            Just "Ilmassa roikkuvat pyörät eivät kanna autoa eikä niitä lasketa pyörien määrään."
+
+        ( En, WheelOffGround _ ) ->
+            Just "Wheels that hang in the air carry no weight and do not count toward the wheel total."
+
+        ( Fi, NoseOverRisk _ ) ->
+            Just "Siirrä painoa kauemmas akselista tai pidennä akseliväliä."
+
+        ( En, NoseOverRisk _ ) ->
+            Just "Move weight away from that axle or lengthen the wheelbase."
+
+        ( Fi, CoMOutsideSupport ) ->
+            Just "Auto kaatuu ennen kuin se lähtee rullaamaan. Lisää pyöriä painopisteen toiselle puolelle."
+
+        ( En, CoMOutsideSupport ) ->
+            Just "The car tips over before it rolls. Add wheels on the other side of the centre of mass."
+
+        ( Fi, SteeringNotLinked ) ->
+            Just "Kiinnitä etuakseli ja pyörät kääntöpöydän alle, jotta se ohjaa."
+
+        ( En, SteeringNotLinked ) ->
+            Just "Mount the front axle and wheels under the turntable so it steers."
+
+        _ ->
+            Nothing
 
 
 {-| Surface name shown in HUD telemetry pill.

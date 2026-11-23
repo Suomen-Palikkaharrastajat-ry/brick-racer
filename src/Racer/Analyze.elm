@@ -3,11 +3,19 @@ module Racer.Analyze exposing
     , CarMeshBundle
     , DynamicSubMesh
     , FallbackCacheMode(..)
+    , ValidationContext
     , analyzeDocument
     , analyzeDocumentWithMode
     , buildFallbackCache
+    , buildValidationReport
     , buildVehicleScenes
     , carWeightKgFromGrams
+    , comSupportMargin
+    , isWheelGrounded
+    , starRating
+    , steeringLinked
+    , turntablePairFiles
+    , wheelPairFiles
     , yUpFlip
     )
 
@@ -37,7 +45,7 @@ import LDraw.Resolve exposing (PartCache, PartStatus(..))
 import LDraw.Types exposing (LDrawLine(..))
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
-import Racer.Types exposing (SteeringMechanism(..), ValidationCode(..), ValidationIssue, ValidationSeverity(..), VehicleSpec, WheelSpec, lduToMeters, vec3LduToMeters)
+import Racer.Types exposing (Fix(..), SteeringMechanism(..), ValidationCode(..), ValidationIssue, ValidationSeverity(..), VehicleSpec, WheelSpec, lduToMeters, vec3LduToMeters)
 import Render.Scene as Scene exposing (Scene)
 import Set exposing (Set)
 
@@ -240,8 +248,10 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
         comM =
             vec3LduToMeters comLdu
 
+        -- Only wheels that touch the ground carry the car: stance, wheelbase and
+        -- the validation wheel count ignore wheels that hang in the air.
         ( wheelBaseM, trackWidthM ) =
-            computeStanceMetrics carWheelsWithSteer
+            computeStanceMetrics (List.filter isWheelGrounded carWheelsWithSteer)
 
         ( frontalAreaM2, dragCoeff ) =
             computeAeroMetrics carRecords boundsMinLdu boundsMaxLdu
@@ -275,9 +285,6 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
         issues =
             buildValidationReport
                 { placementCount = List.length placements
-                , wheelCount = List.length carWheelsWithSteer
-                , wheelBaseM = wheelBaseM
-                , trackWidthM = trackWidthM
                 , groundClearanceLdu = chassisMinYLdu
                 , comM = comM
                 , looseCount = List.length looseIds
@@ -1436,11 +1443,12 @@ computeInertia totalMassKg comLdu records wheelBaseM trackWidthM =
     }
 
 
-buildValidationReport :
+{-| Inputs of `buildValidationReport`, all in normalized Car Space (`+Y` up,
+`+Z` forward, tyre contact plane at `y = 0`). `comM` and the wheels'
+`localHubPosM` are in meters; `groundClearanceLdu` and `localHubPosLdu` in LDU.
+-}
+type alias ValidationContext =
     { placementCount : Int
-    , wheelCount : Int
-    , wheelBaseM : Float
-    , trackWidthM : Float
     , groundClearanceLdu : Float
     , comM : Vec3
     , looseCount : Int
@@ -1449,85 +1457,213 @@ buildValidationReport :
     , wheels : List WheelSpec
     , dragCoeff : Float
     }
-    -> List ValidationIssue
+
+
+{-| Part files the "Add wheels" fix adds: the small rim and its tyre.
+-}
+wheelPairFiles : List String
+wheelPairFiles =
+    [ "4624.dat", "3641.dat" ]
+
+
+{-| Part files the "Add turntable" fix adds: the turntable base, then its top.
+-}
+turntablePairFiles : List String
+turntablePairFiles =
+    [ "3680.dat", "3679.dat" ]
+
+
+{-| How far (LDU) a tyre bottom may sit above the contact plane and still count
+as touching the ground.
+-}
+groundContactToleranceLdu : Float
+groundContactToleranceLdu =
+    2.0
+
+
+{-| Whether a wheel's tyre bottom touches the contact plane (`y = 0` in Car
+Space), within `groundContactToleranceLdu`.
+-}
+isWheelGrounded : WheelSpec -> Bool
+isWheelGrounded wheel =
+    abs (Vec3.getY wheel.localHubPosLdu - wheel.radiusLdu) <= groundContactToleranceLdu
+
+
+{-| Fore-aft support margin of the centre of mass, as a fraction of the
+wheelbase: the distance from `comZ` to the nearer of the rearmost and frontmost
+hubs, divided by the hub span. Negative when the centre of mass lies outside the
+span. `comZ` and the hubs are compared in meters (`localHubPosM`). `Nothing`
+when the wheels have no fore-aft span.
+-}
+comSupportMargin : Float -> List WheelSpec -> Maybe Float
+comSupportMargin comZ wheels =
+    let
+        zs =
+            List.map (\w -> Vec3.getZ w.localHubPosM) wheels
+    in
+    case ( List.minimum zs, List.maximum zs ) of
+        ( Just rearZ, Just frontZ ) ->
+            let
+                hubSpan =
+                    frontZ - rearZ
+            in
+            if hubSpan < 1.0e-6 then
+                Nothing
+
+            else
+                Just (min (comZ - rearZ) (frontZ - comZ) / hubSpan)
+
+        _ ->
+            Nothing
+
+
+{-| Whether a turntable bogie actually carries a wheel: one of the wheels belongs
+to the bogie and its hub sits within 40 LDU fore-aft of the pivot.
+-}
+steeringLinked : { a | pivotPosLdu : Vec3, bogiePlacementIds : List Int } -> List WheelSpec -> Bool
+steeringLinked bogie wheels =
+    let
+        bogieIds =
+            Set.fromList bogie.bogiePlacementIds
+    in
+    List.any
+        (\w ->
+            abs (Vec3.getZ w.localHubPosLdu - Vec3.getZ bogie.pivotPosLdu)
+                < 40.0
+                && List.any (\pid -> Set.member pid bogieIds) w.placementIds
+        )
+        wheels
+
+
+{-| Lint stars (0 to 5) for a validation report. No stars while a blocker
+stands; otherwise three stars, minus one per warning, plus one per bonus, kept
+within 1 to 5. A car that is not drivable is capped at two.
+-}
+starRating : List ValidationIssue -> Bool -> Int
+starRating issues isDrivable =
+    let
+        countOf sev =
+            List.length (List.filter (\i -> i.severity == sev) issues)
+
+        score =
+            max 1 (min 5 (3 - countOf Warning + countOf Bonus))
+    in
+    if countOf Blocker > 0 then
+        0
+
+    else if isDrivable then
+        score
+
+    else
+        min 2 score
+
+
+{-| Mechanical validation findings for an analyzed car. Only grounded wheels
+(`isWheelGrounded`) count toward the wheel count, the stance checks, the
+centre-of-mass support check and the steering linkage.
+-}
+buildValidationReport : ValidationContext -> List ValidationIssue
 buildValidationReport ctx =
     let
+        ( grounded, offGround ) =
+            List.partition isWheelGrounded ctx.wheels
+
+        wheelCount =
+            List.length grounded
+
+        ( wheelBaseM, trackWidthM ) =
+            computeStanceMetrics grounded
+
+        plain severity code detail =
+            { severity = severity, code = code, detail = detail, fix = Nothing }
+
         blockerEmpty =
             if ctx.placementCount == 0 then
-                [ { severity = Blocker
-                  , code = EmptyModel
-                  , detail = "Model has no placed bricks."
-                  }
-                ]
+                [ plain Blocker EmptyModel "Model has no placed bricks." ]
 
             else
                 []
 
         blockerWheels =
-            if ctx.placementCount > 0 && ctx.wheelCount < 3 then
+            if ctx.placementCount > 0 && wheelCount < 3 then
                 [ { severity = Blocker
-                  , code = TooFewWheels ctx.wheelCount
-                  , detail = "Need at least 3 wheels to balance and steer down the hill."
+                  , code = TooFewWheels wheelCount
+                  , detail = "Need at least 3 wheels on the ground to balance and steer down the hill."
+                  , fix = Just (AddParts wheelPairFiles)
                   }
                 ]
 
             else
                 []
 
-        blockerStance =
-            if ctx.wheelCount >= 3 && (ctx.wheelBaseM < 0.1 || ctx.trackWidthM < 0.1) then
-                [ { severity = Blocker
-                  , code = CollinearStance
-                  , detail = "Wheels are aligned on one line; add front/rear axle spread."
+        infoOffGround =
+            if List.isEmpty offGround then
+                []
+
+            else
+                [ { severity = Info
+                  , code = WheelOffGround (List.length offGround)
+                  , detail = String.fromInt (List.length offGround) ++ " wheel(s) do not touch the ground and carry no weight."
+                  , fix = Just (Select (List.concatMap .placementIds offGround))
                   }
                 ]
+
+        blockerStance =
+            if wheelCount >= 3 && (wheelBaseM < 0.1 || trackWidthM < 0.1) then
+                [ plain Blocker CollinearStance "Wheels are aligned on one line; add front/rear axle spread." ]
+
+            else
+                []
+
+        supportIssues =
+            if wheelCount >= 3 && wheelBaseM >= 0.1 then
+                case comSupportMargin (Vec3.getZ ctx.comM) grounded of
+                    Just margin ->
+                        if margin < 0 then
+                            [ plain Blocker CoMOutsideSupport "Centre of mass lies outside the wheels; the car tips over before it rolls." ]
+
+                        else if margin < 0.1 then
+                            [ plain Warning (NoseOverRisk margin) "Centre of mass sits close to one axle; the car may nose over or wheelie." ]
+
+                        else
+                            []
+
+                    Nothing ->
+                        []
 
             else
                 []
 
         warningClearance =
-            if ctx.wheelCount >= 3 && ctx.groundClearanceLdu < -0.5 then
-                [ { severity = Warning
-                  , code = BellyScrape ctx.groundClearanceLdu
-                  , detail = "Chassis drags below tires (-" ++ String.fromFloat (abs ctx.groundClearanceLdu) ++ " LDU)."
-                  }
+            if wheelCount >= 3 && ctx.groundClearanceLdu < -0.5 then
+                [ plain Warning
+                    (BellyScrape ctx.groundClearanceLdu)
+                    ("Chassis drags below tires (-" ++ String.fromFloat (abs ctx.groundClearanceLdu) ++ " LDU).")
                 ]
 
             else
                 []
 
         tippyRatio =
-            Vec3.getY ctx.comM / (0.5 * max 0.25 ctx.trackWidthM)
+            Vec3.getY ctx.comM / (0.5 * max 0.25 trackWidthM)
 
         warningCoM =
-            if ctx.wheelCount >= 3 && tippyRatio > 1.35 then
-                [ { severity = Warning
-                  , code = HighCenterOfMass tippyRatio
-                  , detail = "High center of gravity — shift weight into corners to avoid tipping."
-                  }
-                ]
+            if wheelCount >= 3 && tippyRatio > 1.35 then
+                [ plain Warning (HighCenterOfMass tippyRatio) "High center of gravity — shift weight into corners to avoid tipping." ]
 
             else
                 []
 
         warningLoose =
             if ctx.looseCount > 0 then
-                [ { severity = Warning
-                  , code = DisconnectedBricks ctx.looseCount
-                  , detail = String.fromInt ctx.looseCount ++ " loose brick(s) not attached to main chassis."
-                  }
-                ]
+                [ plain Warning (DisconnectedBricks ctx.looseCount) (String.fromInt ctx.looseCount ++ " loose brick(s) not attached to main chassis.") ]
 
             else
                 []
 
         warningMissing =
             if ctx.missingCount > 0 then
-                [ { severity = Info
-                  , code = MissingPartGeometry ctx.missingCount
-                  , detail = String.fromInt ctx.missingCount ++ " part file(s) using placeholder boxes."
-                  }
-                ]
+                [ plain Info (MissingPartGeometry ctx.missingCount) (String.fromInt ctx.missingCount ++ " part file(s) using placeholder boxes.") ]
 
             else
                 []
@@ -1538,41 +1674,30 @@ buildValidationReport ctx =
                     [ { severity = Info
                       , code = FixedAxleTip
                       , detail = "Fixed axles detected — using Soapbox Weight-Shift virtual steering."
+                      , fix = Just (AddParts turntablePairFiles)
                       }
                     ]
 
-                TurntableBogie _ ->
-                    [ { severity = Bonus
-                      , code = RealSteeringBonus
-                      , detail = "Turntable steering bogie detected (+25% turn-in agility)."
-                      }
-                    ]
+                TurntableBogie b ->
+                    if steeringLinked b grounded then
+                        [ plain Bonus RealSteeringBonus "Turntable steering bogie detected (+25% turn-in agility)." ]
+
+                    else
+                        [ plain Warning SteeringNotLinked "Turntable found, but no wheel is mounted on it, so it does not steer." ]
 
                 TwinKnuckle _ ->
-                    [ { severity = Bonus
-                      , code = RealSteeringBonus
-                      , detail = "Dual-knuckle front steering detected (+25% turn-in agility)."
-                      }
-                    ]
+                    [ plain Bonus RealSteeringBonus "Dual-knuckle front steering detected (+25% turn-in agility)." ]
 
         tireBonus =
-            if List.any .hasRubberTire ctx.wheels then
-                [ { severity = Bonus
-                  , code = RubberGripBonus
-                  , detail = "Rubber tires equipped for full lateral cornering grip."
-                  }
-                ]
+            if List.any .hasRubberTire grounded then
+                [ plain Bonus RubberGripBonus "Rubber tires equipped for full lateral cornering grip." ]
 
             else
                 []
 
         aeroBonus =
             if ctx.dragCoeff < 0.78 then
-                [ { severity = Bonus
-                  , code = AeroWedgeBonus
-                  , detail = "Sloped bodywork lowers aerodynamic drag."
-                  }
-                ]
+                [ plain Bonus AeroWedgeBonus "Sloped bodywork lowers aerodynamic drag." ]
 
             else
                 []
@@ -1580,9 +1705,11 @@ buildValidationReport ctx =
     blockerEmpty
         ++ blockerWheels
         ++ blockerStance
+        ++ supportIssues
         ++ warningClearance
         ++ warningCoM
         ++ warningLoose
+        ++ infoOffGround
         ++ warningMissing
         ++ steeringNote
         ++ tireBonus

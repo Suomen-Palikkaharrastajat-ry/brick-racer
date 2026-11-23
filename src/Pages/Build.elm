@@ -39,7 +39,7 @@ import Racer.Editor as Editor exposing (Base, PartEntry)
 import Racer.GarageFloor as GarageFloor
 import Racer.I18n as RI18n
 import Racer.Ingest as Ingest
-import Racer.Types exposing (PresetBuild, SteeringMechanism(..), ValidationSeverity(..))
+import Racer.Types exposing (Fix(..), PresetBuild, ValidationCode(..), ValidationIssue, ValidationSeverity(..))
 import Set
 import Studio.Colours as Colours
 import Studio.Core as Core
@@ -87,6 +87,7 @@ type Msg
     = StudioMsg Core.Msg
     | PickColour Int
     | AddPart String
+    | AddPartList (List String)
     | Turn TurnDirection
     | Raise
     | Lower
@@ -306,6 +307,18 @@ updateModel msg model =
                     }
             in
             stay (runCore (Core.addPartAt file model.colour matrix) updatedModel)
+
+        AddPartList files ->
+            List.foldl
+                (\file ( acc, accCmd, _ ) ->
+                    let
+                        ( added, addCmd, _ ) =
+                            updateModel (AddPart file) acc
+                    in
+                    ( added, Cmd.batch [ accCmd, addCmd ], Stay )
+                )
+                ( model, Cmd.none, Stay )
+                files
 
         Turn direction ->
             stay (runCore (Core.turnSelected direction) model)
@@ -602,7 +615,7 @@ requestThumbnails model =
 -}
 missingPartFiles : List String
 missingPartFiles =
-    [ "4600.dat", "3680.dat", "3829c01.dat", "4079.dat" ]
+    Analyze.wheelPairFiles ++ Analyze.turntablePairFiles ++ [ "3829c01.dat", "4079.dat" ]
 
 
 dedupe : List a -> List a
@@ -1649,41 +1662,14 @@ viewReviewDrawer model =
         spec =
             analyzed.spec
 
-        tooFewWheels =
-            List.length spec.wheels < 3
-
-        blockers =
-            List.length (List.filter (\i -> i.severity == Blocker) spec.issues)
-
-        warnings =
-            List.length (List.filter (\i -> i.severity == Warning) spec.issues)
-
         hasBlocking =
-            blockers > 0
+            List.any (\i -> i.severity == Blocker) spec.issues
 
         ready =
             spec.isDrivable && not hasBlocking
 
-        -- Five stars: a blocker costs two, a warning one. A car that cannot be
-        -- driven yet is capped at two stars.
-        bonuses =
-            List.length (List.filter (\i -> i.severity == Bonus) spec.issues)
-
-        -- No stars while a blocker stands; otherwise three stars, minus one per
-        -- warning, plus one per bonus. Not drivable caps the rating at two.
         starCount =
-            let
-                score =
-                    max 1 (min 5 (3 - warnings + bonuses))
-            in
-            if blockers > 0 then
-                0
-
-            else if spec.isDrivable then
-                score
-
-            else
-                min 2 score
+            Analyze.starRating spec.issues spec.isDrivable
 
         statusChip =
             div
@@ -1763,11 +1749,16 @@ viewReviewDrawer model =
                 , div [ Attr.style "font-size" "15px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoWhite, Attr.style "overflow-wrap" "anywhere" ] [ text val ]
                 ]
 
-        -- Icon button that adds a missing part, drawn with its real LDraw thumbnail.
-        helperBtn label partFile =
+        -- Icon button that adds missing parts, drawn with the first part's real
+        -- LDraw thumbnail.
+        helperBtn label partFiles =
+            let
+                partFile =
+                    List.head partFiles |> Maybe.withDefault ""
+            in
             button
                 [ Attr.type_ "button"
-                , onClick (AddPart partFile)
+                , onClick (AddPartList partFiles)
                 , Attr.title label
                 , Attr.attribute "aria-label" label
                 , Attr.style "position" "relative"
@@ -1813,29 +1804,44 @@ viewReviewDrawer model =
                     [ text "+" ]
                 ]
 
+        fixLabel : ValidationIssue -> String
+        fixLabel issue =
+            case issue.code of
+                TooFewWheels _ ->
+                    tr lang "Add wheels" "Lisää pyörät"
+
+                FixedAxleTip ->
+                    tr lang "Add turntable" "Lisää kääntöpöytä"
+
+                other ->
+                    RI18n.validationTitle lang other
+
+        fixButtons =
+            List.filterMap
+                (\issue ->
+                    case issue.fix of
+                        Just (AddParts files) ->
+                            Just (helperBtn (fixLabel issue) files)
+
+                        _ ->
+                            Nothing
+                )
+                spec.issues
+
         missingButtons =
-            List.filterMap identity
-                [ if tooFewWheels then
-                    Just (helperBtn (tr lang "Add wheels" "Lisää pyörät") "4600.dat")
+            fixButtons
+                ++ List.filterMap identity
+                    [ if not hasSteeringWheel then
+                        Just (helperBtn (tr lang "Add steering wheel" "Lisää ratti") [ "3829c01.dat" ])
 
-                  else
-                    Nothing
-                , if spec.steering == FixedAxleFallback then
-                    Just (helperBtn (tr lang "Add turntable" "Lisää kääntöpöytä") "3680.dat")
+                      else
+                        Nothing
+                    , if not hasSeat then
+                        Just (helperBtn (tr lang "Add seat" "Lisää istuin") [ "4079.dat" ])
 
-                  else
-                    Nothing
-                , if not hasSteeringWheel then
-                    Just (helperBtn (tr lang "Add steering wheel" "Lisää ratti") "3829c01.dat")
-
-                  else
-                    Nothing
-                , if not hasSeat then
-                    Just (helperBtn (tr lang "Add seat" "Lisää istuin") "4079.dat")
-
-                  else
-                    Nothing
-                ]
+                      else
+                        Nothing
+                    ]
 
         missingSection =
             if List.isEmpty missingButtons then
@@ -1881,7 +1887,15 @@ viewReviewDrawer model =
                                     , Attr.style "background" (severityColour issue)
                                     ]
                                     []
-                                , text (RI18n.validationTitle lang issue.code)
+                                , div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "2px" ]
+                                    [ text (RI18n.validationTitle lang issue.code)
+                                    , case RI18n.validationDetail lang issue.code of
+                                        Just detail ->
+                                            span [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8" ] [ text detail ]
+
+                                        Nothing ->
+                                            text ""
+                                    ]
                                 ]
                         )
                         spec.issues

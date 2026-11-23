@@ -4,6 +4,7 @@ module Racer.Types exposing
     , Checkpoint
     , ControlPoint
     , CrashReason(..)
+    , Fix(..)
     , GeneratedTrack
     , InputState
     , LeaderboardEntry
@@ -394,6 +395,22 @@ type ValidationCode
     | RubberGripBonus
     | AeroWedgeBonus
     | RealSteeringBonus
+    | WheelOffGround Int
+    | NoseOverRisk Float
+    | CoMOutsideSupport
+    | SteeringNotLinked
+
+
+{-| An action the car editor can offer to resolve a `ValidationIssue`.
+
+`AddParts` lists part files to add one after another, `Select` and `Remove`
+name placement ids (flattened, as `Racer.Analyze` numbers them).
+
+-}
+type Fix
+    = AddParts (List String)
+    | Select (List Int)
+    | Remove (List Int)
 
 
 {-| One structured validation diagnostic produced by `Racer.Analyze`.
@@ -402,6 +419,7 @@ type alias ValidationIssue =
     { severity : ValidationSeverity
     , code : ValidationCode
     , detail : String
+    , fix : Maybe Fix
     }
 
 
