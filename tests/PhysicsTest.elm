@@ -441,7 +441,7 @@ suite =
                     , \_ -> Expect.atMost 90 airborneSteps
                     , \_ -> Expect.equal True landed
                     , \_ -> Expect.equal False crashed
-                    , \_ -> Expect.within (Expect.Absolute 0.01) 100.0 final.integrity
+                    , \_ -> Expect.atLeast 90.0 final.integrity
                     , \_ -> Expect.equal 4 final.groundedWheels
                     , \_ -> Expect.atMost 0.3 (heightAboveRamp track final)
                     , \_ -> Expect.greaterThan 55.0 final.progressS

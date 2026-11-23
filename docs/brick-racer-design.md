@@ -458,18 +458,18 @@ Mute state and master volume persist in `localStorage` (`palikkakehys.racer.audi
 
 ```mermaid
 stateDiagram-v2
-    [*] --> MenuPage : "Init without #b/ or #model="
-    [*] --> LoadGaragePage : "Init with model hash in URL"
-    MenuPage --> LoadGaragePage : "Select preset / paste URL / drop file"
-    LoadGaragePage --> RacePage : "Validation OK -> Start Race"
+    [*] --> SetupPage : "Unified setup screen (loads default preset or URL hash)"
+    SetupPage --> RacePage : "Validation OK -> Start Race"
+    SetupPage --> BuildPage : "Rakenna oma auto / Muokkaa autoa"
+    BuildPage --> SetupPage : "Quit / Finished"
     RacePage --> RacePaused : "Esc / P / Tab Blur"
     RacePaused --> RacePage : "Resume"
-    RacePaused --> LoadGaragePage : "Inspect Car / Change Track"
+    RacePaused --> SetupPage : "Inspect Car / Change Track"
     RacePage --> CrashRecovery : "Integrity <= 0 or Fall Out"
     CrashRecovery --> RacePage : "Respawn at Checkpoint (Auto 1.5s or R)"
     RacePage --> FinishLeaderboardPage : "Cross Finish Gate"
     FinishLeaderboardPage --> RacePage : "Race Again (Same Car/Track)"
-    FinishLeaderboardPage --> MenuPage : "New Car / Track"
+    FinishLeaderboardPage --> SetupPage : "Change Car / Track"
 ```
 
 ### 8.2 Core Types (`src/Main.elm`, `src/Racer/Types.elm`)
@@ -502,10 +502,10 @@ type alias Model =
     }
 
 type Page
-    = MenuPage MenuState
-    | LoadGaragePage GarageState      -- Loading parts + Validation + 3D Orbit Preview
+    = SetupPage GarageState           -- Unified setup screen: 3D Turntable + Diagnostics + Presets + Course + Importer
     | RacePage RaceState              -- Countdown / Racing / Paused / CrashRecovery
     | FinishLeaderboardPage FinishState
+    | BuildPage Build.Model           -- In-game starter base car editor
 ```
 
 Inside `RaceState`:

@@ -2,16 +2,23 @@ module Racer.I18n exposing
     ( audioMutedLabel
     , audioUnmutedLabel
     , backToMenuLabel
+    , basesTab
+    , bothPlayersReady
     , buildCarHeading
     , buildCarHint
+    , buildTab
     , camChaseLabel
     , camHoodLabel
     , camOrbitLabel
+    , carsAndBasesTab
     , changeCarLabel
     , checkpointBanner
     , controlsSummary
+    , copyRoomLinkButton
     , coursesHeading
     , crashReasonText
+    , createGridRoomButton
+    , createTwoPlayerRoomButton
     , defaultPresetSectionTitle
     , dropHintLabel
     , dropZoneButton
@@ -24,30 +31,54 @@ module Racer.I18n exposing
     , garageReadyToRoll
     , garageResolveProgress
     , garageSteeringLabel
+    , garageTab
     , garageTooFewWheelsHint
     , garageWheelsLabel
     , goBanner
     , handbrakeHint
     , healthLabel
+    , hotSeatSingleDesc
+    , hotSeatSplitDesc
+    , hotSeatTabLabel
     , inspectCarButton
+    , joinRoomButton
+    , leaveRoomButton
     , menuSubtitle
     , menuTitle
+    , needsFixBanner
+    , needsPolishBanner
+    , networkHostGridDesc
+    , networkHostGridTitle
+    , networkJoinTitle
+    , networkTabLabel
+    , networkTwoPlayersDesc
+    , networkTwoPlayersTitle
     , newRecordBadge
+    , openBuildTab
+    , openBuilderButton
+    , openBuilderSubtext
     , pasteButtonLabel
     , pasteErrorFallback
     , pastePlaceholder
     , pauseLabel
     , pausedHeadline
+    , playerOptionsHeading
     , raceAgainButton
     , raceAnywayButton
+    , readyToRaceBanner
     , recoveryHint
     , resetCheckpointLabel
     , resumeButton
+    , reviewTab
+    , scanQrButton
     , seedLabel
     , shareRaceUrlButton
     , shareUrlCopiedNotice
+    , singlePlayerModeLabel
     , smashBanner
     , splitLabel
+    , splitScreenModeLabel
+    , startMultiplayerRaceButton
     , startRaceButton
     , steeringMechName
     , surfaceName
@@ -56,6 +87,8 @@ module Racer.I18n exposing
     , trackDescription
     , trackTitle
     , validationTitle
+    , waitingForHostToStart
+    , waitingForPlayerTwo
     , warningOffTrack
     , warningScraping
     , warningTipping
@@ -72,13 +105,8 @@ import Racer.Types exposing (CrashReason(..), SteeringMechanism(..), SurfaceType
 {-| Main game title.
 -}
 menuTitle : Language -> String
-menuTitle lang =
-    case lang of
-        Fi ->
-            "Palikka-Mäkiauto"
-
-        En ->
-            "Brick Racer"
+menuTitle _ =
+    "Mäkiautoleikki"
 
 
 {-| Main game subtitle explaining the brick-family build-to-race workflow.
@@ -147,22 +175,22 @@ trackDescription : Language -> TrackId -> String
 trackDescription lang id =
     case ( lang, id ) of
         ( Fi, FarmLane ) ->
-            "0,5 km / −150 m • Hiekkatie ja sora, kaksi mutkaa, jyrkkä lasku pihaan"
+            "1,0 km / −300 m • Hiekkatie ja sora, kaksi mutkaa, jyrkkä lasku pihaan"
 
         ( En, FarmLane ) ->
-            "0.5 km / -150 m • Dirt and gravel lane, two bends, steep drop into the farmyard"
+            "1.0 km / -300 m • Dirt and gravel lane, two bends, steep drop into the farmyard"
 
         ( Fi, ForestTrail ) ->
-            "0,55 km / −175 m • Juurakkoinen metsätie, soraränni ja tukkihyppy"
+            "1,1 km / −350 m • Juurakkoinen metsätie, soraränni ja tukkihyppy"
 
         ( En, ForestTrail ) ->
-            "0.55 km / -175 m • Rooty forest track, gravel chute, log hump"
+            "1.1 km / -350 m • Rooty forest track, gravel chute, log hump"
 
         ( Fi, MeadowPath ) ->
-            "0,45 km / −150 m • Kapea ja jyrkin: ruohopolku, kumpu ja mättäät"
+            "0,85 km / −300 m • Kapea ja jyrkin: ruohopolku, kumpu ja mättäät"
 
         ( En, MeadowPath ) ->
-            "0.45 km / -150 m • Narrowest and steepest: grass footpath, hump, tussocks"
+            "0.85 km / -300 m • Narrowest and steepest: grass footpath, hump, tussocks"
 
 
 {-| Paste input placeholder text.
@@ -279,10 +307,10 @@ startRaceButton : Language -> String
 startRaceButton lang =
     case lang of
         Fi ->
-            "Laske mäkeä alas!"
+            "Laske mäki alas!"
 
         En ->
-            "Drop Down the Hill!"
+            "Roll downhill!"
 
 
 {-| Button to bypass non-blocking warnings cleanly.
@@ -944,3 +972,388 @@ editCarButton lang =
 
         En ->
             "Edit car"
+
+
+{-| Open builder button on setup screen.
+-}
+openBuilderButton : Language -> String
+openBuilderButton lang =
+    case lang of
+        Fi ->
+            "Rakenna oma kärry!"
+
+        En ->
+            "Build your own cart!"
+
+
+{-| Subtext under open builder button.
+-}
+openBuilderSubtext : Language -> String
+openBuilderSubtext lang =
+    case lang of
+        Fi ->
+            "Vaihda alustaa, lisää palikoita tai tee varikkotarkastus"
+
+        En ->
+            "Change chassis, add bricks or run garage inspection"
+
+
+{-| 1 Player mode label.
+-}
+singlePlayerModeLabel : Language -> String
+singlePlayerModeLabel lang =
+    case lang of
+        Fi ->
+            "Yksinpeli (1P)"
+
+        En ->
+            "Single Player (1P)"
+
+
+{-| 2 Player split-screen mode label.
+-}
+splitScreenModeLabel : Language -> String
+splitScreenModeLabel lang =
+    case lang of
+        Fi ->
+            "Jaettu ruutu (2P)"
+
+        En ->
+            "Split Screen (2P)"
+
+
+{-| Heading for bottom player options section.
+-}
+playerOptionsHeading : Language -> String
+playerOptionsHeading lang =
+    case lang of
+        Fi ->
+            "Pelaajat & Moninpeli"
+
+        En ->
+            "Players & Multiplayer"
+
+
+{-| Tab label for car presets and starter bases in builder.
+-}
+carsAndBasesTab : Language -> String
+carsAndBasesTab lang =
+    case lang of
+        Fi ->
+            "Autot & alustat"
+
+        En ->
+            "Cars & chassis"
+
+
+{-| Tab label for opening builds in builder.
+-}
+openBuildTab : Language -> String
+openBuildTab lang =
+    case lang of
+        Fi ->
+            "Avaa malli"
+
+        En ->
+            "Open build"
+
+
+{-| Tab label for garage inspection in builder.
+-}
+garageTab : Language -> String
+garageTab lang =
+    reviewTab lang
+
+
+{-| Tab label for evaluation/review in builder.
+-}
+reviewTab : Language -> String
+reviewTab lang =
+    case lang of
+        Fi ->
+            "Arvostele"
+
+        En ->
+            "Review"
+
+
+{-| Tab label for starter bases in builder.
+-}
+basesTab : Language -> String
+basesTab lang =
+    case lang of
+        Fi ->
+            "Alustat"
+
+        En ->
+            "Bases"
+
+
+readyToRaceBanner : Language -> String
+readyToRaceBanner lang =
+    case lang of
+        Fi ->
+            "⭐⭐⭐ VALMIS MÄKEEN"
+
+        En ->
+            "⭐⭐⭐ READY TO RACE"
+
+
+needsFixBanner : Language -> String
+needsFixBanner lang =
+    case lang of
+        Fi ->
+            "⚠️ VAATII KORJAUSTA"
+
+        En ->
+            "⚠️ NEEDS FIX"
+
+
+needsPolishBanner : Language -> String
+needsPolishBanner lang =
+    case lang of
+        Fi ->
+            "ℹ️ VIIMEISTELTÄVISSÄ"
+
+        En ->
+            "ℹ️ CAN BE POLISHED"
+
+
+{-| Tab label for brick palette / parts in builder.
+-}
+buildTab : Language -> String
+buildTab lang =
+    case lang of
+        Fi ->
+            "Palikat"
+
+        En ->
+            "Bricks"
+
+
+{-| Hot seat tab label.
+-}
+hotSeatTabLabel : Language -> String
+hotSeatTabLabel lang =
+    case lang of
+        Fi ->
+            "Paikallispeli (Hot seat)"
+
+        En ->
+            "Local Play (Hot seat)"
+
+
+{-| Network play tab label.
+-}
+networkTabLabel : Language -> String
+networkTabLabel lang =
+    case lang of
+        Fi ->
+            "Verkkopeli (Multiplayer)"
+
+        En ->
+            "Network Play (Multiplayer)"
+
+
+{-| Single player description.
+-}
+hotSeatSingleDesc : Language -> String
+hotSeatSingleDesc lang =
+    case lang of
+        Fi ->
+            "Yksinpeli: aja kelloa vastaan ja paranna radan ennätysaikaa."
+
+        En ->
+            "Solo time trial: race against the clock and beat track records."
+
+
+{-| Split screen description.
+-}
+hotSeatSplitDesc : Language -> String
+hotSeatSplitDesc lang =
+    case lang of
+        Fi ->
+            "Jaettu ruutu tällä laitteella kahdelle pelaajalle (P1: Nuolinäppäimet / P2: WASD)."
+
+        En ->
+            "Split-screen on this device for 2 players (P1: Arrows / P2: WASD)."
+
+
+{-| Network 2 players section title.
+-}
+networkTwoPlayersTitle : Language -> String
+networkTwoPlayersTitle lang =
+    case lang of
+        Fi ->
+            "2 Pelaajan verkkokisa"
+
+        En ->
+            "2-Player Network Race"
+
+
+{-| Network 2 players description.
+-}
+networkTwoPlayersDesc : Language -> String
+networkTwoPlayersDesc lang =
+    case lang of
+        Fi ->
+            "Luo kahden pelaajan huone. Toinen pelaaja skannaa QR-koodin puhelimellaan ja liittyy kisaan."
+
+        En ->
+            "Create a 2-player room. The second player scans the QR code with their phone to join."
+
+
+{-| Network host grid section title.
+-}
+networkHostGridTitle : Language -> String
+networkHostGridTitle lang =
+    case lang of
+        Fi ->
+            "Isännöi moninpeliä (Ruudukko / max 8)"
+
+        En ->
+            "Host Multiplayer (Grid / max 8)"
+
+
+{-| Network host grid description.
+-}
+networkHostGridDesc : Language -> String
+networkHostGridDesc lang =
+    case lang of
+        Fi ->
+            "Isännöi kisaa isolla ruudulla (äly-TV / PC). Pelaajat liittyvät puhelimillaan ja isäntä näyttää live-ruudukkonäkymän."
+
+        En ->
+            "Host on a big screen (Smart TV / PC). Players join on phones; host displays the live multi-camera grid."
+
+
+{-| Network join section title.
+-}
+networkJoinTitle : Language -> String
+networkJoinTitle lang =
+    case lang of
+        Fi ->
+            "Liity peliin"
+
+        En ->
+            "Join Room"
+
+
+{-| Create 2-player room button label.
+-}
+createTwoPlayerRoomButton : Language -> String
+createTwoPlayerRoomButton lang =
+    case lang of
+        Fi ->
+            "Luo 2P-peli"
+
+        En ->
+            "Create 2P Race"
+
+
+{-| Create grid session button label.
+-}
+createGridRoomButton : Language -> String
+createGridRoomButton lang =
+    case lang of
+        Fi ->
+            "Luo ruudukkohuone"
+
+        En ->
+            "Create Grid Room"
+
+
+{-| Join room button label.
+-}
+joinRoomButton : Language -> String
+joinRoomButton lang =
+    case lang of
+        Fi ->
+            "Liity"
+
+        En ->
+            "Join"
+
+
+{-| Scan QR button label.
+-}
+scanQrButton : Language -> String
+scanQrButton lang =
+    case lang of
+        Fi ->
+            "Lue QR-koodi"
+
+        En ->
+            "Scan QR"
+
+
+{-| Copy room link button label.
+-}
+copyRoomLinkButton : Language -> String
+copyRoomLinkButton lang =
+    case lang of
+        Fi ->
+            "Kopioi linkki"
+
+        En ->
+            "Copy link"
+
+
+{-| Waiting for second player status text.
+-}
+waitingForPlayerTwo : Language -> String
+waitingForPlayerTwo lang =
+    case lang of
+        Fi ->
+            "Odotetaan toista pelaajaa (1/2)..."
+
+        En ->
+            "Waiting for second player to join (1/2)..."
+
+
+{-| Both players ready status text.
+-}
+bothPlayersReady : Language -> String
+bothPlayersReady lang =
+    case lang of
+        Fi ->
+            "Molemmat pelaajat liittyneet (2/2)!"
+
+        En ->
+            "Both players joined (2/2)!"
+
+
+{-| Start multiplayer race button label.
+-}
+startMultiplayerRaceButton : Language -> String
+startMultiplayerRaceButton lang =
+    case lang of
+        Fi ->
+            "Aloita kisa!"
+
+        En ->
+            "Start Race!"
+
+
+{-| Leave / cancel room button label.
+-}
+leaveRoomButton : Language -> String
+leaveRoomButton lang =
+    case lang of
+        Fi ->
+            "Poistu huoneesta"
+
+        En ->
+            "Leave Room"
+
+
+{-| Waiting for host to start race status text.
+-}
+waitingForHostToStart : Language -> String
+waitingForHostToStart lang =
+    case lang of
+        Fi ->
+            "Odotetaan isännän käynnistävän kisan..."
+
+        En ->
+            "Waiting for host to start the race..."

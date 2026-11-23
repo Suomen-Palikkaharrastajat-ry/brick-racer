@@ -1,0 +1,24 @@
+0 FILE pinewood-classic.ldr
+0 Pinewood Plank Racer Base
+0 Name: Pinewood Plank Racer Base
+0 Author: Brick Family starter bases
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+0 // Parts: 11 (all inside the grouped submodel pinewood-classic-base.ldr)
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 pinewood-classic-base.ldr
+0 NOFILE
+0 FILE pinewood-classic-base.ldr
+0 Pinewood Plank Racer chassis
+0 Name: pinewood-classic-base.ldr
+0 Author: Brick Family starter bases
+1 72 0 0 60 1 0 0 0 1 0 0 0 1 4600.dat
+1 15 33 5 60 0 0 1 0 1 0 -1 0 0 4624.dat
+1 0 33 5 60 0 0 1 0 1 0 -1 0 0 3641.dat
+1 15 -33 5 60 0 0 -1 0 1 0 1 0 0 4624.dat
+1 0 -33 5 60 0 0 -1 0 1 0 1 0 0 3641.dat
+1 72 0 0 -60 1 0 0 0 1 0 0 0 1 4600.dat
+1 15 33 5 -60 0 0 1 0 1 0 -1 0 0 4624.dat
+1 0 33 5 -60 0 0 1 0 1 0 -1 0 0 3641.dat
+1 15 -33 5 -60 0 0 -1 0 1 0 1 0 0 4624.dat
+1 0 -33 5 -60 0 0 -1 0 1 0 1 0 0 3641.dat
+1 4 0 -8 0 0 0 1 0 1 0 -1 0 0 3034.dat
+0 NOFILE

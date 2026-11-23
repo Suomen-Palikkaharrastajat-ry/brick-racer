@@ -114,7 +114,7 @@ builtCarTest base =
                 |> Result.map .document
     in
     describe base.id
-        [ test "drives on 4 wheels with no loose part" <|
+        [ test "drives on 3 or 4 wheels with no loose part" <|
             \_ ->
                 let
                     spec =
@@ -184,8 +184,7 @@ analyse doc =
 drives : VehicleSpec -> Bool
 drives spec =
     spec.isDrivable
-        && List.length spec.wheels
-        == 4
+        && (List.length spec.wheels == 3 || List.length spec.wheels == 4)
         && List.isEmpty spec.loosePlacementIds
         && List.isEmpty (List.filter (\i -> i.severity == Blocker) spec.issues)
 

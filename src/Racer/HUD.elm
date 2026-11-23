@@ -13,6 +13,7 @@ module Racer.HUD exposing
 speedometer, surface badge, integrity bar, pause & recovery modals, and touch/tilt pads.
 -}
 
+import DesignTokens.Colors as Brand
 import FeatherIcons
 import Html exposing (Html, button, div, span, text)
 import Html.Attributes as Attr
@@ -413,9 +414,9 @@ viewCenterOverlays data actions =
                         div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.justify_center, Tw.my_auto ] ]
                             [ div
                                 [ Tw.classes [ Tw.text_n6xl, Tw.font_extrabold, Tw.px Th.s8, Tw.py Th.s4, Tw.rounded_n2xl, Tw.border ]
-                                , Attr.style "background" "rgba(15, 23, 42, 0.84)"
-                                , Attr.style "border-color" "#facc15"
-                                , Attr.style "color" "#facc15"
+                                , Attr.style "background" "rgba(5, 19, 29, 0.88)"
+                                , Attr.style "border-color" Brand.legoYellow
+                                , Attr.style "color" Brand.legoYellow
                                 ]
                                 [ text bannerText ]
                             ]
@@ -481,8 +482,8 @@ viewCrashOverlay lang rec actions =
         [ div
             [ Tw.classes [ Tw.rounded_n2xl, Tw.p Th.s6, Tw.border, Tw.w_full, Tw.text_center, Tw.flex, Tw.flex_col, Tw.gap Th.s3 ]
             , Attr.style "max-width" "28rem"
-            , Attr.style "background" "rgba(15, 23, 42, 0.9)"
-            , Attr.style "border-color" "#ef4444"
+            , Attr.style "background" "rgba(5, 19, 29, 0.92)"
+            , Attr.style "border-color" Brand.red
             ]
             [ div [ Tw.classes [ Tw.text_n2xl, Tw.font_extrabold ], Attr.style "color" "#f87171" ]
                 [ text (RI18n.crashReasonText lang rec.reason) ]
@@ -630,13 +631,13 @@ two more hard crashes will break the car apart.
 healthColor : Int -> String
 healthColor pct =
     if pct > 65 then
-        "#22c55e"
+        Brand.green
 
     else if pct > 30 then
-        "#f59e0b"
+        Brand.legoYellow
 
     else
-        "#ef4444"
+        Brand.red
 
 
 hazardChip : String -> String -> Html msg
@@ -644,7 +645,7 @@ hazardChip col labelStr =
     span
         [ Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded_sm ]
         , Attr.style "background" col
-        , Attr.style "color" "#0f172a"
+        , Attr.style "color" Brand.legoBlack
         ]
         [ text labelStr ]
 

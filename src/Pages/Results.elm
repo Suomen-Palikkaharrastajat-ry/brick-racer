@@ -7,6 +7,7 @@ module Pages.Results exposing
 {-| Post-race podium, checkpoint split table, personal-best badge, and leaderboard (`FinishLeaderboardPage`).
 -}
 
+import DesignTokens.Colors as Brand
 import FeatherIcons
 import Html exposing (Html, div, h1, h2, span, text)
 import Html.Attributes as Attr
@@ -59,13 +60,13 @@ view data actions =
     in
     div
         [ Tw.classes [ Tw.min_h_screen, Tw.w_full, Tw.flex, Tw.items_center, Tw.justify_center, Tw.p Th.s4, Tw.overflow_y_auto ]
-        , Attr.style "background" "linear-gradient(155deg, #0f172a 0%, #1e293b 55%, #0c4a6e 100%)"
-        , Attr.style "color" "#f8fafc"
+        , Attr.style "background" ("linear-gradient(155deg, " ++ Brand.legoBlack ++ " 0%, #0d2235 55%, " ++ Brand.legoBlack ++ " 100%)")
+        , Attr.style "color" Brand.legoWhite
         ]
         [ div
             [ Tw.classes [ Tw.w_full, Tw.rounded_n2xl, Tw.p Th.s6, Tw.border, Tw.flex, Tw.flex_col, Tw.gap Th.s5 ]
             , Attr.style "max-width" "46rem"
-            , Attr.style "background" "rgba(15, 23, 42, 0.86)"
+            , Attr.style "background" "rgba(5, 19, 29, 0.92)"
             , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
             ]
             [ -- Header + PB badge
@@ -80,8 +81,8 @@ view data actions =
                 , if data.isNewBest then
                     span
                         [ Tw.classes [ Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_xl, Tw.text_xs, Tw.font_extrabold ]
-                        , Attr.style "background" "#facc15"
-                        , Attr.style "color" "#0f172a"
+                        , Attr.style "background" Brand.legoYellow
+                        , Attr.style "color" Brand.legoBlack
                         ]
                         [ text (RI18n.newRecordBadge lang) ]
 
@@ -91,10 +92,10 @@ view data actions =
 
             -- Big Time + Key Stats
             , div [ Tw.classes [ Tw.grid, Tw.grid_cols_2, Tw.gap Th.s3 ] ]
-                [ metricBox "Finish Time" (Leaderboard.formatRaceTime data.finishTimeS) "#4ade80"
+                [ metricBox "Finish Time" (Leaderboard.formatRaceTime data.finishTimeS) Brand.green
                 , metricBox "Top Speed" (String.fromInt (round data.topSpeedKmh) ++ " km/h") "#38bdf8"
-                , metricBox "Integrity Left" (String.fromInt data.finalIntegrityPct ++ "%") "#f8fafc"
-                , metricBox (RI18n.garageSteeringLabel lang) (RI18n.steeringMechName lang data.vehicle.steering) "#facc15"
+                , metricBox "Integrity Left" (String.fromInt data.finalIntegrityPct ++ "%") Brand.legoWhite
+                , metricBox (RI18n.garageSteeringLabel lang) (RI18n.steeringMechName lang data.vehicle.steering) Brand.legoYellow
                 ]
 
             -- Checkpoint Splits
@@ -166,7 +167,7 @@ metricBox : String -> String -> String -> Html msg
 metricBox labelStr valueStr valueColor =
     div
         [ Tw.classes [ Tw.p Th.s3_dot_5, Tw.rounded_xl, Tw.border ]
-        , Attr.style "background" "rgba(30, 41, 59, 0.75)"
+        , Attr.style "background" "rgba(5, 19, 29, 0.82)"
         , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
         ]
         [ div [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ] [ text labelStr ]

@@ -5,7 +5,7 @@
 @source "./src";
 
 #app {
-  background-color: #0b1623;
+  background-color: var(--color-bg-dark, #05131D);
 }
 
 /* The game fills the whole screen. With `viewport-fit=cover` (index.html) the
@@ -17,7 +17,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background-color: #0b1623;
+  background-color: var(--color-bg-dark, #05131D);
 }
 
 /* Full-screen views use the dynamic viewport height, so on phones the race
@@ -77,9 +77,8 @@ body {
   }
 }
 
-/* The car editor works in portrait too: building is easier with the parts
-   dock under the car, so the hint stays away while it is open. */
-body:has(.brick-editor) .rotate-hint {
+/* Only gameplay requires landscape on mobile. The setup screen and builder work in portrait too. */
+body:not(:has(.is-racing)) .rotate-hint {
   display: none;
 }
 
@@ -99,4 +98,10 @@ body:has(.brick-editor) .rotate-hint {
    of the screen, so pin it back into the flow here. */
 .racer-room-bar > * {
   position: static;
+}
+
+/* Allow smooth vertical page scrolling over the 3D car preview on mobile touchscreens */
+.turntable-hero canvas,
+.touch-pan-y {
+  touch-action: pan-y;
 }

@@ -14,11 +14,14 @@ local leaderboards (`Racer.Leaderboard`), and responsive menus/HUD (`Pages.*`,
 import Browser
 import Browser.Dom as Dom
 import Browser.Events
+import DesignTokens.Colors as Brand
 import Dict exposing (Dict)
 import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
 import Game.PartLoading as PartLoading
 import Game.Ports as GamePorts
-import Html exposing (Html)
+import Html exposing (Html, button, div, h1, span, text)
+import Html.Attributes as Attr
+import Html.Events exposing (onClick)
 import Http
 import I18n exposing (Language(..))
 import Json.Decode as Decode exposing (Decoder)
@@ -29,7 +32,6 @@ import LDraw.Resolve as Resolve exposing (PartCache, ResolverConfig)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Pages.Build as Build
 import Pages.Garage as Garage
-import Pages.Menu as Menu
 import Pages.Race as Race
 import Pages.Results as Results
 import Ports
@@ -92,14 +94,13 @@ type alias Flags =
 {-| Top-level active screen state.
 -}
 type Page
-    = MenuPage
-    | LoadGaragePage GarageState
+    = SetupPage GarageState
     | RacePage RaceState
     | FinishLeaderboardPage ResultsState
     | BuildPage Build.Model
 
 
-{-| Vehicle inspection state for `LoadGaragePage`.
+{-| Vehicle inspection state for `SetupPage`.
 -}
 type alias GarageState =
     { document : Document
@@ -117,6 +118,12 @@ type ActiveRaceSubphase
     = CountdownPhase Float Int
     | ActiveDriving
     | CrashRecoveryPhase Float CrashReason
+    | CelebrationPhase
+        { timer : Float
+        , winner : String
+        , confettiSpawned : Bool
+        , results : ResultsState
+        }
 
 
 {-| Live downhill racing state for `RacePage`.
@@ -253,10 +260,28 @@ type alias Model =
     , tilt : TiltState
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
+    , playerModeTab : Garage.PlayerModeTab
     , roomCodeInput : String
     , multiplayer : Maybe RoomState
+    , baseUrl : String
     , remoteCars : Dict String (Maybe RemoteCar)
+    , customCar : Maybe { title : String, document : Document }
+    , selectedPresetId : Maybe String
+    , savedGarage : Maybe GarageState
+    , activeSlot : Garage.PlayerSlot
+    , playerOneCar : Maybe GarageState
+    , playerTwoCar : PlayerTwoCar
     , page : Page
+    }
+
+
+{-| Player 2's customized vehicle in local two-player split-screen mode.
+-}
+type alias PlayerTwoCar =
+    { title : String
+    , document : Document
+    , vehicle : VehicleSpec
+    , meshes : CarMeshBundle
     }
 
 
@@ -291,6 +316,10 @@ type Msg
     | ToggleLanguage
     | ToggleAudioMute
     | ToggleRaceMode
+    | SetPlayerModeTab Garage.PlayerModeTab
+    | SetRaceMode RaceMode
+    | SelectPlayerSlot Garage.PlayerSlot
+    | LeaveMultiplayerRoom
     | StartHostMultiplayer Multiplayer.SessionMode
     | JoinMultiplayer String
     | RoomCodeChanged String
@@ -307,8 +336,10 @@ type Msg
     | HashChanged String
     | RequestFileUpload
     | SelectPreset PresetBuild
+    | SelectCustomCar
     | StartBuild String
     | EditInBuilder
+    | OpenBuilder
     | BuildMsg Build.Msg
     | SelectTrack TrackId
     | ChangeSeed String
@@ -321,6 +352,7 @@ type Msg
     | GarageToRace
     | InspectInGarage
     | RestartRace
+    | ShowLeaderboardPage ResultsState
     | CycleCamera
     | TogglePause
     | ResumeRace
@@ -341,6 +373,47 @@ type Msg
     | CamMouseMove Float Float
     | CamMouseUp
     | CamWheel Float
+
+
+{-| Default soapbox preset loaded on initial startup when no URL model hash is present.
+-}
+defaultPreset : PresetBuild
+defaultPreset =
+    case Ingest.presets of
+        p :: _ ->
+            p
+
+        [] ->
+            { id = "turntable-kart"
+            , nameEn = "Turntable GP Kart"
+            , nameFi = "Kääntöpöytä-karting"
+            , summaryEn = "Real front 2x2 turntable steering, balloon tires, and sloped nosecone."
+            , summaryFi = "Aito etuakselin kääntöpöytäohjaus, ilmakumirenkaat ja viisto keula."
+            , ldrText = ""
+            }
+
+
+{-| Initial fallback turntable garage state before asynchronous part caches settle.
+-}
+initGarageState : PresetBuild -> Language -> GarageState
+initGarageState preset lang =
+    let
+        doc =
+            Document.parse preset.ldrText
+
+        title =
+            presetTitle lang preset
+
+        analyzed =
+            Analyze.analyzeDocument title doc Resolve.initCache Catalog.emptyPartIndex
+    in
+    { document = doc
+    , title = title
+    , vehicle = analyzed.spec
+    , meshes = analyzed.meshes
+    , camera = RacerCamera.initGarageCamera 720 analyzed.spec
+    , wheelPreviewSpin = 0.0
+    }
 
 
 {-| Initialize Elm program.
@@ -378,6 +451,27 @@ init flags =
 
         initSeed =
             Maybe.withDefault 1 parsedInit.seed
+
+        initPreset =
+            defaultPreset
+
+        initP2Preset =
+            case Ingest.findPresetById "pinewood-classic" of
+                Just p ->
+                    p
+
+                Nothing ->
+                    initPreset
+
+        initP2Garage =
+            initGarageState initP2Preset lang
+
+        p2Car =
+            { title = initP2Garage.title
+            , document = initP2Garage.document
+            , vehicle = initP2Garage.vehicle
+            , meshes = initP2Garage.meshes
+            }
 
         ( baseModel, propsCmd ) =
             refreshProps
@@ -422,10 +516,18 @@ init flags =
                     }
                 , shareCopiedNotice = False
                 , raceMode = SinglePlayer
+                , playerModeTab = Garage.HotSeatTab
                 , roomCodeInput = ""
                 , multiplayer = Nothing
+                , baseUrl = flags.baseUrl
                 , remoteCars = Dict.empty
-                , page = MenuPage
+                , customCar = Nothing
+                , selectedPresetId = Just initPreset.id
+                , savedGarage = Nothing
+                , activeSlot = Garage.SlotPlayer1
+                , playerOneCar = Nothing
+                , playerTwoCar = p2Car
+                , page = SetupPage (initGarageState initPreset lang)
                 }
 
         startupCmds =
@@ -445,20 +547,72 @@ init flags =
         trimmedHash =
             String.trim flags.initialHash
     in
-    if bytesCandidate /= Nothing || not (String.isEmpty (String.replace "#" "" trimmedHash)) && (parsedInit.base64Payload /= Nothing || parsedInit.hasModelParam) then
+    if String.contains "room=" (String.toLower trimmedHash) then
+        let
+            code =
+                Multiplayer.roomCodeFrom trimmedHash
+
+            doc =
+                Document.parse initPreset.ldrText
+
+            title =
+                presetTitle lang initPreset
+
+            vHash =
+                Ingest.encodeRaceHash initTrackId initSeed doc
+
+            ( nextModel, enterCmd ) =
+                loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id, roomCodeInput = code, playerModeTab = Garage.NetworkTab }
+        in
+        ( nextModel
+        , Cmd.batch
+            (enterCmd
+                :: GamePorts.joinMultiplayerRoom
+                    { roomId = code
+                    , name = "Racer"
+                    , vehicleHash = vHash
+                    }
+                :: startupCmds
+            )
+        )
+
+    else if bytesCandidate /= Nothing || not (String.isEmpty (String.replace "#" "" trimmedHash)) && (parsedInit.base64Payload /= Nothing || parsedInit.hasModelParam) then
         case Ingest.decodeRaceInput bytesCandidate trimmedHash of
             Ok decoded ->
                 let
+                    custom =
+                        Just { title = decoded.suggestedName, document = decoded.document }
+
                     ( nextModel, enterCmd ) =
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False baseModel
+                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { baseModel | customCar = custom, selectedPresetId = Nothing }
                 in
                 ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
             Err _ ->
-                ( baseModel, Cmd.batch startupCmds )
+                let
+                    doc =
+                        Document.parse initPreset.ldrText
+
+                    title =
+                        presetTitle lang initPreset
+
+                    ( nextModel, enterCmd ) =
+                        loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id }
+                in
+                ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
     else
-        ( baseModel, Cmd.batch startupCmds )
+        let
+            doc =
+                Document.parse initPreset.ldrText
+
+            title =
+                presetTitle lang initPreset
+
+            ( nextModel, enterCmd ) =
+                loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id }
+        in
+        ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
 
 {-| Dispatch application messages.
@@ -604,6 +758,86 @@ update msg model =
             in
             ( { model | raceMode = nextMode }, Cmd.none )
 
+        SetPlayerModeTab tab ->
+            ( { model | playerModeTab = tab }, Cmd.none )
+
+        SetRaceMode mode ->
+            ( { model | raceMode = mode }, Cmd.none )
+
+        SelectPlayerSlot slot ->
+            if slot == model.activeSlot then
+                ( model, Cmd.none )
+
+            else
+                case model.page of
+                    SetupPage currentGarage ->
+                        if slot == Garage.SlotPlayer2 then
+                            let
+                                p2 =
+                                    model.playerTwoCar
+
+                                nextGarage =
+                                    { document = p2.document
+                                    , title = p2.title
+                                    , vehicle = p2.vehicle
+                                    , meshes = p2.meshes
+                                    , camera = RacerCamera.initGarageCamera model.viewportHeight p2.vehicle
+                                    , wheelPreviewSpin = 0.0
+                                    }
+                            in
+                            ( { model
+                                | activeSlot = Garage.SlotPlayer2
+                                , playerOneCar = Just currentGarage
+                                , page = SetupPage nextGarage
+                              }
+                            , Cmd.none
+                            )
+
+                        else
+                            let
+                                nextP2 =
+                                    { title = currentGarage.title
+                                    , document = currentGarage.document
+                                    , vehicle = currentGarage.vehicle
+                                    , meshes = currentGarage.meshes
+                                    }
+
+                                p1 =
+                                    model.playerOneCar
+                                        |> Maybe.withDefault currentGarage
+
+                                nextGarage =
+                                    { document = p1.document
+                                    , title = p1.title
+                                    , vehicle = p1.vehicle
+                                    , meshes = p1.meshes
+                                    , camera = RacerCamera.initGarageCamera model.viewportHeight p1.vehicle
+                                    , wheelPreviewSpin = 0.0
+                                    }
+                            in
+                            ( { model
+                                | activeSlot = Garage.SlotPlayer1
+                                , playerTwoCar = nextP2
+                                , page = SetupPage nextGarage
+                              }
+                            , Cmd.none
+                            )
+
+                    _ ->
+                        ( model, Cmd.none )
+
+        LeaveMultiplayerRoom ->
+            let
+                garageDoc =
+                    getGarageDoc model
+            in
+            ( { model | multiplayer = Nothing }
+            , Cmd.batch
+                [ GamePorts.leaveMultiplayerRoom ()
+                , GamePorts.setUrlHash (Ingest.encodeRaceHash model.trackId model.seed garageDoc)
+                ]
+            )
+
         StartHostMultiplayer mode ->
             let
                 vHash =
@@ -614,7 +848,7 @@ update msg model =
                         Nothing ->
                             ""
             in
-            ( model
+            ( { model | playerModeTab = Garage.NetworkTab }
             , GamePorts.createMultiplayerRoom
                 { roomId = ""
                 , courseId = Racer.Types.trackIdToString model.trackId
@@ -637,7 +871,7 @@ update msg model =
                         Nothing ->
                             ""
             in
-            ( model
+            ( { model | playerModeTab = Garage.NetworkTab }
             , GamePorts.joinMultiplayerRoom
                 { roomId = Multiplayer.roomCodeFrom code
                 , name = "Racer"
@@ -650,15 +884,27 @@ update msg model =
 
         CopyMultiplayerLink ->
             let
-                roomArg =
+                roomUrl =
                     case model.multiplayer of
                         Just r ->
-                            "#room=" ++ r.roomId
+                            let
+                                cleanBase =
+                                    if String.endsWith "/" model.baseUrl then
+                                        String.dropRight 1 model.baseUrl
+
+                                    else
+                                        model.baseUrl
+                            in
+                            if String.isEmpty cleanBase then
+                                "#room=" ++ r.roomId
+
+                            else
+                                cleanBase ++ "/#room=" ++ r.roomId
 
                         Nothing ->
                             ""
             in
-            ( model, GamePorts.copyShareUrl roomArg )
+            ( { model | shareCopiedNotice = True }, GamePorts.copyShareUrl roomUrl )
 
         MultiplayerRoomChanged rawJson ->
             case Decode.decodeValue Multiplayer.decodeRoomState rawJson of
@@ -671,25 +917,38 @@ update msg model =
                             in
                             ( { model | page = RacePage updatedRace, multiplayer = Just room }, Cmd.none )
 
-                        LoadGaragePage garage ->
+                        SetupPage garage ->
                             let
-                                ( nextModel, enterCmd ) =
-                                    startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { model | multiplayer = Just room }
-
                                 shareCmd =
                                     if room.role == JoinedPlayer then
                                         GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash model.trackId model.seed garage.document)
 
                                     else
                                         Cmd.none
+
+                                hashCmd =
+                                    GamePorts.setUrlHash ("#room=" ++ room.roomId)
                             in
-                            ( nextModel
-                            , Cmd.batch
-                                [ enterCmd
-                                , shareCmd
-                                , GamePorts.setUrlHash ("#room=" ++ room.roomId)
-                                ]
-                            )
+                            if room.status /= Lobby then
+                                let
+                                    ( nextModel, enterCmd ) =
+                                        startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { model | multiplayer = Just room }
+                                in
+                                ( nextModel
+                                , Cmd.batch
+                                    [ enterCmd
+                                    , shareCmd
+                                    , hashCmd
+                                    ]
+                                )
+
+                            else
+                                ( { model | multiplayer = Just room, playerModeTab = Garage.NetworkTab }
+                                , Cmd.batch
+                                    [ shareCmd
+                                    , hashCmd
+                                    ]
+                                )
 
                         _ ->
                             ( { model | multiplayer = Just room }, Cmd.none )
@@ -701,11 +960,7 @@ update msg model =
             ( { model | pasteError = Just err }, Cmd.none )
 
         MultiplayerVehicleLoaded vehicle ->
-            if Dict.member vehicle.id model.remoteCars then
-                ( model, Cmd.none )
-
-            else
-                addRemoteCar vehicle.id vehicle.payload model
+            addRemoteCar vehicle.id vehicle.payload model
 
         PasteChanged txt ->
             ( { model | pasteText = txt, pasteError = Nothing }, Cmd.none )
@@ -721,7 +976,11 @@ update msg model =
             else
                 case Ingest.decodeRaceInput Nothing trimmed of
                     Ok decoded ->
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True model
+                        let
+                            custom =
+                                Just { title = decoded.suggestedName, document = decoded.document }
+                        in
+                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True { model | customCar = custom, selectedPresetId = Nothing }
 
                     Err Ingest.InvalidBinaryPayload ->
                         ( { model | pendingBinaryPaste = Just trimmed }
@@ -738,12 +997,21 @@ update msg model =
                 ( Just bytes, Just rawInput ) ->
                     case Ingest.decodeRaceInput (Just bytes) rawInput of
                         Ok decoded ->
+                            let
+                                custom =
+                                    Just { title = decoded.suggestedName, document = decoded.document }
+                            in
                             loadDocumentIntoGarage decoded.suggestedName
                                 decoded.document
                                 decoded.trackId
                                 decoded.seed
                                 True
-                                { model | pendingBinaryPaste = Nothing, pasteError = Nothing }
+                                { model
+                                    | pendingBinaryPaste = Nothing
+                                    , pasteError = Nothing
+                                    , customCar = custom
+                                    , selectedPresetId = Nothing
+                                }
 
                         Err _ ->
                             ( { model
@@ -765,17 +1033,37 @@ update msg model =
                     ( model, Cmd.none )
 
         FileContentReceived rawLdr ->
-            case Ingest.decodeRaceInput Nothing rawLdr of
-                Ok decoded ->
-                    loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True model
+            case model.page of
+                BuildPage build ->
+                    case Ingest.decodeRaceInput Nothing rawLdr of
+                        Ok decoded ->
+                            let
+                                ( nextBuild, buildCmd, _ ) =
+                                    Build.update (Build.LoadExternalDocument decoded.document Nothing) build
+                            in
+                            ( { model | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
 
-                Err _ ->
-                    ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }
-                    , Cmd.none
-                    )
+                        Err _ ->
+                            ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }
+                            , Cmd.none
+                            )
+
+                _ ->
+                    case Ingest.decodeRaceInput Nothing rawLdr of
+                        Ok decoded ->
+                            let
+                                custom =
+                                    Just { title = decoded.suggestedName, document = decoded.document }
+                            in
+                            loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True { model | customCar = custom, selectedPresetId = Nothing }
+
+                        Err _ ->
+                            ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }
+                            , Cmd.none
+                            )
 
         FileLoadError errText ->
-            ( { model | page = MenuPage, pasteError = Just errText }
+            ( { model | pasteError = Just errText }
             , silenceAudioCmd
             )
 
@@ -787,10 +1075,40 @@ update msg model =
             if String.isEmpty trimmed || trimmed == "#" then
                 ( model, Cmd.none )
 
+            else if String.contains "room=" (String.toLower trimmed) then
+                let
+                    code =
+                        Multiplayer.roomCodeFrom trimmed
+                in
+                if not (String.isEmpty code) && (model.multiplayer |> Maybe.map .roomId) /= Just code then
+                    let
+                        vHash =
+                            case activeDocument model.page of
+                                Just doc ->
+                                    Ingest.encodeRaceHash model.trackId model.seed doc
+
+                                Nothing ->
+                                    ""
+                    in
+                    ( { model | playerModeTab = Garage.NetworkTab, roomCodeInput = code }
+                    , GamePorts.joinMultiplayerRoom
+                        { roomId = code
+                        , name = "Racer"
+                        , vehicleHash = vHash
+                        }
+                    )
+
+                else
+                    ( model, Cmd.none )
+
             else
                 case Ingest.decodeRaceInput Nothing trimmed of
                     Ok decoded ->
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False model
+                        let
+                            custom =
+                                Just { title = decoded.suggestedName, document = decoded.document }
+                        in
+                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { model | customCar = custom, selectedPresetId = Nothing }
 
                     Err _ ->
                         ( model, Cmd.none )
@@ -806,25 +1124,45 @@ update msg model =
                 title =
                     presetTitle model.language preset
             in
-            loadDocumentIntoGarage title doc Nothing Nothing True model
+            loadDocumentIntoGarage title doc Nothing Nothing True { model | selectedPresetId = Just preset.id }
+
+        SelectCustomCar ->
+            case model.customCar of
+                Just custom ->
+                    loadDocumentIntoGarage custom.title custom.document Nothing Nothing True { model | selectedPresetId = Nothing }
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         StartBuild baseId ->
             case List.filter (\b -> b.id == baseId) Editor.bases |> List.head of
                 Just base ->
-                    openBuilder base base.document model
+                    let
+                        modelWithSaved =
+                            case model.page of
+                                SetupPage garage ->
+                                    { model | savedGarage = Just garage }
+
+                                _ ->
+                                    model
+                    in
+                    openBuilder (Just base) base.document modelWithSaved
 
                 Nothing ->
                     ( model, Cmd.none )
 
         EditInBuilder ->
             case model.page of
-                LoadGaragePage garage ->
-                    case Editor.baseOf garage.document of
-                        Just base ->
-                            openBuilder base garage.document model
+                SetupPage garage ->
+                    openBuilder (Editor.baseOf garage.document) garage.document { model | savedGarage = Just garage }
 
-                        Nothing ->
-                            ( model, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
+
+        OpenBuilder ->
+            case model.page of
+                SetupPage garage ->
+                    openBuilder (Editor.baseOf garage.document) garage.document { model | savedGarage = Just garage }
 
                 _ ->
                     ( model, Cmd.none )
@@ -841,10 +1179,69 @@ update msg model =
                             ( { model | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
 
                         Build.Quit ->
-                            ( { model | page = MenuPage }, Cmd.none )
+                            case model.savedGarage of
+                                Just garage ->
+                                    ( { model | page = SetupPage garage, savedGarage = Nothing }, Cmd.none )
+
+                                Nothing ->
+                                    let
+                                        doc =
+                                            Document.parse defaultPreset.ldrText
+
+                                        title =
+                                            presetTitle model.language defaultPreset
+                                    in
+                                    loadDocumentIntoGarage title doc Nothing Nothing False { model | selectedPresetId = Just defaultPreset.id }
 
                         Build.Finished doc ->
-                            loadDocumentIntoGarage (builtCarTitle model.language nextBuild.base) doc Nothing Nothing True model
+                            let
+                                title =
+                                    builtCarTitle model.language nextBuild.base
+
+                                isP2 =
+                                    model.raceMode == SplitScreenTwoPlayer && model.activeSlot == Garage.SlotPlayer2
+                            in
+                            if isP2 then
+                                let
+                                    analyzed =
+                                        Analyze.analyzeDocument title doc model.partCache model.partIndex
+
+                                    updatedModel =
+                                        { model
+                                            | playerTwoCar =
+                                                { title = title
+                                                , document = doc
+                                                , vehicle = analyzed.spec
+                                                , meshes = analyzed.meshes
+                                                }
+                                            , savedGarage = Nothing
+                                        }
+                                in
+                                loadDocumentIntoGarage title doc Nothing Nothing True updatedModel
+
+                            else
+                                let
+                                    custom =
+                                        Just { title = title, document = doc }
+
+                                    ( nextModel, enterCmd ) =
+                                        loadDocumentIntoGarage title doc Nothing Nothing True { model | customCar = custom, selectedPresetId = Nothing, savedGarage = Nothing }
+
+                                    shareCmd =
+                                        case model.multiplayer of
+                                            Just _ ->
+                                                GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash nextModel.trackId nextModel.seed doc)
+
+                                            Nothing ->
+                                                Cmd.none
+                                in
+                                ( nextModel, Cmd.batch [ enterCmd, shareCmd ] )
+
+                        Build.TriggerFileUpload ->
+                            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.requestFileUpload () ] )
+
+                        Build.TriggerQrScanner ->
+                            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.openQrScanner () ] )
 
                 _ ->
                     ( model, Cmd.none )
@@ -858,7 +1255,7 @@ update msg model =
                     }
             in
             case updatedModel.page of
-                LoadGaragePage garage ->
+                SetupPage garage ->
                     ( updatedModel
                     , GamePorts.setUrlHash (Ingest.encodeRaceHash updatedModel.trackId updatedModel.seed garage.document)
                     )
@@ -883,15 +1280,49 @@ update msg model =
             ( { model | seed = abs nextSeed, shareCopiedNotice = False }, Cmd.none )
 
         BackToMenu ->
-            ( { model
-                | page = MenuPage
-                , pressedKeys = Set.empty
-                , touch = emptyTouch
-                , shareCopiedNotice = False
-                , multiplayer = Nothing
-              }
-            , Cmd.batch [ silenceAudioCmd, GamePorts.leaveMultiplayerRoom () ]
-            )
+            let
+                cleanModel =
+                    { model
+                        | pressedKeys = Set.empty
+                        , touch = emptyTouch
+                        , shareCopiedNotice = False
+                        , multiplayer = Nothing
+                    }
+            in
+            case model.page of
+                RacePage race ->
+                    let
+                        ( nextModel, cmd ) =
+                            enterGarageFromRaceOrResults race.document race.title race.vehicle race.meshes cleanModel
+                    in
+                    ( nextModel, Cmd.batch [ cmd, GamePorts.leaveMultiplayerRoom () ] )
+
+                FinishLeaderboardPage res ->
+                    let
+                        ( nextModel, cmd ) =
+                            enterGarageFromRaceOrResults res.document res.title res.vehicle res.meshes cleanModel
+                    in
+                    ( nextModel, Cmd.batch [ cmd, GamePorts.leaveMultiplayerRoom () ] )
+
+                BuildPage _ ->
+                    case model.savedGarage of
+                        Just garage ->
+                            ( { cleanModel | page = SetupPage garage, savedGarage = Nothing }
+                            , Cmd.batch [ silenceAudioCmd, GamePorts.leaveMultiplayerRoom () ]
+                            )
+
+                        Nothing ->
+                            let
+                                doc =
+                                    Document.parse defaultPreset.ldrText
+
+                                title =
+                                    presetTitle model.language defaultPreset
+                            in
+                            loadDocumentIntoGarage title doc Nothing Nothing False { cleanModel | selectedPresetId = Just defaultPreset.id }
+
+                SetupPage _ ->
+                    ( cleanModel, Cmd.batch [ silenceAudioCmd, GamePorts.leaveMultiplayerRoom () ] )
 
         CopyShareLink ->
             case activeDocument model.page of
@@ -911,18 +1342,71 @@ update msg model =
             ( model, GamePorts.openQrScanner () )
 
         QrCodeScanned scannedHash ->
-            ( { model | pendingBinaryPaste = Just scannedHash }
-            , GamePorts.decodeBinaryHash scannedHash
-            )
+            let
+                trimmed =
+                    String.trim scannedHash
+            in
+            if String.contains "room=" (String.toLower trimmed) then
+                let
+                    code =
+                        Multiplayer.roomCodeFrom trimmed
+
+                    vHash =
+                        case activeDocument model.page of
+                            Just doc ->
+                                Ingest.encodeRaceHash model.trackId model.seed doc
+
+                            Nothing ->
+                                ""
+                in
+                ( { model | playerModeTab = Garage.NetworkTab, roomCodeInput = code }
+                , GamePorts.joinMultiplayerRoom
+                    { roomId = code
+                    , name = "Racer"
+                    , vehicleHash = vHash
+                    }
+                )
+
+            else
+                ( { model | pendingBinaryPaste = Just scannedHash }
+                , GamePorts.decodeBinaryHash scannedHash
+                )
 
         QrScannerError _ ->
             ( model, Cmd.none )
 
         GarageToRace ->
             case model.page of
-                LoadGaragePage garage ->
+                SetupPage garage ->
                     if garage.vehicle.isDrivable then
-                        startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes model
+                        if model.raceMode == SplitScreenTwoPlayer && model.activeSlot == Garage.SlotPlayer2 then
+                            let
+                                p1 =
+                                    model.playerOneCar
+                                        |> Maybe.withDefault garage
+
+                                updatedModel =
+                                    { model
+                                        | playerTwoCar =
+                                            { title = garage.title
+                                            , document = garage.document
+                                            , vehicle = garage.vehicle
+                                            , meshes = garage.meshes
+                                            }
+                                    }
+                            in
+                            startRaceFromDoc p1.title p1.document p1.vehicle p1.meshes updatedModel
+
+                        else
+                            let
+                                updatedModel =
+                                    if model.raceMode == SplitScreenTwoPlayer then
+                                        { model | playerOneCar = Just garage }
+
+                                    else
+                                        model
+                            in
+                            startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes updatedModel
 
                     else
                         ( model, Cmd.none )
@@ -963,6 +1447,9 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
+
+        ShowLeaderboardPage res ->
+            ( { model | page = FinishLeaderboardPage res }, Cmd.none )
 
         CycleCamera ->
             case model.page of
@@ -1201,7 +1688,7 @@ stepFrame deltaMs model =
             clamp 0.001 0.05 (deltaMs / 1000.0)
     in
     case model.page of
-        LoadGaragePage garage ->
+        SetupPage garage ->
             let
                 nextCam =
                     RacerCamera.updateGarageCamera dt garage.camera
@@ -1211,7 +1698,7 @@ stepFrame deltaMs model =
             in
             ( { model
                 | page =
-                    LoadGaragePage
+                    SetupPage
                         { garage
                             | camera = nextCam
                             , wheelPreviewSpin = nextSpin
@@ -1397,6 +1884,78 @@ stepRaceFrame dt race model =
                 in
                 ( nextModel, silenceAudioCmd )
 
+        CelebrationPhase celeb ->
+            let
+                nextTimer =
+                    celeb.timer + dt
+
+                brakeFactor =
+                    max 0.0 (1.0 - dt * 2.2)
+
+                p1Phys =
+                    race.physics
+
+                p1StoppedVel =
+                    Vec3.scale brakeFactor p1Phys.velocity
+
+                p1StoppedPos =
+                    Vec3.add p1Phys.position (Vec3.scale dt p1StoppedVel)
+
+                nextP1Phys =
+                    { p1Phys
+                        | position = p1StoppedPos
+                        , velocity = p1StoppedVel
+                    }
+
+                nextCam =
+                    RacerCamera.updateRaceCamera dt race.cameraMode nextP1Phys race.vehicle race.camera
+
+                ( extraDebris, nextSeed ) =
+                    if nextTimer < 2.5 && modBy 8 (round (nextTimer * 60.0)) == 0 then
+                        spawnConfettiBurst race.debrisSeed p1StoppedPos p1Phys.progressS
+
+                    else
+                        ( [], race.debrisSeed )
+
+                nextP2 =
+                    case race.player2 of
+                        Just p2 ->
+                            let
+                                p2Phys =
+                                    p2.physics
+
+                                p2StoppedVel =
+                                    Vec3.scale brakeFactor p2Phys.velocity
+
+                                p2StoppedPos =
+                                    Vec3.add p2Phys.position (Vec3.scale dt p2StoppedVel)
+
+                                nextP2Phys =
+                                    { p2Phys
+                                        | position = p2StoppedPos
+                                        , velocity = p2StoppedVel
+                                    }
+
+                                p2Cam =
+                                    RacerCamera.updateRaceCamera dt race.cameraMode nextP2Phys p2.vehicle p2.camera
+                            in
+                            Just { p2 | physics = nextP2Phys, camera = p2Cam }
+
+                        Nothing ->
+                            Nothing
+
+                nextRace =
+                    { race
+                        | subPhase = CelebrationPhase { celeb | timer = nextTimer }
+                        , physics = nextP1Phys
+                        , camera = nextCam
+                        , player2 = nextP2
+                        , debris = List.take maxDebrisPieces (extraDebris ++ steppedDebris)
+                        , debrisSeed = nextSeed
+                    }
+            in
+            ( { model | page = RacePage nextRace }, Cmd.none )
+
         ActiveDriving ->
             let
                 input =
@@ -1424,6 +1983,9 @@ stepRaceFrame dt race model =
 
                         Just p2 ->
                             case p2.subPhase of
+                                CelebrationPhase _ ->
+                                    ( Just p2, [], [] )
+
                                 CountdownPhase _ _ ->
                                     ( Just { p2 | subPhase = ActiveDriving }, [], [] )
 
@@ -1526,34 +2088,130 @@ stepRaceFrame dt race model =
                                     , List.filter isScenerySmash p2Events
                                     )
 
-                -- Player 2's car breaking into bricks shows in the shared debris.
-                ( p2WreckPieces, debrisSeedAfterP2 ) =
-                    case ( race.player2, nextP2 ) of
-                        ( Just before, Just after ) ->
-                            if before.subPhase == ActiveDriving && after.subPhase == CrashRecoveryPhase (crashRecoverySeconds StructuralCollapse) StructuralCollapse then
-                                spawnWreckDebris race.debrisSeed after.physics after.vehicle after.meshes.debrisColors
+                carHit =
+                    case nextP2 of
+                        Just p2Active ->
+                            if p2Active.subPhase == ActiveDriving then
+                                let
+                                    res =
+                                        resolveCarsCollision nextPhysics p2Active.physics
+                                in
+                                { p1 = res.p1
+                                , p2 = Just { p2Active | physics = res.p2 }
+                                , impactSpeed = res.impactSpeed
+                                , collided = res.collided
+                                }
 
                             else
-                                ( [], race.debrisSeed )
+                                { p1 = nextPhysics, p2 = nextP2, impactSpeed = 0.0, collided = False }
+
+                        Nothing ->
+                            { p1 = nextPhysics, p2 = Nothing, impactSpeed = 0.0, collided = False }
+
+                resolvedP1 =
+                    carHit.p1
+
+                resolvedP2 =
+                    carHit.p2
+
+                carImpactSpeed =
+                    carHit.impactSpeed
+
+                carCollided =
+                    carHit.collided
+
+                ( carCollisionDebris, debrisSeedAfterCollision ) =
+                    if carCollided && carImpactSpeed > 1.8 then
+                        let
+                            p2Pos =
+                                resolvedP2
+                                    |> Maybe.map (\p2A -> p2A.physics.position)
+                                    |> Maybe.withDefault resolvedP1.position
+
+                            midPos =
+                                Vec3.scale 0.5 (Vec3.add resolvedP1.position p2Pos)
+
+                            debrisPal =
+                                race.meshes.debrisColors
+                                    ++ (resolvedP2 |> Maybe.map (\p2A -> p2A.meshes.debrisColors) |> Maybe.withDefault [])
+                        in
+                        spawnDebrisBurst race.debrisSeed midPos resolvedP1.progressS debrisPal
+
+                    else
+                        ( [], race.debrisSeed )
+
+                collisionSfx =
+                    if carCollided && carImpactSpeed > 1.8 then
+                        [ Ports.playSfx { kind = "smash", intensity = clamp 0.4 1.0 (carImpactSpeed / 8.0) } ]
+
+                    else
+                        []
+
+                updatedEvents =
+                    if resolvedP1.integrity <= 0.0 then
+                        Crashed StructuralCollapse :: events ++ p2Smashes
+
+                    else
+                        events ++ p2Smashes
+
+                finalP2 =
+                    case resolvedP2 of
+                        Just p2A ->
+                            if p2A.physics.integrity <= 0.0 && p2A.subPhase == ActiveDriving then
+                                Just { p2A | subPhase = CrashRecoveryPhase (crashRecoverySeconds StructuralCollapse) StructuralCollapse }
+
+                            else
+                                Just p2A
+
+                        Nothing ->
+                            Nothing
+
+                ( p2WreckPieces, debrisSeedAfterP2 ) =
+                    case ( race.player2, finalP2 ) of
+                        ( Just before, Just after ) ->
+                            if before.subPhase == ActiveDriving && after.subPhase == CrashRecoveryPhase (crashRecoverySeconds StructuralCollapse) StructuralCollapse then
+                                spawnWreckDebris debrisSeedAfterCollision after.physics after.vehicle after.meshes.debrisColors
+
+                            else
+                                ( [], debrisSeedAfterCollision )
 
                         _ ->
-                            ( [], race.debrisSeed )
+                            ( [], debrisSeedAfterCollision )
+
+                collidedShake =
+                    if carCollided && carImpactSpeed > 1.8 then
+                        min 1.0 (decayedShake + 0.5)
+
+                    else
+                        decayedShake
+
+                p2WinEvents =
+                    case finalP2 of
+                        Just p2A ->
+                            if p2A.physics.progressS >= race.track.totalLengthM && not (List.member FinishedRace updatedEvents) then
+                                [ FinishedRace ]
+
+                            else
+                                []
+
+                        Nothing ->
+                            []
 
                 baseRace =
                     { race
-                        | physics = nextPhysics
+                        | physics = resolvedP1
                         , accumulator = nextAccum
                         , elapsedTime = nextElapsed
                         , topSpeedKmh = nextTopSpeed
                         , hudAlert = nextAlert
-                        , debris = List.take maxDebrisPieces (p2WreckPieces ++ steppedDebris)
+                        , debris = List.take maxDebrisPieces (p2WreckPieces ++ carCollisionDebris ++ steppedDebris)
                         , debrisSeed = debrisSeedAfterP2
-                        , shake = decayedShake
-                        , camera = applyShake decayedShake nextElapsed nextCam
-                        , player2 = nextP2
+                        , shake = collidedShake
+                        , camera = applyShake collidedShake nextElapsed nextCam
+                        , player2 = finalP2
                     }
             in
-            processPhysicsEvents (events ++ p2Smashes) p2Sfx baseRace model
+            processPhysicsEvents (p2WinEvents ++ updatedEvents) (collisionSfx ++ p2Sfx) baseRace model
 
 
 processPhysicsEvents : List PhysicsEvent -> List (Cmd Msg) -> RaceState -> Model -> ( Model, Cmd Msg )
@@ -1589,15 +2247,56 @@ processPhysicsEvents events extraCmds race model =
                 , splitTimes = finalSplits
                 , isNewBest = isNewBest
                 }
+
+            winnerName =
+                case race.player2 of
+                    Just p2 ->
+                        if race.physics.progressS >= race.track.totalLengthM then
+                            case model.language of
+                                Fi ->
+                                    "Pelaaja 1 (" ++ race.title ++ ")"
+
+                                En ->
+                                    "Player 1 (" ++ race.title ++ ")"
+
+                        else
+                            case model.language of
+                                Fi ->
+                                    "Pelaaja 2 (" ++ p2.vehicle.name ++ ")"
+
+                                En ->
+                                    "Player 2 (" ++ p2.vehicle.name ++ ")"
+
+                    Nothing ->
+                        race.title
+
+            ( confettiPieces, nextSeed ) =
+                spawnConfettiBurst race.debrisSeed race.physics.position race.physics.progressS
+
+            celebPhase =
+                CelebrationPhase
+                    { timer = 0.0
+                    , winner = winnerName
+                    , confettiSpawned = True
+                    , results = results
+                    }
+
+            updatedRace =
+                { race
+                    | subPhase = celebPhase
+                    , debris = List.take maxDebrisPieces (confettiPieces ++ race.debris)
+                    , debrisSeed = nextSeed
+                }
         in
         ( { model
             | leaderboard = nextLb
-            , page = FinishLeaderboardPage results
+            , page = RacePage updatedRace
             , pressedKeys = Set.empty
             , touch = emptyTouch
           }
         , Cmd.batch
             ([ Ports.playSfx { kind = "finish", intensity = 1.0 }
+             , Ports.playSfx { kind = "fanfare", intensity = 1.0 }
              , silenceAudioCmd
              , GamePorts.saveLeaderboard (Leaderboard.encodeLeaderboard nextLb)
              ]
@@ -1776,7 +2475,7 @@ loadDocumentIntoGarage suggestedTitle doc maybeTrack maybeSeed syncHash model =
         , shareCopiedNotice = False
         , pressedKeys = Set.empty
         , touch = emptyTouch
-        , page = LoadGaragePage garage
+        , page = SetupPage garage
       }
     , Cmd.batch [ fetchCmd, hashCmd, silenceAudioCmd ]
     )
@@ -1814,34 +2513,11 @@ startRaceFromDoc title doc vehicle meshes model =
         maybeP2 =
             if isSplit then
                 let
-                    p2PresetId =
-                        if String.contains "turntable" (String.toLower vehicle.name) then
-                            "pinewood-classic"
-
-                        else
-                            "turntable-kart"
-
-                    p2Preset =
-                        case Ingest.findPresetById p2PresetId of
-                            Just p ->
-                                p
-
-                            Nothing ->
-                                case List.head Ingest.presets of
-                                    Just p ->
-                                        p
-
-                                    Nothing ->
-                                        { id = "default", nameEn = "Pinewood Plank", nameFi = "Mäkiauto", summaryEn = "", summaryFi = "", ldrText = "" }
-
-                    p2Doc =
-                        Document.parse p2Preset.ldrText
-
-                    p2Analyzed =
-                        Analyze.analyzeDocument p2Preset.nameEn p2Doc model.partCache model.partIndex
+                    p2Car =
+                        model.playerTwoCar
 
                     p2Physics =
-                        Physics.initPhysicsWithOffset 1.8 cachedTrack.track p2Analyzed.spec
+                        Physics.initPhysicsWithOffset 1.8 cachedTrack.track p2Car.vehicle
 
                     p2H =
                         if not isWide then
@@ -1851,11 +2527,11 @@ startRaceFromDoc title doc vehicle meshes model =
                             modelWithTrack.viewportHeight
 
                     p2Cam =
-                        RacerCamera.initRaceCamera p2H p2Physics p2Analyzed.spec
+                        RacerCamera.initRaceCamera p2H p2Physics p2Car.vehicle
                 in
                 Just
-                    { vehicle = p2Analyzed.spec
-                    , meshes = p2Analyzed.meshes
+                    { vehicle = p2Car.vehicle
+                    , meshes = p2Car.meshes
                     , physics = p2Physics
                     , camera = p2Cam
                     , accumulator = 0.0
@@ -1865,7 +2541,7 @@ startRaceFromDoc title doc vehicle meshes model =
                     , splitDelta = Nothing
                     , hudAlert = Nothing
                     , debris = []
-                    , debrisSeed = max 1 (modelWithTrack.seed * 97 + p2Analyzed.spec.placementCount)
+                    , debrisSeed = max 1 (modelWithTrack.seed * 97 + p2Car.vehicle.placementCount)
                     }
 
             else
@@ -1952,14 +2628,14 @@ buildAndStoreTrack trackId seed model =
 reanalyzeActiveVehicle : Model -> Model
 reanalyzeActiveVehicle model =
     case model.page of
-        LoadGaragePage garage ->
+        SetupPage garage ->
             let
                 analyzed =
                     Analyze.analyzeDocument garage.title garage.document model.partCache model.partIndex
             in
             { model
                 | page =
-                    LoadGaragePage
+                    SetupPage
                         { garage
                             | vehicle = analyzed.spec
                             , meshes = analyzed.meshes
@@ -1993,9 +2669,6 @@ reanalyzeActiveVehicle model =
                             , meshes = analyzed.meshes
                         }
             }
-
-        MenuPage ->
-            model
 
         BuildPage _ ->
             model
@@ -2323,6 +2996,161 @@ stepDebrisParticles dt track pieces =
             )
 
 
+type alias CarCollisionRes =
+    { p1 : PhysicsState
+    , p2 : PhysicsState
+    , impactSpeed : Float
+    , collided : Bool
+    }
+
+
+{-| Resolve elastic collision and mutual damage between two racing cars.
+-}
+resolveCarsCollision :
+    PhysicsState
+    -> PhysicsState
+    -> CarCollisionRes
+resolveCarsCollision p1 p2 =
+    let
+        pos1 =
+            p1.position
+
+        pos2 =
+            p2.position
+
+        delta =
+            Vec3.sub pos1 pos2
+
+        dist =
+            Vec3.length delta
+
+        minDist =
+            1.25
+    in
+    if dist < minDist then
+        let
+            distSafe =
+                if dist > 0.001 then
+                    dist
+
+                else
+                    0.001
+
+            normal =
+                Vec3.scale (1.0 / distSafe) delta
+
+            overlap =
+                minDist - distSafe
+
+            pos1Corr =
+                Vec3.add pos1 (Vec3.scale (overlap * 0.5) normal)
+
+            pos2Corr =
+                Vec3.sub pos2 (Vec3.scale (overlap * 0.5) normal)
+
+            relVel =
+                Vec3.sub p1.velocity p2.velocity
+
+            velAlongNormal =
+                Vec3.dot relVel normal
+        in
+        if velAlongNormal < 0.0 then
+            let
+                restitution =
+                    0.5
+
+                impulse =
+                    -(1.0 + restitution) * velAlongNormal * 0.5
+
+                newVel1 =
+                    Vec3.add p1.velocity (Vec3.scale impulse normal)
+
+                newVel2 =
+                    Vec3.sub p2.velocity (Vec3.scale impulse normal)
+
+                impactSpeed =
+                    abs velAlongNormal
+
+                damage =
+                    if impactSpeed > 1.8 then
+                        clamp 6.0 48.0 ((impactSpeed - 1.8) * 5.0)
+
+                    else
+                        0.0
+
+                nextInteg1 =
+                    max 0.0 (p1.integrity - damage)
+
+                nextInteg2 =
+                    max 0.0 (p2.integrity - damage)
+            in
+            { p1 = { p1 | position = pos1Corr, velocity = newVel1, integrity = nextInteg1 }
+            , p2 = { p2 | position = pos2Corr, velocity = newVel2, integrity = nextInteg2 }
+            , impactSpeed = impactSpeed
+            , collided = True
+            }
+
+        else
+            { p1 = { p1 | position = pos1Corr }, p2 = { p2 | position = pos2Corr }, impactSpeed = 0.0, collided = False }
+
+    else
+        { p1 = p1, p2 = p2, impactSpeed = 0.0, collided = False }
+
+
+confettiPalette : List { r : Float, g : Float, b : Float }
+confettiPalette =
+    [ { r = 0.98, g = 0.78, b = 0.04 }
+    , { r = 0.92, g = 0.23, b = 0.23 }
+    , { r = 0.22, g = 0.74, b = 0.97 }
+    , { r = 0.93, g = 0.28, b = 0.6 }
+    , { r = 0.22, g = 0.78, b = 0.44 }
+    , { r = 0.98, g = 0.55, b = 0.15 }
+    , { r = 0.95, g = 0.95, b = 0.98 }
+    ]
+
+
+{-| Spawn celebratory confetti brick particles flying up and showering down over the winner.
+-}
+spawnConfettiBurst : Int -> Vec3 -> Float -> ( List DebrisPiece, Int )
+spawnConfettiBurst seed origin groundS =
+    let
+        pal =
+            confettiPalette
+
+        genPiece =
+            Random.map5
+                (\vx vz vy spin colIdx ->
+                    let
+                        col =
+                            pal
+                                |> List.drop (modBy (List.length pal) colIdx)
+                                |> List.head
+                                |> Maybe.withDefault { r = 0.98, g = 0.78, b = 0.04 }
+                    in
+                    { position = Vec3.add origin (vec3 (vx * 0.3) 0.5 (vz * 0.3))
+                    , velocity = vec3 vx vy vz
+                    , rotation = vx * 0.8
+                    , spinRate = spin
+                    , size = vec3 0.12 0.04 0.08
+                    , color = vec3 col.r col.g col.b
+                    , age = 0.0
+                    , lifetime = 4.5
+                    , groundS = groundS
+                    }
+                )
+                (Random.float -7.5 7.5)
+                (Random.float -7.5 7.5)
+                (Random.float 6.0 14.0)
+                (Random.float -16.0 16.0)
+                (Random.int 0 99)
+
+        genList =
+            Random.list 28 genPiece
+    in
+    Random.step genList (Random.initialSeed seed)
+        |> Tuple.mapSecond (\s -> Tuple.first (Random.step (Random.int 1 999999) s))
+
+
 spawnDebrisBurst : Int -> Vec3 -> Float -> List { r : Float, g : Float, b : Float } -> ( List DebrisPiece, Int )
 spawnDebrisBurst seed origin groundS palette =
     let
@@ -2602,7 +3430,7 @@ applyViewportSize w h model =
     let
         nextPage =
             case model.page of
-                LoadGaragePage garage ->
+                SetupPage garage ->
                     let
                         canvasH =
                             if w >= 1024 then
@@ -2611,7 +3439,7 @@ applyViewportSize w h model =
                             else
                                 max 280 (round (toFloat h * 0.45))
                     in
-                    LoadGaragePage { garage | camera = Camera.setViewportHeight (toFloat canvasH) garage.camera }
+                    SetupPage { garage | camera = Camera.setViewportHeight (toFloat canvasH) garage.camera }
 
                 RacePage race ->
                     let
@@ -2654,8 +3482,8 @@ applyViewportSize w h model =
 updateActiveCamera : (Camera -> Camera) -> Model -> ( Model, Cmd Msg )
 updateActiveCamera fn model =
     case model.page of
-        LoadGaragePage garage ->
-            ( { model | page = LoadGaragePage { garage | camera = fn garage.camera } }
+        SetupPage garage ->
+            ( { model | page = SetupPage { garage | camera = fn garage.camera } }
             , Cmd.none
             )
 
@@ -2710,10 +3538,7 @@ silenceAudioCmd =
 activeDocument : Page -> Maybe Document
 activeDocument page =
     case page of
-        MenuPage ->
-            Nothing
-
-        LoadGaragePage g ->
+        SetupPage g ->
             Just g.document
 
         RacePage r ->
@@ -2722,8 +3547,14 @@ activeDocument page =
         FinishLeaderboardPage r ->
             Just r.document
 
-        BuildPage _ ->
-            Nothing
+        BuildPage b ->
+            Just (Build.document b)
+
+
+getGarageDoc : Model -> Document
+getGarageDoc model =
+    activeDocument model.page
+        |> Maybe.withDefault (Document.parse defaultPreset.ldrText)
 
 
 nonEmptyMaybe : String -> Maybe String
@@ -2766,7 +3597,7 @@ subscriptions model =
     let
         animSub =
             case model.page of
-                LoadGaragePage _ ->
+                SetupPage _ ->
                     Browser.Events.onAnimationFrameDelta AnimationFrame
 
                 RacePage race ->
@@ -2838,31 +3669,7 @@ keyEventDecoder =
 view : Model -> Html Msg
 view model =
     case model.page of
-        MenuPage ->
-            Menu.view
-                { language = model.language
-                , pasteText = model.pasteText
-                , pasteError = model.pasteError
-                , selectedTrack = model.trackId
-                , seed = model.seed
-                , leaderboard = model.leaderboard
-                , audioMuted = model.audioMuted
-                , raceMode = model.raceMode
-                }
-                { onPasteChanged = PasteChanged
-                , onSubmitPaste = SubmitPaste
-                , onRequestFileUpload = RequestFileUpload
-                , onSelectPreset = SelectPreset
-                , onStartBuild = StartBuild
-                , onSelectTrack = SelectTrack
-                , onChangeSeed = ChangeSeed
-                , onRandomSeed = RandomSeed
-                , onToggleLanguage = ToggleLanguage
-                , onToggleAudio = ToggleAudioMute
-                , onToggleRaceMode = ToggleRaceMode
-                }
-
-        LoadGaragePage garage ->
+        SetupPage garage ->
             let
                 stats =
                     reachablePartStats garage.document model.partCache
@@ -2879,27 +3686,36 @@ view model =
                 , partsTotal = stats.total
                 , selectedTrack = model.trackId
                 , seed = model.seed
+                , leaderboard = model.leaderboard
                 , viewportWidth = model.viewportWidth
                 , viewportHeight = model.viewportHeight
-                , shareCopiedNotice = model.shareCopiedNotice
                 , raceMode = model.raceMode
+                , audioMuted = model.audioMuted
                 , roomCode = model.roomCodeInput
+                , playerModeTab = model.playerModeTab
+                , multiplayer = model.multiplayer
+                , shareCopiedNotice = model.shareCopiedNotice
+                , baseUrl = model.baseUrl
+                , activeSlot = model.activeSlot
+                , playerOneTitle = model.playerOneCar |> Maybe.map .title |> Maybe.withDefault garage.title
+                , playerTwoTitle = model.playerTwoCar.title
                 }
-                { onBackToMenu = BackToMenu
-                , onEditCar =
-                    if Editor.baseOf garage.document /= Nothing then
-                        Just EditInBuilder
-
-                    else
-                        Nothing
+                { onOpenBuilder = OpenBuilder
                 , onStartRace = GarageToRace
+                , onSelectTrack = SelectTrack
+                , onChangeSeed = ChangeSeed
+                , onRandomSeed = RandomSeed
+                , onSetPlayerModeTab = SetPlayerModeTab
+                , onSetRaceMode = SetRaceMode
+                , onSelectPlayerSlot = SelectPlayerSlot
+                , onToggleAudio = ToggleAudioMute
                 , onStartHostMultiplayer = StartHostMultiplayer
                 , onJoinMultiplayer = JoinMultiplayer
                 , onRoomCodeChanged = RoomCodeChanged
-                , onSelectTrack = SelectTrack
-                , onCopyShareLink = CopyShareLink
                 , onOpenQrScanner = OpenQrScanner
-                , onToggleRaceMode = ToggleRaceMode
+                , onCopyMultiplayerLink = CopyMultiplayerLink
+                , onStartMultiplayerCountdown = StartMultiplayerCountdown
+                , onLeaveMultiplayer = LeaveMultiplayerRoom
                 , onMouseDown = CamMouseDown
                 , onMouseMove = CamMouseMove
                 , onMouseUp = CamMouseUp
@@ -2919,6 +3735,9 @@ view model =
                         CrashRecoveryPhase rem reason ->
                             ( Nothing, Just { timer = rem, reason = reason } )
 
+                        CelebrationPhase _ ->
+                            ( Nothing, Nothing )
+
                 maybeSplit =
                     race.player2
                         |> Maybe.map
@@ -2934,6 +3753,9 @@ view model =
 
                                             CrashRecoveryPhase rem reason ->
                                                 ( Nothing, Just { timer = rem, reason = reason } )
+
+                                            CelebrationPhase _ ->
+                                                ( Nothing, Nothing )
                                 in
                                 { p2Spec = p2.vehicle
                                 , p2Meshes = p2.meshes
@@ -2963,66 +3785,77 @@ view model =
                                     }
                                 }
                             )
+
+                raceView =
+                    Race.view
+                        race.bundle
+                        race.track
+                        race.vehicle
+                        race.meshes
+                        model.props
+                        model.staticMeshes.shadow
+                        race.physics
+                        race.debris
+                        race.camera
+                        model.viewportWidth
+                        model.viewportHeight
+                        { language = model.language
+                        , physics = race.physics
+                        , trackLengthM = race.track.totalLengthM
+                        , trackTotalDropM = race.track.totalDropM
+                        , elapsedTime = race.elapsedTime
+                        , countdown = countdownMaybe
+                        , isPaused = race.isPaused
+                        , crashRecovery = crashMaybe
+                        , audioMuted = model.audioMuted
+                        , cameraMode = race.cameraMode
+                        , splitDelta = race.splitDelta
+                        , hudAlert = race.hudAlert
+                        , showTouchControls = model.showTouchControls
+                        , tiltEnabled = model.tilt.enabled
+                        , tiltAvailable = model.tilt.available
+                        , touchLeftHeld = model.touch.left
+                        , touchRightHeld = model.touch.right
+                        , touchBrakeHeld = model.touch.brake
+                        , touchTuckHeld = model.touch.tuck
+                        , touchDriftHeld = model.touch.drift
+                        }
+                        { onTogglePause = TogglePause
+                        , onResume = ResumeRace
+                        , onRestartRace = RestartRace
+                        , onGoGarage = InspectInGarage
+                        , onGoMenu = BackToMenu
+                        , onRespawnCheckpoint = RespawnCheckpoint
+                        , onCycleCamera = CycleCamera
+                        , onToggleAudio = ToggleAudioMute
+                        , onToggleTouchUi = ToggleTouchUi
+                        , onTouchSteerLeft = TouchSteerLeft
+                        , onTouchSteerRight = TouchSteerRight
+                        , onTouchBrake = TouchBrake
+                        , onTouchTuck = TouchTuck
+                        , onTouchDrift = TouchDrift
+                        }
+                        { onMouseDown = CamMouseDown
+                        , onMouseMove = CamMouseMove
+                        , onMouseUp = CamMouseUp
+                        , onWheel = CamWheel
+                        }
+                        maybeSplit
+                        race.multiplayer
+                        { onStartCountdown = StartMultiplayerCountdown
+                        , onCopyShareLink = CopyMultiplayerLink
+                        , remoteCar = remoteCarLook model
+                        }
             in
-            Race.view
-                race.bundle
-                race.track
-                race.vehicle
-                race.meshes
-                model.props
-                model.staticMeshes.shadow
-                race.physics
-                race.debris
-                race.camera
-                model.viewportWidth
-                model.viewportHeight
-                { language = model.language
-                , physics = race.physics
-                , trackLengthM = race.track.totalLengthM
-                , trackTotalDropM = race.track.totalDropM
-                , elapsedTime = race.elapsedTime
-                , countdown = countdownMaybe
-                , isPaused = race.isPaused
-                , crashRecovery = crashMaybe
-                , audioMuted = model.audioMuted
-                , cameraMode = race.cameraMode
-                , splitDelta = race.splitDelta
-                , hudAlert = race.hudAlert
-                , showTouchControls = model.showTouchControls
-                , tiltEnabled = model.tilt.enabled
-                , tiltAvailable = model.tilt.available
-                , touchLeftHeld = model.touch.left
-                , touchRightHeld = model.touch.right
-                , touchBrakeHeld = model.touch.brake
-                , touchTuckHeld = model.touch.tuck
-                , touchDriftHeld = model.touch.drift
-                }
-                { onTogglePause = TogglePause
-                , onResume = ResumeRace
-                , onRestartRace = RestartRace
-                , onGoGarage = InspectInGarage
-                , onGoMenu = BackToMenu
-                , onRespawnCheckpoint = RespawnCheckpoint
-                , onCycleCamera = CycleCamera
-                , onToggleAudio = ToggleAudioMute
-                , onToggleTouchUi = ToggleTouchUi
-                , onTouchSteerLeft = TouchSteerLeft
-                , onTouchSteerRight = TouchSteerRight
-                , onTouchBrake = TouchBrake
-                , onTouchTuck = TouchTuck
-                , onTouchDrift = TouchDrift
-                }
-                { onMouseDown = CamMouseDown
-                , onMouseMove = CamMouseMove
-                , onMouseUp = CamMouseUp
-                , onWheel = CamWheel
-                }
-                maybeSplit
-                race.multiplayer
-                { onStartCountdown = StartMultiplayerCountdown
-                , onCopyShareLink = CopyMultiplayerLink
-                , remoteCar = remoteCarLook model
-                }
+            case race.subPhase of
+                CelebrationPhase celeb ->
+                    div [ Attr.style "position" "relative", Attr.style "width" "100%", Attr.style "height" "100%", Attr.style "overflow" "hidden" ]
+                        [ raceView
+                        , viewCelebrationOverlay model.language celeb
+                        ]
+
+                _ ->
+                    raceView
 
         BuildPage build ->
             Html.map BuildMsg (Build.view build)
@@ -3048,10 +3881,10 @@ view model =
                 }
 
 
-{-| Open the car editor on a build standing on `base`.
+{-| Open the car editor on a build optionally standing on `base`.
 -}
-openBuilder : Editor.Base -> Document -> Model -> ( Model, Cmd Msg )
-openBuilder base doc model =
+openBuilder : Maybe Editor.Base -> Document -> Model -> ( Model, Cmd Msg )
+openBuilder maybeBase doc model =
     let
         ( build, buildCmd ) =
             Build.init
@@ -3062,8 +3895,9 @@ openBuilder base doc model =
                 , width = model.viewportWidth
                 , height = model.viewportHeight
                 }
-                base
+                maybeBase
                 doc
+                |> Tuple.mapFirst (Build.setPartCacheAndIndex model.partCache model.partIndex)
     in
     ( { model
         | page = BuildPage build
@@ -3078,14 +3912,24 @@ openBuilder base doc model =
 
 {-| The name of a car built in the editor: the base it stands on.
 -}
-builtCarTitle : Language -> Editor.Base -> String
-builtCarTitle lang base =
-    case lang of
-        Fi ->
-            "Oma auto: " ++ base.nameFi
+builtCarTitle : Language -> Maybe Editor.Base -> String
+builtCarTitle lang maybeBase =
+    case maybeBase of
+        Just base ->
+            case lang of
+                Fi ->
+                    "Oma auto: " ++ base.nameFi
 
-        En ->
-            "My " ++ base.nameEn
+                En ->
+                    "My " ++ base.nameEn
+
+        Nothing ->
+            case lang of
+                Fi ->
+                    "Oma mäkiauto"
+
+                En ->
+                    "Custom Soapbox"
 
 
 enterGarageFromRaceOrResults : Document -> String -> VehicleSpec -> CarMeshBundle -> Model -> ( Model, Cmd Msg )
@@ -3101,10 +3945,267 @@ enterGarageFromRaceOrResults doc title vehicle meshes model =
             }
     in
     ( { model
-        | page = LoadGaragePage garage
+        | page = SetupPage garage
         , pressedKeys = Set.empty
         , touch = emptyTouch
         , shareCopiedNotice = False
       }
     , silenceAudioCmd
     )
+
+
+{-| Celebration overlay presented on top of the 3D race viewport when a car crosses the finish line.
+-}
+viewCelebrationOverlay :
+    Language
+    -> { timer : Float, winner : String, confettiSpawned : Bool, results : ResultsState }
+    -> Html Msg
+viewCelebrationOverlay lang celeb =
+    let
+        timeFormatted =
+            Leaderboard.formatRaceTime celeb.results.finishTimeS
+
+        speedFormatted =
+            String.fromInt (round celeb.results.topSpeedKmh) ++ " km/h"
+
+        integFormatted =
+            String.fromInt celeb.results.finalIntegrityPct ++ "%"
+    in
+    div
+        [ Attr.style "position" "absolute"
+        , Attr.style "inset" "0"
+        , Attr.style "display" "flex"
+        , Attr.style "flex-direction" "column"
+        , Attr.style "align-items" "center"
+        , Attr.style "justify-content" "center"
+        , Attr.style "gap" "16px"
+        , Attr.style "background" "radial-gradient(ellipse at center, rgba(5, 19, 29, 0.45) 0%, rgba(5, 19, 29, 0.85) 100%)"
+        , Attr.style "z-index" "50"
+        , Attr.style "pointer-events" "auto"
+        , Attr.style "padding" "24px"
+        , Attr.style "box-sizing" "border-box"
+        ]
+        [ div
+            [ Attr.style "display" "flex"
+            , Attr.style "flex-direction" "column"
+            , Attr.style "align-items" "center"
+            , Attr.style "gap" "6px"
+            , Attr.style "text-align" "center"
+            ]
+            [ div [ Attr.style "font-size" "48px", Attr.style "filter" "drop-shadow(0 4px 12px rgba(250, 200, 10, 0.6))" ]
+                [ text "🏆" ]
+            , h1
+                [ Attr.style "margin" "0"
+                , Attr.style "font-size" "clamp(24px, 5vw, 36px)"
+                , Attr.style "font-weight" "900"
+                , Attr.style "color" Brand.legoYellow
+                , Attr.style "letter-spacing" "1px"
+                , Attr.style "text-transform" "uppercase"
+                , Attr.style "text-shadow" "0 2px 10px rgba(0, 0, 0, 0.8)"
+                ]
+                [ text
+                    (case lang of
+                        Fi ->
+                            "Maali! Voittaja:"
+
+                        En ->
+                            "Finish! Winner:"
+                    )
+                ]
+            , div
+                [ Attr.style "font-size" "clamp(18px, 4vw, 26px)"
+                , Attr.style "font-weight" "800"
+                , Attr.style "color" Brand.legoWhite
+                , Attr.style "text-shadow" "0 2px 8px rgba(0, 0, 0, 0.8)"
+                ]
+                [ text celeb.winner ]
+            , if celeb.results.isNewBest then
+                div
+                    [ Attr.style "display" "inline-flex"
+                    , Attr.style "align-items" "center"
+                    , Attr.style "gap" "6px"
+                    , Attr.style "background" "rgba(250, 200, 10, 0.25)"
+                    , Attr.style "border" ("1px solid " ++ Brand.legoYellow)
+                    , Attr.style "color" Brand.legoYellow
+                    , Attr.style "padding" "4px 14px"
+                    , Attr.style "border-radius" "20px"
+                    , Attr.style "font-size" "13px"
+                    , Attr.style "font-weight" "800"
+                    , Attr.style "margin-top" "4px"
+                    ]
+                    [ text
+                        (case lang of
+                            Fi ->
+                                "⭐ Uusi ennätys!"
+
+                            En ->
+                                "⭐ New Record!"
+                        )
+                    ]
+
+              else
+                text ""
+            ]
+        , div
+            [ Attr.style "display" "flex"
+            , Attr.style "gap" "12px"
+            , Attr.style "flex-wrap" "wrap"
+            , Attr.style "justify-content" "center"
+            , Attr.style "max-width" "520px"
+            , Attr.style "width" "100%"
+            ]
+            [ celebStatCard "⏱️"
+                (case lang of
+                    Fi ->
+                        "Aika"
+
+                    En ->
+                        "Time"
+                )
+                timeFormatted
+            , celebStatCard "⚡"
+                (case lang of
+                    Fi ->
+                        "Huippunopeus"
+
+                    En ->
+                        "Top Speed"
+                )
+                speedFormatted
+            , celebStatCard "🛠️"
+                (case lang of
+                    Fi ->
+                        "Kunto"
+
+                    En ->
+                        "Integrity"
+                )
+                integFormatted
+            ]
+        , div
+            [ Attr.style "display" "flex"
+            , Attr.style "gap" "10px"
+            , Attr.style "flex-wrap" "wrap"
+            , Attr.style "justify-content" "center"
+            , Attr.style "margin-top" "8px"
+            ]
+            [ button
+                [ Attr.type_ "button"
+                , onClick RestartRace
+                , Attr.style "display" "inline-flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "gap" "6px"
+                , Attr.style "background" Brand.legoYellow
+                , Attr.style "color" Brand.legoBlack
+                , Attr.style "border" "none"
+                , Attr.style "padding" "12px 22px"
+                , Attr.style "border-radius" "12px"
+                , Attr.style "font-weight" "900"
+                , Attr.style "font-size" "15px"
+                , Attr.style "cursor" "pointer"
+                , Attr.style "box-shadow" "0 4px 14px rgba(250, 200, 10, 0.4)"
+                ]
+                [ text
+                    (case lang of
+                        Fi ->
+                            "🔄 Aja uudelleen"
+
+                        En ->
+                            "🔄 Race Again"
+                    )
+                ]
+            , button
+                [ Attr.type_ "button"
+                , onClick OpenBuilder
+                , Attr.style "display" "inline-flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "gap" "6px"
+                , Attr.style "background" "rgba(255, 255, 255, 0.12)"
+                , Attr.style "color" Brand.legoWhite
+                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
+                , Attr.style "padding" "12px 18px"
+                , Attr.style "border-radius" "12px"
+                , Attr.style "font-weight" "800"
+                , Attr.style "font-size" "14px"
+                , Attr.style "cursor" "pointer"
+                ]
+                [ text
+                    (case lang of
+                        Fi ->
+                            "🔨 Muokkaa autoa"
+
+                        En ->
+                            "🔨 Edit Car"
+                    )
+                ]
+            , button
+                [ Attr.type_ "button"
+                , onClick InspectInGarage
+                , Attr.style "display" "inline-flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "gap" "6px"
+                , Attr.style "background" "rgba(255, 255, 255, 0.12)"
+                , Attr.style "color" Brand.legoWhite
+                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
+                , Attr.style "padding" "12px 18px"
+                , Attr.style "border-radius" "12px"
+                , Attr.style "font-weight" "800"
+                , Attr.style "font-size" "14px"
+                , Attr.style "cursor" "pointer"
+                ]
+                [ text
+                    (case lang of
+                        Fi ->
+                            "🏠 Valikko"
+
+                        En ->
+                            "🏠 Menu"
+                    )
+                ]
+            , button
+                [ Attr.type_ "button"
+                , onClick (ShowLeaderboardPage celeb.results)
+                , Attr.style "display" "inline-flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "gap" "6px"
+                , Attr.style "background" "rgba(255, 255, 255, 0.08)"
+                , Attr.style "color" "#cbd5e1"
+                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.15)"
+                , Attr.style "padding" "12px 16px"
+                , Attr.style "border-radius" "12px"
+                , Attr.style "font-weight" "700"
+                , Attr.style "font-size" "13px"
+                , Attr.style "cursor" "pointer"
+                ]
+                [ text
+                    (case lang of
+                        Fi ->
+                            "📊 Tulostaulukko"
+
+                        En ->
+                            "📊 Leaderboard"
+                    )
+                ]
+            ]
+        ]
+
+
+{-| Single statistic badge in the celebration overlay.
+-}
+celebStatCard : String -> String -> String -> Html msg
+celebStatCard icon label val =
+    div
+        [ Attr.style "flex" "1 1 120px"
+        , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+        , Attr.style "border" "1px solid rgba(255, 255, 255, 0.15)"
+        , Attr.style "border-radius" "12px"
+        , Attr.style "padding" "10px"
+        , Attr.style "display" "flex"
+        , Attr.style "flex-direction" "column"
+        , Attr.style "align-items" "center"
+        , Attr.style "gap" "2px"
+        ]
+        [ div [ Attr.style "font-size" "18px" ] [ text icon ]
+        , div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8", Attr.style "text-transform" "uppercase" ] [ text label ]
+        , div [ Attr.style "font-size" "16px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoWhite ] [ text val ]
+        ]

@@ -5,6 +5,7 @@ Supports single-player full-bleed racing, dual-player local split-screen driving
 and online rooms: one full view alone, a grid of every player's view otherwise.
 -}
 
+import DesignTokens.Colors as Brand
 import FeatherIcons
 import Game.Grid as Grid
 import Game.Multiplayer as Multiplayer exposing (RemotePlayer, Role(..), RoomState, RoomStatus(..))
@@ -72,17 +73,19 @@ view :
     -> MultiplayerActions msg
     -> Html msg
 view bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
-    case maybeMulti of
-        Just room ->
-            viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
+    div [ Attr.class "is-racing relative w-full h-full overflow-hidden" ]
+        [ case maybeMulti of
+            Just room ->
+                viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
 
-        Nothing ->
-            case maybeSplit of
-                Nothing ->
-                    viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions
+            Nothing ->
+                case maybeSplit of
+                    Nothing ->
+                        viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions
 
-                Just p2 ->
-                    viewTwoPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions p2
+                    Just p2 ->
+                        viewTwoPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions p2
+        ]
 
 
 {-| Room callbacks, plus the look of another player's car by vehicle id once
@@ -238,7 +241,7 @@ viewMultiplayerSinglePlayer bundle track spec meshes props shadowMesh physics de
     in
     div
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
-        , Attr.style "background" "#0f172a"
+        , Attr.style "background" Brand.legoBlack
         ]
         [ case layout of
             Grid.Tiles shape ->
@@ -413,7 +416,7 @@ viewPlayerGrid bundle track cars props shadowMesh debris physics width height ro
             div
                 [ Tw.classes [ Tw.relative, Tw.w_full, Tw.h_full, Tw.overflow_hidden, Tw.border ]
                 , Attr.style "border-color" "rgba(148, 163, 184, 0.2)"
-                , Attr.style "background" "#020617"
+                , Attr.style "background" Brand.legoBlack
                 ]
                 [ Render.renderRaceViewportMulti bundle track cars props shadowMesh debris (tileCamera tileH pos yaw) tileW tileH []
                 , if badgeInTile index then
@@ -555,7 +558,7 @@ viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera
     in
     div
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
-        , Attr.style "background" "#0f172a"
+        , Attr.style "background" Brand.legoBlack
         ]
         [ Render.renderRaceViewport bundle track spec meshes props shadowMesh physics debris camera width height canvasAttrs
         , HUD.viewHudOverlay hudData hudActions
@@ -662,7 +665,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                         [ Tw.flex_col ]
                    )
             )
-        , Attr.style "background" "#020617"
+        , Attr.style "background" Brand.legoBlack
         ]
         [ -- Player 1 Viewport + HUD
           div
@@ -675,7 +678,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                             [ Tw.w_full, Tw.h_1over2, Tw.border_b_2 ]
                        )
                 )
-            , Attr.style "border-color" "#f59e0b"
+            , Attr.style "border-color" Brand.legoYellow
             ]
             (Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1Camera p1W p1H []
                 :: viewHalf p1HudData "PLAYER 1" "#38bdf8" "WASD"

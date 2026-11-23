@@ -1180,8 +1180,8 @@ things never wears the car down; a full-speed head-on hit costs about a third.
 -}
 obstacleImpactDamage : Float -> Float
 obstacleImpactDamage impactSpeed =
-    if impactSpeed > 5.0 then
-        clamp 4.0 35.0 ((impactSpeed - 5.0) * 3.2)
+    if impactSpeed > 2.5 then
+        clamp 5.0 48.0 ((impactSpeed - 2.5) * 4.2)
 
     else
         0.0
@@ -1189,12 +1189,12 @@ obstacleImpactDamage impactSpeed =
 
 {-| Health lost landing from the air at `impactVel` m/s into the ground. Small
 hops and the brick ramps' normal landings are free; dropping in from high up
-costs up to 30.
+costs up to 36.
 -}
 landingDamage : Float -> Float
 landingDamage impactVel =
-    if impactVel > 7.0 then
-        clamp 3.0 30.0 ((impactVel - 7.0) * 4.0)
+    if impactVel > 4.5 then
+        clamp 4.0 36.0 ((impactVel - 4.5) * 4.0)
 
     else
         0.0
@@ -1208,13 +1208,13 @@ smashChipDamage : ObstacleKind -> Float
 smashChipDamage kind =
     case kind of
         Barrel ->
-            4.0
+            8.0
 
         GardenGnome ->
-            2.0
+            4.0
 
         BrickWall ->
-            8.0
+            16.0
 
         _ ->
             0.0
@@ -1417,15 +1417,15 @@ resolveValleyContainment maxCorridor terrain _ pos vel =
                     Vec3.add vel (Vec3.scale (outwardVel * 1.25) inwardNormal)
 
                 dmg =
-                    if outwardVel > 6.5 then
-                        clamp 3.0 18.0 ((outwardVel - 6.5) * 1.5)
+                    if outwardVel > 4.0 then
+                        clamp 4.0 25.0 ((outwardVel - 4.0) * 2.5)
 
                     else
                         0.0
 
                 evs =
-                    if outwardVel > 3.5 then
-                        [ Impact { impulse = clamp 0.1 1.0 (outwardVel / 18.0), scrape = True } ]
+                    if outwardVel > 2.0 then
+                        [ Impact { impulse = clamp 0.1 1.0 (outwardVel / 15.0), scrape = True } ]
 
                     else
                         []

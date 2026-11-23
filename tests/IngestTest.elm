@@ -174,6 +174,23 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
+        , test "decodes user bug report URL with meadow-path, seed 5212, and b/ payload" <|
+            \_ ->
+                let
+                    url =
+                        "#track=meadow-path&seed=5212&b/dYm7DYRAEEM9O8Ohu-CIyeiAWXbFR2QbIDKKoAlyGqFDWmAgx5YsPztNhFxiq2rRRAlt9BI0WFP1ErUb8tA3w6o-m1EAEPzNjzYiTj84xwZEbicYOANT-p70-jNzKjcRRr1k9lYHfe59vAA"
+                in
+                case Ingest.decodeRaceInput Nothing url of
+                    Ok decoded ->
+                        Expect.all
+                            [ \_ -> Expect.equal (Just MeadowPath) decoded.trackId
+                            , \_ -> Expect.equal (Just 5212) decoded.seed
+                            , \_ -> Expect.equal False (List.isEmpty (Document.mainPlacements decoded.document))
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("Failed to decode: " ++ Debug.toString err)
         , test "All 4 built-in presets are 100% legal brick builds with zero Studio.Health issues, zero tidy moves, and zero loose parts" <|
             \_ ->
                 let

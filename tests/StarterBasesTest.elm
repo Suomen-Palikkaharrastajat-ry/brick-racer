@@ -63,12 +63,17 @@ starterTest starter =
             \_ -> Expect.equal (Just flatCount) (headerPartCount starter.text)
         , test "stays within the 80-part starter budget" <|
             \_ -> Expect.atMost 80 flatCount
-        , test "analyzer pairs 4 wheels with tyres, 2 at the front" <|
+        , test "analyzer pairs 3 or 4 wheels with tyres" <|
             \_ ->
                 Expect.all
-                    [ \s -> Expect.equal 4 (List.length s.wheels)
+                    [ \s -> Expect.equal True (List.member (List.length s.wheels) [ 3, 4 ])
                     , \s -> Expect.equal True (List.all .hasRubberTire s.wheels)
-                    , \s -> Expect.equal 2 (List.length (List.filter .isFront s.wheels))
+                    , \s ->
+                        if starter.file == "trike-wedge.mpd" then
+                            Expect.equal 1 (List.length (List.filter .isFront s.wheels))
+
+                        else
+                            Expect.equal 2 (List.length (List.filter .isFront s.wheels))
                     , \s -> Expect.equal True (List.all (\w -> List.length w.placementIds == 2) s.wheels)
                     ]
                     spec
@@ -87,13 +92,12 @@ starterTest starter =
                     spec
         , test "steering matches the design" <|
             \_ ->
-                case ( String.startsWith "turntable" starter.file, spec.steering ) of
-                    ( True, TurntableBogie b ) ->
-                        -- the bogie carries the two front wheels (4 parts), the holder and the turntable base
-                        Expect.atLeast 6 (List.length b.bogiePlacementIds)
-
-                    ( False, FixedAxleFallback ) ->
+                case ( starter.file == "pinewood-classic.mpd", spec.steering ) of
+                    ( True, FixedAxleFallback ) ->
                         Expect.pass
+
+                    ( False, TurntableBogie b ) ->
+                        Expect.atLeast 4 (List.length b.bogiePlacementIds)
 
                     ( _, other ) ->
                         Expect.fail ("Unexpected steering: " ++ Debug.toString other)

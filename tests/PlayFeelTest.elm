@@ -328,12 +328,12 @@ suite =
         , describe "Car health"
             [ test "small bumps cost nothing" <|
                 \_ ->
-                    ( Physics.obstacleImpactDamage 4.5, Physics.landingDamage 6.0 )
+                    ( Physics.obstacleImpactDamage 2.0, Physics.landingDamage 4.0 )
                         |> Expect.equal ( 0, 0 )
             , test "a handful of moderate knocks leaves most of the health" <|
                 \_ ->
-                    (Physics.maxHealth - 5 * Physics.obstacleImpactDamage 6.5)
-                        |> Expect.atLeast (Physics.maxHealth * 0.6)
+                    (Physics.maxHealth - 5 * Physics.obstacleImpactDamage 4.0)
+                        |> Expect.atLeast (Physics.maxHealth * 0.4)
             , test "one hard crash does not wreck a healthy car" <|
                 \_ ->
                     Physics.obstacleImpactDamage 30

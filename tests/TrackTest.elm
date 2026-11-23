@@ -138,15 +138,15 @@ suite =
 
 verifyShortAndSteep : TrackId -> Test
 verifyShortAndSteep id =
-    test (trackIdToString id ++ " is 0.35-0.65 km long with at least 25% average grade") <|
+    test (trackIdToString id ++ " is 0.7-1.3 km long with at least 25% average grade") <|
         \_ ->
             let
                 track =
                     Track.generate (Track.trackConfigFor id 11)
             in
             Expect.all
-                [ \_ -> Expect.atLeast 350.0 track.totalLengthM
-                , \_ -> Expect.atMost 650.0 track.totalLengthM
+                [ \_ -> Expect.atLeast 700.0 track.totalLengthM
+                , \_ -> Expect.atMost 1300.0 track.totalLengthM
                 , \_ -> Expect.atLeast 0.25 (track.totalDropM / track.totalLengthM)
                 ]
                 ()

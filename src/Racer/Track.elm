@@ -68,24 +68,24 @@ trackConfigFor id seed =
         FarmLane ->
             { id = FarmLane
             , seed = seed
-            , lengthM = 480.0
-            , dropM = 150.0
+            , lengthM = 960.0
+            , dropM = 300.0
             , defaultHalfWidthM = 4.4
             }
 
         ForestTrail ->
             { id = ForestTrail
             , seed = seed
-            , lengthM = 540.0
-            , dropM = 175.0
+            , lengthM = 1080.0
+            , dropM = 350.0
             , defaultHalfWidthM = 3.9
             }
 
         MeadowPath ->
             { id = MeadowPath
             , seed = seed
-            , lengthM = 420.0
-            , dropM = 150.0
+            , lengthM = 840.0
+            , dropM = 300.0
             , defaultHalfWidthM = 3.3
             }
 
@@ -500,12 +500,12 @@ farmLaneKnots : List BlueprintKnot
 farmLaneKnots =
     [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
     , { sFrac = 0.11, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.1, halfWidth = 4.5, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.27, xOffset = -24.0, yDropFrac = 0.24, zProgress = 0.25, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.43, xOffset = -32.0, yDropFrac = 0.38, zProgress = 0.4, halfWidth = 4.3, surface = GravelRoad, feature = Nothing }
-    , { sFrac = 0.59, xOffset = 4.0, yDropFrac = 0.55, zProgress = 0.55, halfWidth = 4.2, surface = GravelRoad, feature = Just (RoughWash { amplitudeM = 0.06, wavelengthM = 2.6 }) }
-    , { sFrac = 0.75, xOffset = 30.0, yDropFrac = 0.73, zProgress = 0.7, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.9, xOffset = 20.0, yDropFrac = 0.93, zProgress = 0.85, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 1.0, xOffset = 16.0, yDropFrac = 1.0, zProgress = 0.95, halfWidth = 5.0, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.27, xOffset = -42.0, yDropFrac = 0.24, zProgress = 0.25, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.43, xOffset = -56.0, yDropFrac = 0.38, zProgress = 0.4, halfWidth = 4.3, surface = GravelRoad, feature = Nothing }
+    , { sFrac = 0.59, xOffset = 7.0, yDropFrac = 0.55, zProgress = 0.55, halfWidth = 4.2, surface = GravelRoad, feature = Just (RoughWash { amplitudeM = 0.06, wavelengthM = 2.6 }) }
+    , { sFrac = 0.75, xOffset = 52.0, yDropFrac = 0.73, zProgress = 0.7, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 0.9, xOffset = 35.0, yDropFrac = 0.93, zProgress = 0.85, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
+    , { sFrac = 1.0, xOffset = 28.0, yDropFrac = 1.0, zProgress = 0.95, halfWidth = 5.0, surface = DirtRoad, feature = Nothing }
     ]
 
 

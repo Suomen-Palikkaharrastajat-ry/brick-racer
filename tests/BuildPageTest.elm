@@ -19,7 +19,33 @@ import Viewport
 
 suite : Test
 suite =
-    describe "Car editor screen" (List.map baseTest Editor.bases)
+    describe "Car editor screen"
+        (List.map baseTest Editor.bases
+            ++ [ test "custom document without starter base opens and can be edited" <|
+                    \_ ->
+                        let
+                            doc =
+                                Document.parse "0 Name: Custom\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\n"
+
+                            opened =
+                                Build.init
+                                    { ldrawBase = ""
+                                    , ldrawFallbackBase = ""
+                                    , supportsPointerEvents = True
+                                    , language = En
+                                    , width = 390
+                                    , height = 844
+                                    }
+                                    Nothing
+                                    doc
+                                    |> Tuple.first
+
+                            added =
+                                step (AddPart "3001.dat") opened
+                        in
+                        Expect.equal (partCount doc + 1) (partCount (Build.document added))
+               ]
+        )
 
 
 baseTest : Base -> Test
@@ -34,7 +60,7 @@ baseTest base =
                 , width = 390
                 , height = 844
                 }
-                base
+                (Just base)
                 base.document
                 |> Tuple.first
 

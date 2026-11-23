@@ -1,6 +1,6 @@
 {
-  "name": "Brick Racer — Palikkaralli",
-  "short_name": "Brick Racer",
+  "name": "Mäkiautoleikki",
+  "short_name": "Mäkiautoleikki",
   "description": "Steer your Brick Play or Brick Studio soapbox car down 3D mountain tracks under gravity.",
   "start_url": "/",
   "display": "standalone",

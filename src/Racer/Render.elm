@@ -254,6 +254,7 @@ renderGarageViewport trackId plinthMesh shadowMesh wheelPreviewSpin spec meshes 
          , Attr.style "display" "block"
          , Attr.style "width" "100%"
          , Attr.style "height" "100%"
+         , Attr.style "touch-action" "pan-y"
          ]
             ++ attrs
         )
@@ -439,6 +440,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
          , Attr.style "display" "block"
          , Attr.style "width" "100%"
          , Attr.style "height" "100%"
+         , Attr.style "touch-action" "pan-y"
          ]
             ++ attrs
         )

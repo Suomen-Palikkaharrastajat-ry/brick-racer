@@ -10,6 +10,7 @@ module Racer.Editor exposing
     , isBasePlacement
     , palette
     , parts
+    , presets
     , wheelParts
     )
 
@@ -33,7 +34,9 @@ import LDraw.Connectivity as Connectivity exposing (BoundingBox3D, ConnectionTyp
 import LDraw.Document as Document exposing (Document, Placement)
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Racer.Ingest as Ingest
 import Racer.StarterBases as StarterBases
+import Racer.Types exposing (PresetBuild)
 import Set exposing (Set)
 
 
@@ -152,9 +155,9 @@ parts =
     , part "4488.dat" "Wheel holder 2 x 2, 1 pin" "Pyöränpidike 2 x 2, 1 tappi"
     , part "4624.dat" "Small rim" "Pieni vanne"
     , part "3641.dat" "Small tyre" "Pieni rengas"
-    , part "42610.dat" "Kart rim" "Kartingvanne"
-    , part "50951.dat" "Kart tyre" "Kartingrengas"
-    , part "55982.dat" "Off-road rim" "Maastovanne"
+    , part "6014.dat" "Balloon rim" "Ilmakumivanne"
+    , part "56890.dat" "Balloon tyre" "Ilmakumirengas"
+    , part "55981.dat" "Off-road rim" "Maastovanne"
     , part "56891.dat" "Off-road tyre" "Maastorengas"
     ]
 
@@ -169,15 +172,15 @@ starter bases.
 -}
 wheelParts : List String
 wheelParts =
-    [ "4624.dat", "3641.dat", "42610.dat", "50951.dat", "55982.dat", "56891.dat" ]
+    [ "4624.dat", "3641.dat", "6014.dat", "56890.dat", "55981.dat", "56891.dat" ]
 
 
 
 -- ── Bases ────────────────────────────────────────────────────────────────────
 
 
-{-| A starter base: its file stem (`compact-kart`), names, the base submodel the
-main model references (`compact-kart-base.ldr`), how many parts that submodel
+{-| A starter base: its file stem (`turntable-kart`), names, the base submodel the
+main model references (`turntable-kart-base.ldr`), how many parts that submodel
 holds, and the whole starter document.
 -}
 type alias Base =
@@ -201,16 +204,21 @@ bases =
 
 baseOrder : Dict String Int
 baseOrder =
-    Dict.fromList [ ( "compact-kart", 0 ), ( "long-plank", 1 ), ( "turntable-kart", 2 ), ( "wide-offroad", 3 ) ]
+    Dict.fromList
+        [ ( "turntable-kart", 0 )
+        , ( "pinewood-classic", 1 )
+        , ( "alpine-crawler", 2 )
+        , ( "trike-wedge", 3 )
+        ]
 
 
 finnishNames : Dict String String
 finnishNames =
     Dict.fromList
-        [ ( "compact-kart", "Pieni karting" )
-        , ( "long-plank", "Pitkä lankkuauto" )
-        , ( "turntable-kart", "Kääntöpöytäkarting" )
-        , ( "wide-offroad", "Leveä maasturi" )
+        [ ( "turntable-kart", "Kääntöpöytä-karting" )
+        , ( "pinewood-classic", "Klassinen mäkiauto" )
+        , ( "alpine-crawler", "Alppimaasturi" )
+        , ( "trike-wedge", "Virtaviivainen kolmipyörä" )
         ]
 
 
@@ -613,3 +621,10 @@ overlaps a b =
             getter a.max - slack <= getter b.min || getter b.max - slack <= getter a.min
     in
     not (apart Vec3.getX 2 || apart Vec3.getY (studHeight + 1) || apart Vec3.getZ 2)
+
+
+{-| Built-in starter soapbox presets ready to inspect and race.
+-}
+presets : List PresetBuild
+presets =
+    Ingest.presets
