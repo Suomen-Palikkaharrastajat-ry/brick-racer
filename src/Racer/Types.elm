@@ -382,6 +382,11 @@ type ValidationSeverity
 
 
 {-| Machine-readable diagnostic codes for Garage badges and localization.
+
+The cleanup codes carry the flattened placement ids they name (`LooseParts`,
+`DuplicateParts`, `FarParts`, `OffGrid`); `ExtraWheels` carries the mass in
+grams that removing the surplus wheels would save.
+
 -}
 type ValidationCode
     = EmptyModel
@@ -389,7 +394,7 @@ type ValidationCode
     | CollinearStance
     | BellyScrape Float
     | HighCenterOfMass Float
-    | DisconnectedBricks Int
+    | LooseParts (List Int)
     | FixedAxleTip
     | MissingPartGeometry Int
     | RubberGripBonus
@@ -399,6 +404,10 @@ type ValidationCode
     | NoseOverRisk Float
     | CoMOutsideSupport
     | SteeringNotLinked
+    | DuplicateParts (List Int)
+    | FarParts (List Int)
+    | OffGrid (List Int)
+    | ExtraWheels Int
 
 
 {-| An action the car editor can offer to resolve a `ValidationIssue`.

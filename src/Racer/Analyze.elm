@@ -3,17 +3,26 @@ module Racer.Analyze exposing
     , CarMeshBundle
     , DynamicSubMesh
     , FallbackCacheMode(..)
+    , PlacementRecord
     , ValidationContext
     , analyzeDocument
     , analyzeDocumentWithMode
+    , attachmentComponents
     , buildFallbackCache
     , buildValidationReport
     , buildVehicleScenes
     , carWeightKgFromGrams
     , comSupportMargin
+    , farPartDistanceLdu
+    , findDuplicateParts
+    , findLoosePlacements
+    , inspectPlacement
+    , isFarOutside
+    , isOffGrid
     , isWheelGrounded
     , starRating
     , steeringLinked
+    , surplusWheelClusters
     , turntablePairFiles
     , wheelPairFiles
     , yUpFlip
@@ -29,7 +38,10 @@ Takes a parsed LDraw `Document`, `PartCache`, and `PartIndex` and extracts:
   - Optional `3829c01` cockpit steering wheel indicator,
   - Heading normalization (`+Z` forward, `+Y` up, bottom tires resting at `y = 0`),
   - Mass, Center of Mass (CoM), diagonal inertia, frontal drag area, ground clearance,
-  - Physical connectivity graph analysis to identify disconnected loose parts,
+  - An attachment graph from real stud, anti-stud, pin, axle and rim-tyre
+    contacts (`LDraw.Connectivity`) to find the parts not joined to the car,
+  - Cleanup checks: duplicate parts, far-away parts, off-grid parts and surplus
+    wheels,
   - Split `Render.Scene.Scene` sub-assemblies (`chassis`, `steeringBogie`, per-wheel meshes)
     ready for animated WebGL rendering.
 
@@ -200,7 +212,7 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
             assignFrontWheels carWheelsBeforeFront
 
         looseIds =
-            findLoosePlacements carRecords carWheels
+            findLoosePlacements carRecords
 
         steeringMech =
             detectSteeringMechanism carRecords carWheels
@@ -282,16 +294,45 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
                 |> List.filter (\r -> r.cleanId == "30663" || r.cleanId == "2819")
                 |> List.head
 
+        looseIdSet =
+            Set.fromList looseIds
+
+        mainRecords =
+            List.filter (\r -> not (Set.member r.placement.id looseIdSet)) carRecords
+
+        farIds =
+            case mainRecords of
+                [] ->
+                    []
+
+                _ ->
+                    let
+                        mainBox =
+                            { min = combinedMin mainRecords, max = combinedMax mainRecords }
+                    in
+                    carRecords
+                        |> List.filter (\r -> isFarOutside farPartDistanceLdu mainBox { min = r.carMinCorner, max = r.carMaxCorner })
+                        |> List.map (.placement >> .id)
+
+        offGridIds =
+            carRecords
+                |> List.filter (\r -> isOffGrid r.placement.part r.placement.matrix)
+                |> List.map (.placement >> .id)
+
         issues =
             buildValidationReport
                 { placementCount = List.length placements
                 , groundClearanceLdu = chassisMinYLdu
                 , comM = comM
-                , looseCount = List.length looseIds
+                , looseIds = looseIds
                 , missingCount = missingCount
                 , steering = steeringMech
                 , wheels = carWheelsWithSteer
                 , dragCoeff = dragCoeff
+                , duplicateIds = findDuplicateParts carRecords
+                , farIds = farIds
+                , offGridIds = offGridIds
+                , placementMassGrams = Dict.fromList (List.map (\r -> ( r.placement.id, r.massGrams )) carRecords)
                 }
 
         isDrivable =
@@ -493,6 +534,10 @@ buildVehicleScenes cache spec placements wheels _ =
 -- ── Internal Types ────────────────────────────────────────────────────────────
 
 
+{-| What the analyzer knows of one flattened placement: its part, mass,
+bounds (LDraw `-Y` flipped to `+Y` up, then in normalized Car Space) and its
+`LDraw.Connectivity` entry, when it has one.
+-}
 type alias PlacementRecord =
     { placement : Placement
     , cleanId : String
@@ -535,6 +580,10 @@ cleanPartName raw =
     Catalog.cleanPartId raw
 
 
+{-| Weigh and measure one flattened placement. Its bounds come from the part's
+geometry in `cache`, else from its connectivity boxes, else a 1 x 1 brick box.
+Before normalization the Car Space corners equal the `+Y` up ones.
+-}
 inspectPlacement : PartCache -> PartIndex -> Placement -> PlacementRecord
 inspectPlacement cache partIndex placement =
     let
@@ -1235,8 +1284,12 @@ tagSteerableWheels mech wheels =
     ( updated, updated )
 
 
-findLoosePlacements : List PlacementRecord -> List WheelSpec -> List Int
-findLoosePlacements records _ =
+{-| The placements not joined to the car: every placement outside the base
+component of `attachmentComponents`, the component with the most mass (ties go
+to the one listed first). A car of fewer than two placements has no loose part.
+-}
+findLoosePlacements : List PlacementRecord -> List Int
+findLoosePlacements records =
     case records of
         [] ->
             []
@@ -1246,43 +1299,173 @@ findLoosePlacements records _ =
 
         _ ->
             let
-                adj : Dict Int (List Int)
-                adj =
-                    buildConnectivityGraph records
+                massById =
+                    Dict.fromList (List.map (\r -> ( r.placement.id, r.massGrams )) records)
 
-                anchorId =
-                    records
-                        |> List.sortBy (\r -> -(Vec3.getX (Vec3.sub r.carMaxCorner r.carMinCorner) * Vec3.getZ (Vec3.sub r.carMaxCorner r.carMinCorner)))
-                        |> List.head
-                        |> Maybe.map (.placement >> .id)
-                        |> Maybe.withDefault 0
+                componentMass ids =
+                    List.sum (List.map (\id -> Dict.get id massById |> Maybe.withDefault 0) ids)
 
-                visited =
-                    bfsConnected anchorId adj Set.empty [ anchorId ]
+                baseIds =
+                    attachmentComponents records
+                        |> List.foldl
+                            (\ids best ->
+                                case best of
+                                    Just ( bestMass, _ ) ->
+                                        if componentMass ids > bestMass + 1.0e-6 then
+                                            Just ( componentMass ids, ids )
+
+                                        else
+                                            best
+
+                                    Nothing ->
+                                        Just ( componentMass ids, ids )
+                            )
+                            Nothing
+                        |> Maybe.map (Tuple.second >> Set.fromList)
+                        |> Maybe.withDefault Set.empty
             in
             records
-                |> List.filter (\r -> not (Set.member r.placement.id visited))
+                |> List.filter (\r -> not (Set.member r.placement.id baseIds))
                 |> List.map (.placement >> .id)
 
 
-buildConnectivityGraph : List PlacementRecord -> Dict Int (List Int)
-buildConnectivityGraph records =
+{-| The connected components of the attachment graph, each as the ids of its
+placements in list order, the components ordered by their first placement.
+
+Two placements are joined when a connection point of one mates a compatible
+point of the other (`LDraw.Connectivity.isCompatible`):
+
+  - studs and anti-studs (and ball joints) when their world positions lie
+    within `pointContactLdu`,
+  - pins, axles, clips, bars, rims and tyres when they share an axis (parallel
+    axes no more than `pointContactLdu` apart) and sit within `axialReachLdu`
+    of each other along it, since a pin, rim or tyre can slide along its axis
+    and its point is not where the mating part's point is.
+
+A part with no connectivity entry, or whose entry has only studs (a turntable
+top, a baseplate: nothing that can hold it from below), is joined by the old
+bounding-box test instead (`boxesTouchOrOverlap` within 9.5 LDU).
+
+-}
+attachmentComponents : List PlacementRecord -> List (List Int)
+attachmentComponents records =
     let
-        pairs =
-            collectClosePairs records []
+        attachments =
+            List.map attachmentOf records
+
+        adjacency =
+            collectAttachedPairs attachments []
+                |> List.foldl
+                    (\( a, b ) dict ->
+                        dict
+                            |> Dict.update a (\v -> Just (b :: Maybe.withDefault [] v))
+                            |> Dict.update b (\v -> Just (a :: Maybe.withDefault [] v))
+                    )
+                    Dict.empty
+
+        ids =
+            List.map (.placement >> .id) records
+
+        step id ( seen, components ) =
+            if Set.member id seen then
+                ( seen, components )
+
+            else
+                let
+                    component =
+                        bfsConnected id adjacency Set.empty [ id ]
+                in
+                ( Set.union seen component
+                , List.filter (\other -> Set.member other component) ids :: components
+                )
     in
+    List.foldl step ( Set.empty, [] ) ids
+        |> Tuple.second
+        |> List.map dedupeInts
+        |> List.reverse
+
+
+dedupeInts : List Int -> List Int
+dedupeInts ids =
     List.foldl
-        (\( a, b ) dict ->
-            dict
-                |> Dict.update a (\v -> Just (b :: Maybe.withDefault [] v))
-                |> Dict.update b (\v -> Just (a :: Maybe.withDefault [] v))
+        (\id ( seen, acc ) ->
+            if Set.member id seen then
+                ( seen, acc )
+
+            else
+                ( Set.insert id seen, id :: acc )
         )
-        Dict.empty
-        pairs
+        ( Set.empty, [] )
+        ids
+        |> Tuple.second
+        |> List.reverse
 
 
-collectClosePairs : List PlacementRecord -> List ( Int, Int ) -> List ( Int, Int )
-collectClosePairs remaining acc =
+{-| How close (LDU) two mating connection points, or two shared axes, must be.
+-}
+pointContactLdu : Float
+pointContactLdu =
+    1.0
+
+
+{-| How far (LDU) along a shared axis a pin, axle, rim or tyre point may sit
+from its mate. A 6014b rim's pin hole point is on its outer face, 12.75 LDU
+along the axle from the 4600 pin's centre, on the starter bases.
+-}
+axialReachLdu : Float
+axialReachLdu =
+    14.0
+
+
+{-| A connection point in LDraw world space; `axis` is its normal.
+-}
+type alias WorldPoint =
+    { connType : ConnectionType
+    , position : Vec3
+    , axis : Vec3
+    }
+
+
+{-| A placement as the attachment graph sees it: its Car Space box, its world
+connection points, and whether it is joined by the bounding-box test.
+-}
+type alias Attachment =
+    { id : Int
+    , boxMin : Vec3
+    , boxMax : Vec3
+    , points : List WorldPoint
+    , boxOnly : Bool
+    }
+
+
+attachmentOf : PlacementRecord -> Attachment
+attachmentOf record =
+    let
+        points =
+            case record.connectivity of
+                Just conn ->
+                    List.map
+                        (\c ->
+                            { connType = c.connType
+                            , position = Mat4.transform record.placement.matrix c.localPosition
+                            , axis = Connectivity.transformDirection record.placement.matrix c.normal
+                            }
+                        )
+                        conn.connections
+
+                Nothing ->
+                    []
+    in
+    { id = record.placement.id
+    , boxMin = record.carMinCorner
+    , boxMax = record.carMaxCorner
+    , points = points
+    , boxOnly = not (List.any (\p -> p.connType /= Stud) points)
+    }
+
+
+collectAttachedPairs : List Attachment -> List ( Int, Int ) -> List ( Int, Int )
+collectAttachedPairs remaining acc =
     case remaining of
         [] ->
             acc
@@ -1292,15 +1475,66 @@ collectClosePairs remaining acc =
                 matches =
                     List.filterMap
                         (\other ->
-                            if boxesTouchOrOverlap 9.5 first.carMinCorner first.carMaxCorner other.carMinCorner other.carMaxCorner then
-                                Just ( first.placement.id, other.placement.id )
+                            if attached first other then
+                                Just ( first.id, other.id )
 
                             else
                                 Nothing
                         )
                         rest
             in
-            collectClosePairs rest (matches ++ acc)
+            collectAttachedPairs rest (matches ++ acc)
+
+
+attached : Attachment -> Attachment -> Bool
+attached a b =
+    if a.boxOnly || b.boxOnly then
+        boxesTouchOrOverlap 9.5 a.boxMin a.boxMax b.boxMin b.boxMax
+
+    else
+        boxesTouchOrOverlap (axialReachLdu + 2.0) a.boxMin a.boxMax b.boxMin b.boxMax
+            && List.any (\pa -> List.any (pointsMate pa) b.points) a.points
+
+
+pointsMate : WorldPoint -> WorldPoint -> Bool
+pointsMate a b =
+    if not (Connectivity.isCompatible a.connType b.connType) then
+        False
+
+    else if isAxialConnection a.connType then
+        let
+            offset =
+                Vec3.sub b.position a.position
+
+            along =
+                Vec3.dot offset a.axis
+
+            across =
+                sqrt (max 0 (Vec3.lengthSquared offset - along * along))
+        in
+        abs (Vec3.dot a.axis b.axis) >= 0.9 && across <= pointContactLdu && abs along <= axialReachLdu
+
+    else
+        Vec3.distance a.position b.position <= pointContactLdu
+
+
+isAxialConnection : ConnectionType -> Bool
+isAxialConnection connType =
+    case connType of
+        Stud ->
+            False
+
+        AntiStud ->
+            False
+
+        BallMale ->
+            False
+
+        BallSocketFemale ->
+            False
+
+        _ ->
+            True
 
 
 boxesTouchOrOverlap : Float -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> Bool
@@ -1446,17 +1680,218 @@ computeInertia totalMassKg comLdu records wheelBaseM trackWidthM =
 {-| Inputs of `buildValidationReport`, all in normalized Car Space (`+Y` up,
 `+Z` forward, tyre contact plane at `y = 0`). `comM` and the wheels'
 `localHubPosM` are in meters; `groundClearanceLdu` and `localHubPosLdu` in LDU.
+
+The id lists name flattened placements: `looseIds` from `findLoosePlacements`,
+`duplicateIds` from `findDuplicateParts`, `farIds` (`isFarOutside` the base
+component) and `offGridIds` (`isOffGrid`). `placementMassGrams` weighs the
+placements, for the mass the surplus wheels would save.
+
 -}
 type alias ValidationContext =
     { placementCount : Int
     , groundClearanceLdu : Float
     , comM : Vec3
-    , looseCount : Int
+    , looseIds : List Int
     , missingCount : Int
     , steering : SteeringMechanism
     , wheels : List WheelSpec
     , dragCoeff : Float
+    , duplicateIds : List Int
+    , farIds : List Int
+    , offGridIds : List Int
+    , placementMassGrams : Dict Int Float
     }
+
+
+{-| The later copies among `records`: a placement of the same part as an
+earlier one whose world matrix matches it (translation within 0.5 LDU, rotation
+within 0.01), or whose Car Space box overlaps the earlier one's by more than 90
+percent of the larger box. The first copy is kept.
+-}
+findDuplicateParts : List PlacementRecord -> List Int
+findDuplicateParts records =
+    List.foldl
+        (\record ( kept, duplicates ) ->
+            if List.any (isDuplicateOf record) kept then
+                ( kept, record.placement.id :: duplicates )
+
+            else
+                ( record :: kept, duplicates )
+        )
+        ( [], [] )
+        records
+        |> Tuple.second
+        |> List.reverse
+
+
+isDuplicateOf : PlacementRecord -> PlacementRecord -> Bool
+isDuplicateOf a b =
+    a.cleanId
+        == b.cleanId
+        && (sameMatrix a.placement.matrix b.placement.matrix
+                || boxOverlapRatio a.carMinCorner a.carMaxCorner b.carMinCorner b.carMaxCorner
+                > 0.9
+           )
+
+
+sameMatrix : Mat4 -> Mat4 -> Bool
+sameMatrix a b =
+    let
+        ra =
+            Mat4.toRecord a
+
+        rb =
+            Mat4.toRecord b
+
+        near tol x y =
+            abs (x - y) <= tol
+
+        translationGap =
+            sqrt ((ra.m14 - rb.m14) ^ 2 + (ra.m24 - rb.m24) ^ 2 + (ra.m34 - rb.m34) ^ 2)
+    in
+    translationGap
+        <= 0.5
+        && List.all identity
+            (List.map2 (near 0.01)
+                [ ra.m11, ra.m12, ra.m13, ra.m21, ra.m22, ra.m23, ra.m31, ra.m32, ra.m33 ]
+                [ rb.m11, rb.m12, rb.m13, rb.m21, rb.m22, rb.m23, rb.m31, rb.m32, rb.m33 ]
+            )
+
+
+{-| The volume two boxes share, as a fraction of the larger box; 0 when either
+box is empty.
+-}
+boxOverlapRatio : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Float
+boxOverlapRatio minA maxA minB maxB =
+    let
+        overlapOn get =
+            max 0 (min (get maxA) (get maxB) - max (get minA) (get minB))
+
+        volume lo hi =
+            abs ((Vec3.getX hi - Vec3.getX lo) * (Vec3.getY hi - Vec3.getY lo) * (Vec3.getZ hi - Vec3.getZ lo))
+
+        larger =
+            max (volume minA maxA) (volume minB maxB)
+    in
+    if larger <= 1.0e-6 then
+        0
+
+    else
+        overlapOn Vec3.getX * overlapOn Vec3.getY * overlapOn Vec3.getZ / larger
+
+
+{-| How far (LDU) outside the base component's bounds a part must lie to count
+as a far part.
+-}
+farPartDistanceLdu : Float
+farPartDistanceLdu =
+    80.0
+
+
+{-| Whether the box `part` lies more than `limit` LDU outside the box `bounds`
+along some axis.
+-}
+isFarOutside : Float -> { min : Vec3, max : Vec3 } -> { min : Vec3, max : Vec3 } -> Bool
+isFarOutside limit bounds part =
+    let
+        gapOn get =
+            max (get part.min - get bounds.max) (get bounds.min - get part.max)
+    in
+    max (gapOn Vec3.getX) (max (gapOn Vec3.getY) (gapOn Vec3.getZ)) > limit
+
+
+{-| Whether a placement of `partFile` at the LDraw world `matrix` is off the
+brick grid: its X or Z not a multiple of 10 LDU, its Y not a multiple of 8 LDU
+(a plate), or its yaw not a multiple of 90 degrees. Hinges, turntables and
+jumper plates turn or sit half a stud over by design and are never off grid,
+nor are parts whose connectivity entry has no stud or anti-stud (rims, tyres and
+pins, which sit on pins and axles rather than on the stud grid).
+-}
+isOffGrid : String -> Mat4 -> Bool
+isOffGrid partFile matrix =
+    let
+        cleanId =
+            cleanPartName partFile
+
+        offStudGrid =
+            case Connectivity.knownCatalogPart partFile of
+                Just conn ->
+                    not (List.any (\c -> c.connType == Stud || c.connType == AntiStud) conn.connections)
+
+                Nothing ->
+                    False
+
+        exempt =
+            isTurntablePart cleanId || isHingePart cleanId || isJumperPart cleanId || offStudGrid
+
+        m =
+            Mat4.toRecord matrix
+
+        onStep step v =
+            abs (v - step * toFloat (round (v / step))) <= 0.05
+
+        axisAligned x z =
+            min (abs x) (abs z) <= 0.02 * sqrt (x * x + z * z)
+
+        yawOnGrid =
+            if sqrt (m.m11 * m.m11 + m.m31 * m.m31) >= 0.3 then
+                axisAligned m.m11 m.m31
+
+            else
+                axisAligned m.m13 m.m33
+    in
+    not exempt
+        && not (onStep 10 m.m14 && onStep 8 m.m24 && onStep 10 m.m34 && yawOnGrid)
+
+
+{-| The surplus wheel clusters: beyond the first wheel at each corner (left,
+middle or right, by the hub's Car Space X beyond 5 LDU, and front or rear by
+`isFront`). Grounded wheels are kept before lifted ones, then lower ids first.
+-}
+surplusWheelClusters : List WheelSpec -> List WheelSpec
+surplusWheelClusters wheels =
+    let
+        side w =
+            if Vec3.getX w.localHubPosLdu > 5.0 then
+                1
+
+            else if Vec3.getX w.localHubPosLdu < -5.0 then
+                -1
+
+            else
+                0
+
+        corner w =
+            ( side w
+            , if w.isFront then
+                1
+
+              else
+                0
+            )
+
+        keepOrder w =
+            ( if isWheelGrounded w then
+                0
+
+              else
+                1
+            , w.id
+            )
+    in
+    wheels
+        |> List.sortBy keepOrder
+        |> List.foldl
+            (\w ( taken, surplus ) ->
+                if Set.member (corner w) taken then
+                    ( taken, w :: surplus )
+
+                else
+                    ( Set.insert (corner w) taken, surplus )
+            )
+            ( Set.empty, [] )
+        |> Tuple.second
+        |> List.sortBy .id
 
 
 {-| Part files the "Add wheels" fix adds: the small rim and its tyre.
@@ -1655,11 +2090,58 @@ buildValidationReport ctx =
                 []
 
         warningLoose =
-            if ctx.looseCount > 0 then
-                [ plain Warning (DisconnectedBricks ctx.looseCount) (String.fromInt ctx.looseCount ++ " loose brick(s) not attached to main chassis.") ]
+            if List.isEmpty ctx.looseIds then
+                []
 
             else
+                [ { severity = Warning
+                  , code = LooseParts ctx.looseIds
+                  , detail = String.fromInt (List.length ctx.looseIds) ++ " part(s) not attached to the car by studs, pins or axles."
+                  , fix = Just (Select ctx.looseIds)
+                  }
+                ]
+
+        surplusWheels =
+            surplusWheelClusters ctx.wheels
+
+        surplusIds =
+            List.concatMap .placementIds surplusWheels
+
+        surplusGrams =
+            List.sum (List.map (\id -> Dict.get id ctx.placementMassGrams |> Maybe.withDefault 0) surplusIds)
+
+        warningExtraWheels =
+            if List.isEmpty surplusWheels then
                 []
+
+            else
+                [ { severity = Warning
+                  , code = ExtraWheels (round surplusGrams)
+                  , detail =
+                        String.fromInt (List.length surplusWheels)
+                            ++ " extra wheel(s) on a corner; removing them saves "
+                            ++ String.fromInt (round surplusGrams)
+                            ++ " g."
+                  , fix = Just (Remove surplusIds)
+                  }
+                ]
+
+        cleanupInfo code fix ids detail =
+            if List.isEmpty ids then
+                []
+
+            else
+                [ { severity = Info
+                  , code = code ids
+                  , detail = String.fromInt (List.length ids) ++ detail
+                  , fix = Just (fix ids)
+                  }
+                ]
+
+        infoCleanup =
+            cleanupInfo DuplicateParts Remove ctx.duplicateIds " part(s) placed twice in the same spot."
+                ++ cleanupInfo FarParts Select ctx.farIds " part(s) far away from the car."
+                ++ cleanupInfo OffGrid Select ctx.offGridIds " part(s) off the stud grid."
 
         warningMissing =
             if ctx.missingCount > 0 then
@@ -1709,7 +2191,9 @@ buildValidationReport ctx =
         ++ warningClearance
         ++ warningCoM
         ++ warningLoose
+        ++ warningExtraWheels
         ++ infoOffGround
+        ++ infoCleanup
         ++ warningMissing
         ++ steeringNote
         ++ tireBonus
@@ -2023,6 +2507,17 @@ normalizeSafe v fallback =
 isTurntablePart : String -> Bool
 isTurntablePart cleanId =
     List.member cleanId [ "3679", "3680", "99009", "99010", "18938", "48452", "48168" ]
+
+
+isHingePart : String -> Bool
+isHingePart cleanId =
+    isKnuckleHingePart cleanId
+        || List.member cleanId [ "3937", "3938", "6134", "3830", "3831", "4275", "4276", "44301", "44302", "60470", "60471", "73983" ]
+
+
+isJumperPart : String -> Bool
+isJumperPart cleanId =
+    List.member cleanId [ "3794", "3794a", "3794b", "15573", "87580" ]
 
 
 isKnuckleHingePart : String -> Bool

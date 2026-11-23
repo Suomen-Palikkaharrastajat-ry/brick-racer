@@ -88,6 +88,8 @@ type Msg
     | PickColour Int
     | AddPart String
     | AddPartList (List String)
+    | SelectPlacements (List Int)
+    | RemovePlacements (List Int)
     | Turn TurnDirection
     | Raise
     | Lower
@@ -319,6 +321,52 @@ updateModel msg model =
                 )
                 ( model, Cmd.none, Stay )
                 files
+
+        SelectPlacements ids ->
+            stay (selectPlacements ids { model | activeTab = BuildBricksTab, notice = Nothing })
+
+        RemovePlacements ids ->
+            let
+                doc =
+                    Core.getDocument model.studio
+
+                -- Only parts placed straight in the main model are deleted; a
+                -- part of the base (or of another group) is selected instead.
+                removable =
+                    Document.mainPlacements doc
+                        |> List.filter
+                            (\p ->
+                                List.member p.id ids
+                                    && not (Document.isSubmodelReference p doc)
+                                    && not (isLockedBase model p)
+                            )
+                        |> List.map .id
+
+                kept =
+                    List.filter (\id -> not (List.member id removable)) ids
+
+                closed =
+                    { model | activeTab = BuildBricksTab, notice = Nothing }
+            in
+            if List.isEmpty removable then
+                stay (selectPlacements ids closed)
+
+            else
+                let
+                    ( selected, selectCmd ) =
+                        runCore (Core.update (Core.Select (Set.fromList removable))) closed
+
+                    ( removed, removeCmd ) =
+                        runCore Core.deleteSelection selected
+
+                    ( shown, showCmd ) =
+                        if List.isEmpty kept then
+                            ( removed, Cmd.none )
+
+                        else
+                            selectPlacements kept removed
+                in
+                ( shown, Cmd.batch [ selectCmd, removeCmd, showCmd ], Stay )
 
         Turn direction ->
             stay (runCore (Core.turnSelected direction) model)
@@ -567,6 +615,43 @@ eventCmd event =
 
         _ ->
             Cmd.none
+
+
+{-| Select the main-model placements that hold the flattened placements `ids`
+(`Racer.Analyze` numbers the parts inside a group by their own ids, so a part
+of the base selects the whole base).
+-}
+selectPlacements : List Int -> Model -> ( Model, Cmd Msg )
+selectPlacements ids model =
+    let
+        doc =
+            Core.getDocument model.studio
+
+        holds p =
+            List.member p.id ids
+                || List.any (\inner -> List.member inner.id ids) (Document.constituentPlacements p.id doc)
+
+        selection =
+            Document.mainPlacements doc
+                |> List.filter holds
+                |> List.map .id
+                |> Set.fromList
+    in
+    runCore (Core.update (Core.Select selection)) model
+
+
+{-| Whether `placement` is the locked starter base.
+-}
+isLockedBase : Model -> Document.Placement -> Bool
+isLockedBase model placement =
+    model.baseLocked
+        && (case model.base of
+                Just base ->
+                    Editor.isBasePlacement base placement
+
+                Nothing ->
+                    False
+           )
 
 
 baseSelected : Model -> Bool
@@ -1853,6 +1938,35 @@ viewReviewDrawer model =
                     , div [ Attr.style "display" "flex", Attr.style "flex-wrap" "wrap", Attr.style "gap" "8px" ] missingButtons
                     ]
 
+        fixButton : Fix -> Html Msg
+        fixButton fix =
+            let
+                ( label, msg ) =
+                    case fix of
+                        AddParts files ->
+                            ( tr lang "Add" "Lisää", AddPartList files )
+
+                        Select ids ->
+                            ( tr lang "Show" "Näytä", SelectPlacements ids )
+
+                        Remove ids ->
+                            ( tr lang "Remove" "Poista", RemovePlacements ids )
+            in
+            button
+                [ Attr.type_ "button"
+                , onClick msg
+                , Attr.style "flex-shrink" "0"
+                , Attr.style "padding" "4px 10px"
+                , Attr.style "border-radius" "8px"
+                , Attr.style "background" "rgba(15, 23, 42, 0.75)"
+                , Attr.style "border" "1px solid rgba(250, 200, 10, 0.5)"
+                , Attr.style "color" Brand.legoYellow
+                , Attr.style "font-size" "12px"
+                , Attr.style "font-weight" "800"
+                , Attr.style "cursor" "pointer"
+                ]
+                [ text label ]
+
         severityColour issue =
             if issue.severity == Blocker then
                 "#ef4444"
@@ -1887,7 +2001,7 @@ viewReviewDrawer model =
                                     , Attr.style "background" (severityColour issue)
                                     ]
                                     []
-                                , div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "2px" ]
+                                , div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "2px", Attr.style "flex" "1", Attr.style "min-width" "0" ]
                                     [ text (RI18n.validationTitle lang issue.code)
                                     , case RI18n.validationDetail lang issue.code of
                                         Just detail ->
@@ -1896,6 +2010,12 @@ viewReviewDrawer model =
                                         Nothing ->
                                             text ""
                                     ]
+                                , case issue.fix of
+                                    Just fix ->
+                                        fixButton fix
+
+                                    Nothing ->
+                                        text ""
                                 ]
                         )
                         spec.issues

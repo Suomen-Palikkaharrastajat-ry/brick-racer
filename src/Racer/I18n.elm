@@ -493,11 +493,11 @@ validationTitle lang code =
         ( En, HighCenterOfMass _ ) ->
             "High Center of Mass: tippy in turns"
 
-        ( Fi, DisconnectedBricks n ) ->
-            String.fromInt n ++ " irrallista palikkaa"
+        ( Fi, LooseParts ids ) ->
+            String.fromInt (List.length ids) ++ " irrallista osaa"
 
-        ( En, DisconnectedBricks n ) ->
-            String.fromInt n ++ " disconnected brick(s)"
+        ( En, LooseParts ids ) ->
+            String.fromInt (List.length ids) ++ " loose part(s)"
 
         ( Fi, FixedAxleTip ) ->
             "Vinkki: lisää kääntöpöytä (3679/3680) terävämpään ohjaukseen"
@@ -553,6 +553,30 @@ validationTitle lang code =
         ( En, SteeringNotLinked ) ->
             "Turntable has no wheels on it"
 
+        ( Fi, DuplicateParts ids ) ->
+            String.fromInt (List.length ids) ++ " päällekkäistä kopiota"
+
+        ( En, DuplicateParts ids ) ->
+            String.fromInt (List.length ids) ++ " duplicate part(s)"
+
+        ( Fi, FarParts ids ) ->
+            String.fromInt (List.length ids) ++ " osaa kaukana autosta"
+
+        ( En, FarParts ids ) ->
+            String.fromInt (List.length ids) ++ " part(s) far from the car"
+
+        ( Fi, OffGrid ids ) ->
+            String.fromInt (List.length ids) ++ " osaa irti nastaruudukosta"
+
+        ( En, OffGrid ids ) ->
+            String.fromInt (List.length ids) ++ " part(s) off the stud grid"
+
+        ( Fi, ExtraWheels _ ) ->
+            "Ylimääräisiä pyöriä samassa kulmassa"
+
+        ( En, ExtraWheels _ ) ->
+            "Extra wheels on one corner"
+
 
 {-| Localized explanation for the validation codes that need one; `Nothing`
 for codes whose title says enough.
@@ -583,6 +607,36 @@ validationDetail lang code =
 
         ( En, SteeringNotLinked ) ->
             Just "Mount the front axle and wheels under the turntable so it steers."
+
+        ( Fi, LooseParts _ ) ->
+            Just "Nämä osat eivät kiinnity autoon nastoilla, tapeilla tai akseleilla, joten ne putoavat matkalla."
+
+        ( En, LooseParts _ ) ->
+            Just "These parts are not held by studs, pins or axles, so they fall off on the way down."
+
+        ( Fi, DuplicateParts _ ) ->
+            Just "Sama osa on kahdesti samassa kohdassa. Poista ylimääräiset kopiot."
+
+        ( En, DuplicateParts _ ) ->
+            Just "The same part sits twice in one spot. Remove the extra copies."
+
+        ( Fi, FarParts _ ) ->
+            Just "Osa on yli 80 LDU:n päässä autosta. Siirrä se autoon tai poista se."
+
+        ( En, FarParts _ ) ->
+            Just "A part lies more than 80 LDU away from the car. Move it onto the car or delete it."
+
+        ( Fi, OffGrid _ ) ->
+            Just "Osa ei ole nastaruudukossa tai se on käännetty vinoon. Siirrä se nastojen päälle."
+
+        ( En, OffGrid _ ) ->
+            Just "The part is off the stud grid or turned at an angle. Move it onto the studs."
+
+        ( Fi, ExtraWheels grams ) ->
+            Just ("Yhdessä kulmassa on useampi pyörä. Ylimääräisten poisto keventää autoa " ++ String.fromInt grams ++ " g.")
+
+        ( En, ExtraWheels grams ) ->
+            Just ("A corner has more than one wheel. Removing the extras saves " ++ String.fromInt grams ++ " g.")
 
         _ ->
             Nothing
