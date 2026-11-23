@@ -1,7 +1,7 @@
 module StarterBasesTest exposing (suite)
 
 {-| Checks of the starter car bases in `starters/racer/` (embedded in
-`StarterBases` by `node starters/embed-starters.mjs`):
+`Racer.StarterBases` by `node starters/embed-starters.mjs`):
 
   - each file is one grouped base: the main model holds a single reference to
     the base submodel, and the part count in its header is the real count,
@@ -20,9 +20,9 @@ import LDraw.Connectivity as Connectivity exposing (ConnectionType(..))
 import LDraw.Document as Document exposing (Document)
 import Math.Vector3 as Vec3
 import Racer.Analyze as Analyze
+import Racer.StarterBases as StarterBases exposing (Starter)
 import Racer.Types exposing (SteeringMechanism(..), ValidationSeverity(..))
 import Set
-import StarterBases exposing (Starter)
 import Studio.Health as Health
 import Test exposing (Test, describe, test)
 
