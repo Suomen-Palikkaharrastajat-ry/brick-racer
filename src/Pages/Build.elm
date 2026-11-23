@@ -1534,11 +1534,17 @@ viewAllBricksDrawer model =
                         , Attr.title (name ++ " (" ++ number ++ ")")
                         ]
                         [ div
-                            [ Attr.style "width" "44px"
-                            , Attr.style "height" "44px"
+                            [ Attr.style "width" "64px"
+                            , Attr.style "height" "64px"
+                            , Attr.style "box-sizing" "border-box"
+                            , Attr.style "padding" "4px"
                             , Attr.style "display" "flex"
                             , Attr.style "align-items" "center"
                             , Attr.style "justify-content" "center"
+                            , Attr.style "border-radius" "8px"
+                            , Attr.style "background"
+                                "radial-gradient(circle at 50% 45%, var(--color-bg-subtle) 0%, color-mix(in srgb, var(--color-border-default) 80%, var(--color-text-subtle)) 75%)"
+                            , Attr.style "box-shadow" "inset 0 0 0 1px rgba(255, 255, 255, 0.35)"
                             ]
                             [ case thumb of
                                 Just url ->
