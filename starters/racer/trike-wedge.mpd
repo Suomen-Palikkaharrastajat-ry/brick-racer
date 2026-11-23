@@ -3,23 +3,26 @@
 0 Name: Streamlined Trike Base
 0 Author: Brick Family starter bases
 0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
-0 // Parts: 12 (all inside the grouped submodel trike-wedge-base.ldr)
+0 // Parts: 15 (all inside the grouped submodel trike-wedge-base.ldr)
 1 16 0 0 0 1 0 0 0 1 0 0 0 1 trike-wedge-base.ldr
 0 NOFILE
 0 FILE trike-wedge-base.ldr
 0 Streamlined Trike chassis
 0 Name: trike-wedge-base.ldr
 0 Author: Brick Family starter bases
-1 72 0 -8 -60 1 0 0 0 1 0 0 0 1 3680.dat
-1 14 0 -8 -60 1 0 0 0 1 0 0 0 1 3679.dat
-1 72 0 0 -60 1 0 0 0 1 0 0 0 1 4600.dat
-1 14 34 5 -60 0 0 -1 0 1 0 1 0 0 6014b.dat
-1 0 40 5 -60 0 0 1 0 1 0 -1 0 0 56890.dat
+1 72 -40 -8 -60 1 0 0 0 1 0 0 0 1 3680.dat
+1 14 -40 -8 -60 1 0 0 0 1 0 0 0 1 3679.dat
+1 72 -40 0 -60 1 0 0 0 1 0 0 0 1 4488.dat
+1 14 -6 5 -60 0 0 -1 0 1 0 1 0 0 6014b.dat
+1 0 0 5 -60 0 0 1 0 1 0 -1 0 0 56890.dat
 1 72 0 0 60 1 0 0 0 1 0 0 0 1 4600.dat
 1 72 0 -8 60 1 0 0 0 1 0 0 0 1 3022.dat
 1 15 34 5 60 0 0 -1 0 1 0 1 0 0 6014b.dat
 1 0 40 5 60 0 0 1 0 1 0 -1 0 0 56890.dat
 1 15 -34 5 60 0 0 1 0 1 0 -1 0 0 6014b.dat
 1 0 -40 5 60 0 0 -1 0 1 0 1 0 0 56890.dat
-1 14 0 -16 0 0 0 1 0 1 0 -1 0 0 3034.dat
+1 14 0 -16 40 0 0 1 0 1 0 -1 0 0 3795.dat
+1 14 -40 -16 -40 0 0 1 0 1 0 -1 0 0 3795.dat
+1 14 40 -32 -40 0 0 1 0 1 0 -1 0 0 3795.dat
+1 14 0 -24 0 1 0 0 0 1 0 0 0 1 3795.dat
 0 NOFILE
