@@ -11,8 +11,8 @@ Features:
   - Checkered racing pit stall with alternating charcoal and steel tiles.
   - High-visibility yellow and black diagonal hazard perimeter stripes.
   - Centerline and pit stop tire alignment markings.
-  - Rear industrial garage backdrop with rolling shutter slats, baseboard kick-plate,
-    and 3D steel structural I-beam columns.
+  - Rear industrial workshop wall with baseboard kick-plate and
+    3D steel structural I-beam columns.
   - Soft multi-ring contact shadow directly beneath the car.
   - Entire environment is offset by `floorY` so car tires sit directly ON TOP
     of the floor surface without sinking into it.
@@ -388,21 +388,6 @@ floorMesh =
 -- ── Workshop Rear Wall & Structure ────────────────────────────────────────────
 
 
-wallSlatsColorA : Vec4
-wallSlatsColorA =
-    vec4 0.21 0.25 0.31 1.0
-
-
-wallSlatsColorB : Vec4
-wallSlatsColorB =
-    vec4 0.27 0.32 0.39 1.0
-
-
-wallGrooveColor : Vec4
-wallGrooveColor =
-    vec4 0.11 0.13 0.17 1.0
-
-
 baseboardColor : Vec4
 baseboardColor =
     vec4 0.14 0.16 0.2 1.0
@@ -441,37 +426,6 @@ buildWallTriangles =
                 [ verticalQuadZ wallZ minX maxX 0.0 18.0 baseboardColor
                 , verticalQuadZ wallZ minX maxX 18.0 22.0 hazardYellow
                 ]
-
-        -- Horizontal rolling shutter slats (Y = 22 to 220)
-        slatHeight =
-            19.0
-
-        grooveHeight =
-            1.5
-
-        slats =
-            List.range 0 9
-                |> List.concatMap
-                    (\i ->
-                        let
-                            y1 =
-                                22.0 + (toFloat i * (slatHeight + grooveHeight))
-
-                            y2 =
-                                y1 + slatHeight
-
-                            col =
-                                if modBy 2 i == 0 then
-                                    wallSlatsColorA
-
-                                else
-                                    wallSlatsColorB
-                        in
-                        List.concat
-                            [ verticalQuadZ wallZ minX maxX y1 y2 col
-                            , verticalQuadZ wallZ minX maxX y2 (y2 + grooveHeight) wallGrooveColor
-                            ]
-                    )
 
         -- Top heavy industrial overhead girder (Y = 227 to 252)
         topGirder =
@@ -516,7 +470,6 @@ buildWallTriangles =
     in
     List.concat
         [ baseboard
-        , slats
         , topGirder
         , pillars
         ]
