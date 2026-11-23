@@ -535,6 +535,7 @@ viewCourseSelection data actions =
             button
                 [ Attr.type_ "button"
                 , onClick (actions.onSelectTrack trackId)
+                , Attr.title desc
                 , Tw.classes
                     [ Tw.flex
                     , Tw.flex_col
@@ -600,10 +601,6 @@ viewCourseSelection data actions =
                 -- Card Middle: SVG Minimap Preview
                 , div [ Tw.classes [ Tw.w_full, Tw.flex_1, Tw.my Th.s1, Tw.flex, Tw.items_center, Tw.justify_center ] ]
                     [ viewTrackPreviewSvg trackId ]
-
-                -- Card Bottom: Distance & Elevation Drop
-                , div [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ]
-                    [ text desc ]
                 ]
     in
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s3 ] ]
@@ -1012,10 +1009,7 @@ viewNormalPlayerOptions data actions =
             data.language
     in
     div
-        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s4, Tw.p Th.s4, Tw.rounded_2xl, Tw.border ]
-        , Attr.style "background" "rgba(7, 25, 38, 0.75)"
-        , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
-        ]
+        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s3 ] ]
         [ -- Header with Mode Tabs (Hot Seat vs Network)
           div [ Tw.classes [ Tw.flex, Tw.flex_col, Bp.sm [ Tw.flex_row ], Tw.items_start, Bp.sm [ Tw.items_center ], Tw.justify_between, Tw.gap Th.s2 ] ]
             [ h2 [ Tw.classes [ Tw.text_sm, Tw.font_bold, Tw.uppercase, Tw.tracking_wider ], Attr.style "color" Brand.legoYellow ]
@@ -1088,6 +1082,7 @@ viewHotSeatOptions data actions =
             button
                 [ Attr.type_ "button"
                 , onClick (actions.onSetRaceMode mode)
+                , Attr.title desc
                 , Tw.classes
                     [ Tw.flex_1
                     , Tw.flex
@@ -1139,8 +1134,6 @@ viewHotSeatOptions data actions =
                       else
                         text ""
                     ]
-                , p [ Tw.classes [ Tw.text_xs, Tw.mt Th.s1_dot_5 ], Attr.style "color" "#94a3b8" ]
-                    [ text desc ]
                 ]
     in
     div [ Tw.classes [ Tw.grid, Tw.grid_cols_1, Bp.sm [ Tw.grid_cols_2 ], Tw.gap Th.s3 ] ]
