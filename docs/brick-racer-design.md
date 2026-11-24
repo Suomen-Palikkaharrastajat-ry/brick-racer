@@ -395,8 +395,7 @@ All keyboard handlers reuse `Viewport.Shortcuts.isTextEntryTarget` and `isWidget
 | Brake / Lean Back | `S` or `ArrowDown` | Right-thumb Brake pedal | — |
 | Handbrake / Drift Kick | `Space` | Drift pill button | — |
 | Cycle Camera Mode | `C` | HUD Camera button | — |
-| Respawn at Checkpoint | `R` | HUD Reset icon | — |
-| Pause / Resume | `Escape` or `P` | HUD Pause button | — |
+| Respawn at Checkpoint | `R` | Crash overlay button | — |
 
 On iOS/Safari, enabling tilt steering presents an explicit user-gesture button calling `DeviceOrientationEvent.requestPermission()` via a JS port before streaming normalized `gamma` values into Elm.
 
@@ -405,17 +404,15 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 `Racer.Camera` outputs a standard `Render.Camera.Camera` record (`target`, `azimuth`, `elevation`, `distance`, `projection`) so `Render.Shader`, `Render.EdgeShader`, and `Render.Instanced.frustumFromMatrix` work identically across Garage and Race scenes:
 
 1. **Chase Cam (Default):** Follows behind the car's velocity/heading vector with spring-damped yaw lag (`1.5–4.5 m` scaled gently to car bounding radius via `Viewport.Framing.ModelBounds`, widens FOV slightly at high speed for sensation of velocity).
-2. **Trackside / Free Orbit Cam:** Available during Garage inspection, Pause, and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
+2. **Trackside / Free Orbit Cam:** Available during Garage inspection and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
 
 ### 6.3 Gameplay HUD (`Racer.HUD`)
 
 Layered cleanly over the full-bleed WebGL canvas using `.elm-tailwind/` utilities and shared tokens from `brick-frame-ui/theme.css`:
-- **Top-Left:** Race Timer (`01:14.32`), live Checkpoint Split badge (`-0.62 s` green / `+0.41 s` amber), current Checkpoint (`2 / 4`).
-- **Top-Center:** Course Progress Bar showing start-to-finish percentage, remaining elevation drop (`-82 m left`), and checkpoint ticks.
-- **Top-Right:** Compact icon toolbar (Camera `C` Chase/Orbit, Audio Mute, Reset `R`, Pause `Esc`). There is no touch or tilt toggle: phones always steer by tilt.
-- **Bottom-Left:** Structural Integrity / Stability Gauge (100%–0%) + live warning flashes (`Scraping!`, `Tipping!`, `Off-Track`).
-- **Bottom-Right:** Digital + Arc Speedometer (`km/h`), instantaneous grade `%`, and surface grip badge (`Tarmac` / `Gravel` / `Grass` / `Airborne!`).
-- **Center Transient Banners:** `3 - 2 - 1 - ROLL!`, `+AIR TIME!`, `Checkpoint Reached`, and Pause / Crash Recovery / Finish overlays.
+- **Top-Right:** Camera `C` (Chase/Orbit, labelled on wide screens) and an icon-only audio toggle. There is no pause, reset or touch/tilt toggle: phones always steer by tilt, and touch pads only show as a fallback when tilt is refused or missing.
+- **Bottom-Left:** "Vahinko" (damage) panel: a vertical white car skeleton that turns red as integrity drops (each part has its own threshold, wheels first), with live warning chips (`Scraping!`, `Tipping!`, `Off-Track`).
+- **Bottom-Right:** Square analog speed dial (`km/h`, needle), the race timer as a mechanical counter below it, and metrics: checkpoint `n/4` with split delta, course progress with remaining elevation, surface badge and grade `%`.
+- **Center:** Countdown, crash recovery and transient alert banners. An "Poistu" / "Exit" button appears once the car has stopped (below 1 km/h), which is the only way out of a race during play.
 
 ---
 
@@ -461,9 +458,7 @@ stateDiagram-v2
     SetupPage --> RacePage : "Validation OK -> Start Race"
     SetupPage --> BuildPage : "Rakenna oma auto / Muokkaa autoa"
     BuildPage --> SetupPage : "Quit / Finished"
-    RacePage --> RacePaused : "Esc / P / Tab Blur"
-    RacePaused --> RacePage : "Resume"
-    RacePaused --> SetupPage : "Inspect Car / Change Track"
+    RacePage --> SetupPage : "Exit once stopped"
     RacePage --> CrashRecovery : "Integrity <= 0 or Fall Out"
     CrashRecovery --> RacePage : "Respawn at Checkpoint (Auto 1.5s or R)"
     RacePage --> FinishLeaderboardPage : "Cross Finish Gate"
@@ -502,7 +497,7 @@ type alias Model =
 
 type Page
     = SetupPage GarageState           -- Unified setup screen: 3D Turntable + Diagnostics + Presets + Course + Importer
-    | RacePage RaceState              -- Countdown / Racing / Paused / CrashRecovery
+    | RacePage RaceState              -- Countdown / Racing / CrashRecovery
     | FinishLeaderboardPage FinishState
     | BuildPage Build.Model           -- In-game starter base car editor
 ```
@@ -513,7 +508,6 @@ Inside `RaceState`:
 type RacePhase
     = Countdown Float                 -- 3.0 -> 0.0 seconds
     | Racing
-    | Paused
     | CrashRecovery { timer : Float, reason : CrashReason }
 
 type alias RaceState =
@@ -566,9 +560,9 @@ type Msg
 ### 8.4 Subscriptions
 
 - `Browser.Events.onResize WindowResized`
-- `Browser.Events.onVisibilityChange VisibilityChanged` (auto-pauses `RacePage` when switching browser tabs)
+- `Browser.Events.onVisibilityChange VisibilityChanged` (silences race audio when the tab is hidden)
 - `Browser.Events.onKeyDown` / `onKeyUp` (decodes DOM `event.target` into `Viewport.Shortcuts.KeyEvent` and filters via `isTextEntryTarget` so text inputs in Menu/Garage work normally)
-- `Browser.Events.onAnimationFrameDelta AnimationFrameDelta` (active during `RacePage` except `Paused`, during `LoadGaragePage` slow turntable orbit/loading, or particle settle)
+- `Browser.Events.onAnimationFrameDelta AnimationFrameDelta` (active during `RacePage`, during `LoadGaragePage` slow turntable orbit/loading, or particle settle)
 - Ports: `hashChanged`, `fileContentReceived`, `tiltOrientationReceived`
 
 ### 8.5 Ports Contract (`src/Ports.elm` <-> `main.js`)

@@ -43,30 +43,26 @@ suite =
     in
     describe "Stage 5 Camera, Audio & Leaderboard"
         [ describe "Racer.Audio"
-            [ test "muted or paused returns inactive zeroed audio state" <|
+            [ test "muted or stopped returns inactive zeroed audio state" <|
                 \_ ->
                     let
                         fastState =
                             { basePhysics | velocity = vec3 0 0 22.0 }
 
                         mutedTel =
-                            Audio.deriveAudioState True False True fastState vehicleSpec
-
-                        pausedTel =
-                            Audio.deriveAudioState True True False fastState vehicleSpec
+                            Audio.deriveAudioState True True fastState vehicleSpec
 
                         idleTel =
-                            Audio.deriveAudioState False False False fastState vehicleSpec
+                            Audio.deriveAudioState False False fastState vehicleSpec
                     in
                     Expect.equal
-                        ( False, False, False )
-                        ( mutedTel.active, pausedTel.active, idleTel.active )
+                        ( False, False )
+                        ( mutedTel.active, idleTel.active )
             , test "gravel increases ground rumble over packed dirt and airborne zeros rumble" <|
                 \_ ->
                     let
                         asphalt =
                             Audio.deriveAudioState True
-                                False
                                 False
                                 { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = DirtRoad, groundedWheels = 4 }
                                 vehicleSpec
@@ -74,13 +70,11 @@ suite =
                         gravel =
                             Audio.deriveAudioState True
                                 False
-                                False
                                 { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = GravelRoad, groundedWheels = 4 }
                                 vehicleSpec
 
                         airborne =
                             Audio.deriveAudioState True
-                                False
                                 False
                                 { basePhysics | velocity = vec3 0 0 18.0, surfaceUnderCar = DirtRoad, groundedWheels = 0 }
                                 vehicleSpec
@@ -97,7 +91,6 @@ suite =
                     let
                         scraping =
                             Audio.deriveAudioState True
-                                False
                                 False
                                 { basePhysics | velocity = vec3 0 0 14.0, chassisScraping = True, groundedWheels = 4 }
                                 vehicleSpec

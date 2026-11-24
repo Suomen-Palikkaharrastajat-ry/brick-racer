@@ -113,7 +113,7 @@ type alias GarageState =
     }
 
 
-{-| Subphase inside `RacePage` preserved cleanly across Pause toggles.
+{-| Subphase inside `RacePage`.
 -}
 type ActiveRaceSubphase
     = CountdownPhase Float Int
@@ -139,7 +139,6 @@ type alias RaceState =
     , physics : PhysicsState
     , accumulator : Float
     , subPhase : ActiveRaceSubphase
-    , isPaused : Bool
     , elapsedTime : Float
     , topSpeedKmh : Float
     , splitTimes : List Float
@@ -357,8 +356,6 @@ type Msg
     | RestartRace
     | ShowLeaderboardPage ResultsState
     | CycleCamera
-    | TogglePause
-    | ResumeRace
     | RespawnCheckpoint
     | TiltStatusChanged { available : Bool, enabled : Bool }
     | TiltSteerChanged Float
@@ -1562,34 +1559,6 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        TogglePause ->
-            case model.page of
-                RacePage race ->
-                    let
-                        nextModel =
-                            { model
-                                | page = RacePage { race | isPaused = not race.isPaused }
-                                , pressedKeys = Set.empty
-                                , touch = emptyTouch
-                            }
-                    in
-                    ( nextModel, raceAudioCmd nextModel )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        ResumeRace ->
-            case model.page of
-                RacePage race ->
-                    let
-                        nextModel =
-                            { model | page = RacePage { race | isPaused = False } }
-                    in
-                    ( nextModel, raceAudioCmd nextModel )
-
-                _ ->
-                    ( model, Cmd.none )
-
         RespawnCheckpoint ->
             case model.page of
                 RacePage race ->
@@ -1605,7 +1574,6 @@ update msg model =
                                 | physics = respawned
                                 , accumulator = 0.0
                                 , subPhase = ActiveDriving
-                                , isPaused = False
                                 , camera = nextCam
                             }
 
@@ -1676,20 +1644,8 @@ update msg model =
 
         VisibilityChanged vis ->
             case ( vis, model.page ) of
-                ( Browser.Events.Hidden, RacePage race ) ->
-                    if not race.isPaused then
-                        let
-                            nextModel =
-                                { model
-                                    | page = RacePage { race | isPaused = True }
-                                    , pressedKeys = Set.empty
-                                    , touch = emptyTouch
-                                }
-                        in
-                        ( nextModel, silenceAudioCmd )
-
-                    else
-                        ( model, Cmd.none )
+                ( Browser.Events.Hidden, RacePage _ ) ->
+                    ( { model | pressedKeys = Set.empty, touch = emptyTouch }, silenceAudioCmd )
 
                 _ ->
                     ( model, Cmd.none )
@@ -1721,22 +1677,11 @@ handleKeyDown keyEvent model =
                 Shortcuts.normalizeKey keyEvent.key
         in
         case model.page of
-            RacePage race ->
-                if not keyEvent.repeat && (norm == "Escape" || norm == "p") then
-                    let
-                        nextModel =
-                            { model
-                                | page = RacePage { race | isPaused = not race.isPaused }
-                                , pressedKeys = Set.empty
-                                , touch = emptyTouch
-                            }
-                    in
-                    ( nextModel, raceAudioCmd nextModel )
-
-                else if not keyEvent.repeat && norm == "c" && not race.isPaused then
+            RacePage _ ->
+                if not keyEvent.repeat && norm == "c" then
                     update CycleCamera model
 
-                else if not keyEvent.repeat && norm == "r" && not race.isPaused then
+                else if not keyEvent.repeat && norm == "r" then
                     update RespawnCheckpoint model
 
                 else
@@ -1781,48 +1726,44 @@ stepFrame deltaMs model =
             )
 
         RacePage race ->
-            if race.isPaused then
-                ( model, Cmd.none )
+            let
+                ( nextModel, raceCmd ) =
+                    stepRaceFrame dt race model
 
-            else
-                let
-                    ( nextModel, raceCmd ) =
-                        stepRaceFrame dt race model
+                telemetryCmd =
+                    case race.multiplayer of
+                        Just room ->
+                            let
+                                p =
+                                    race.physics
 
-                    telemetryCmd =
-                        case race.multiplayer of
-                            Just room ->
-                                let
-                                    p =
-                                        race.physics
+                                prog =
+                                    clamp 0.0 1.0 (p.progressS / max 1.0 race.track.totalLengthM)
 
-                                    prog =
-                                        clamp 0.0 1.0 (p.progressS / max 1.0 race.track.totalLengthM)
+                                spd =
+                                    Vec3.length p.velocity
 
-                                    spd =
-                                        Vec3.length p.velocity
+                                isFin =
+                                    case race.subPhase of
+                                        ActiveDriving ->
+                                            False
 
-                                    isFin =
-                                        case race.subPhase of
-                                            ActiveDriving ->
-                                                False
+                                        _ ->
+                                            p.progressS >= (race.track.totalLengthM - 5.0)
+                            in
+                            GamePorts.sendMultiplayerTelemetry
+                                { pos = [ Vec3.getX p.position, Vec3.getY p.position, Vec3.getZ p.position ]
+                                , rot = [ p.pitch, p.yaw, p.roll ]
+                                , speed = spd
+                                , progress = prog
+                                , finished = isFin
+                                }
 
-                                            _ ->
-                                                p.progressS >= (race.track.totalLengthM - 5.0)
-                                in
-                                GamePorts.sendMultiplayerTelemetry
-                                    { pos = [ Vec3.getX p.position, Vec3.getY p.position, Vec3.getZ p.position ]
-                                    , rot = [ p.pitch, p.yaw, p.roll ]
-                                    , speed = spd
-                                    , progress = prog
-                                    , finished = isFin
-                                    }
-
-                            Nothing ->
-                                Cmd.none
-                in
-                applyRoomContacts dt ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
-                    |> sendRoomEvents
+                        Nothing ->
+                            Cmd.none
+            in
+            applyRoomContacts dt ( nextModel, Cmd.batch [ raceCmd, telemetryCmd ] )
+                |> sendRoomEvents
 
         _ ->
             ( model, Cmd.none )
@@ -3061,7 +3002,6 @@ startRaceFromDoc title doc vehicle meshes model =
             , physics = physics
             , accumulator = 0.0
             , subPhase = CountdownPhase 3.0 4
-            , isPaused = False
             , elapsedTime = 0.0
             , topSpeedKmh = 0.0
             , splitTimes = []
@@ -4050,7 +3990,7 @@ raceAudioCmd model =
                             False
 
                 tel =
-                    Audio.deriveAudioState isDriving race.isPaused model.audioMuted race.physics race.vehicle
+                    Audio.deriveAudioState isDriving model.audioMuted race.physics race.vehicle
             in
             Ports.updateAudioState tel
 
@@ -4136,12 +4076,8 @@ subscriptions model =
                 SetupPage _ ->
                     Browser.Events.onAnimationFrameDelta AnimationFrame
 
-                RacePage race ->
-                    if race.isPaused then
-                        Sub.none
-
-                    else
-                        Browser.Events.onAnimationFrameDelta AnimationFrame
+                RacePage _ ->
+                    Browser.Events.onAnimationFrameDelta AnimationFrame
 
                 _ ->
                     Sub.none
@@ -4304,7 +4240,6 @@ view model =
                                     , trackTotalDropM = race.track.totalDropM
                                     , elapsedTime = race.elapsedTime
                                     , countdown = p2CountdownMaybe
-                                    , isPaused = race.isPaused
                                     , crashRecovery = p2CrashMaybe
                                     , audioMuted = model.audioMuted
                                     , cameraMode = race.cameraMode
@@ -4341,7 +4276,6 @@ view model =
                         , trackTotalDropM = race.track.totalDropM
                         , elapsedTime = race.elapsedTime
                         , countdown = countdownMaybe
-                        , isPaused = race.isPaused
                         , crashRecovery = crashMaybe
                         , audioMuted = model.audioMuted
                         , cameraMode = race.cameraMode
@@ -4356,11 +4290,7 @@ view model =
                         , touchTuckHeld = model.touch.tuck
                         , touchDriftHeld = model.touch.drift
                         }
-                        { onTogglePause = TogglePause
-                        , onResume = ResumeRace
-                        , onRestartRace = RestartRace
-                        , onGoGarage = InspectInGarage
-                        , onGoMenu = BackToMenu
+                        { onGoMenu = BackToMenu
                         , onRespawnCheckpoint = RespawnCheckpoint
                         , onCycleCamera = CycleCamera
                         , onToggleAudio = ToggleAudioMute

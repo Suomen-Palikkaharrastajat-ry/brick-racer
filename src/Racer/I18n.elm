@@ -1,7 +1,6 @@
 module Racer.I18n exposing
     ( audioMutedLabel
     , audioUnmutedLabel
-    , backToMenuLabel
     , basesTab
     , bothPlayersReady
     , buildCarHeading
@@ -12,17 +11,18 @@ module Racer.I18n exposing
     , carsAndBasesTab
     , changeCarLabel
     , checkpointBanner
-    , controlsSummary
     , copyRoomLinkButton
     , coursesHeading
     , crashReasonText
     , createGridRoomButton
     , createTwoPlayerRoomButton
+    , damageLabel
     , defaultPresetSectionTitle
     , dropHintLabel
     , dropZoneButton
     , editCarButton
     , elevationRemainingLabel
+    , exitRaceLabel
     , finishedHeadline
     , garageClearanceLabel
     , garageInspectTitle
@@ -35,7 +35,6 @@ module Racer.I18n exposing
     , garageWheelsLabel
     , goBanner
     , handbrakeHint
-    , healthLabel
     , hotSeatSingleDesc
     , hotSeatSplitDesc
     , hotSeatTabLabel
@@ -59,15 +58,12 @@ module Racer.I18n exposing
     , pasteButtonLabel
     , pasteErrorFallback
     , pastePlaceholder
-    , pauseLabel
-    , pausedHeadline
     , playerOptionsHeading
     , raceAgainButton
     , raceAnywayButton
     , readyToRaceBanner
     , recoveryHint
     , resetCheckpointLabel
-    , resumeButton
     , reviewTab
     , scanQrButton
     , seedLabel
@@ -81,8 +77,6 @@ module Racer.I18n exposing
     , startRaceButton
     , steeringMechName
     , surfaceName
-    , tiltDisabledLabel
-    , tiltEnabledLabel
     , trackDescription
     , trackTitle
     , validationDetail
@@ -287,18 +281,6 @@ garageInspectTitle lang =
 
         En ->
             "Garage Inspection & Chassis Spec"
-
-
-{-| Garage back to menu label.
--}
-backToMenuLabel : Language -> String
-backToMenuLabel lang =
-    case lang of
-        Fi ->
-            "Takaisin valikkoon"
-
-        En ->
-            "Back to Menu"
 
 
 {-| Garage primary drop button.
@@ -749,18 +731,6 @@ audioUnmutedLabel lang =
             "Sound On"
 
 
-{-| Pause label.
--}
-pauseLabel : Language -> String
-pauseLabel lang =
-    case lang of
-        Fi ->
-            "Tauko (Esc)"
-
-        En ->
-            "Pause (Esc)"
-
-
 {-| Reset checkpoint label.
 -}
 resetCheckpointLabel : Language -> String
@@ -857,30 +827,6 @@ warningOffTrack lang =
             "OFF-TRACK"
 
 
-{-| Pause modal headline.
--}
-pausedHeadline : Language -> String
-pausedHeadline lang =
-    case lang of
-        Fi ->
-            "Kisa tauolla"
-
-        En ->
-            "Race Paused"
-
-
-{-| Resume button label.
--}
-resumeButton : Language -> String
-resumeButton lang =
-    case lang of
-        Fi ->
-            "Jatka laskua"
-
-        En ->
-            "Resume"
-
-
 {-| Inspect car button label.
 -}
 inspectCarButton : Language -> String
@@ -941,16 +887,28 @@ wreckedHint lang =
             "Too many crashes. Rebuilding your car at the last checkpoint..."
 
 
-{-| HUD label of the car's health bar.
+{-| HUD label of the car's damage skeleton.
 -}
-healthLabel : Language -> String
-healthLabel lang =
+damageLabel : Language -> String
+damageLabel lang =
     case lang of
         Fi ->
-            "KUNTO"
+            "Vahinko"
 
         En ->
-            "HEALTH"
+            "Damage"
+
+
+{-| HUD button that leaves a race once the car has stopped.
+-}
+exitRaceLabel : Language -> String
+exitRaceLabel lang =
+    case lang of
+        Fi ->
+            "Poistu"
+
+        En ->
+            "Exit"
 
 
 {-| Finish overlay headline.
@@ -1008,18 +966,6 @@ changeCarLabel lang =
             changeCarButtonFallback
 
 
-{-| Keyboard shortcut summary string.
--}
-controlsSummary : Language -> String
-controlsSummary lang =
-    case lang of
-        Fi ->
-            "A/D tai Nuolet: Ohjaa • W: Kyyristy • S: Jarru • Välilyönti: Käsijarru • C: Kamera • R: Palauta"
-
-        En ->
-            "A/D or Arrows: Steer • W: Aero Tuck • S: Brake • Space: Drift • C: Camera • R: Respawn"
-
-
 {-| Handbrake pill button label.
 -}
 handbrakeHint : Language -> String
@@ -1030,30 +976,6 @@ handbrakeHint lang =
 
         En ->
             "DRIFT"
-
-
-{-| Tilt sensor enabled label.
--}
-tiltEnabledLabel : Language -> String
-tiltEnabledLabel lang =
-    case lang of
-        Fi ->
-            "Kallistusohjaus päällä (napauta: napit)"
-
-        En ->
-            "Tilt steering on (tap for buttons)"
-
-
-{-| Tilt sensor disabled / enable button label.
--}
-tiltDisabledLabel : Language -> String
-tiltDisabledLabel lang =
-    case lang of
-        Fi ->
-            "Kallistusohjaus pois (napauta: kallista)"
-
-        En ->
-            "Tilt steering off (tap to tilt)"
 
 
 {-| Heading of the menu card that opens the car editor.

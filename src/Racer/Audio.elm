@@ -23,9 +23,9 @@ type alias AudioTelemetry =
 
 {-| Derive continuous Web Audio synthesis parameters from vehicle physics state.
 -}
-deriveAudioState : Bool -> Bool -> Bool -> PhysicsState -> VehicleSpec -> AudioTelemetry
-deriveAudioState isRacing isPaused isMuted physics spec =
-    if not isRacing || isPaused || isMuted then
+deriveAudioState : Bool -> Bool -> PhysicsState -> VehicleSpec -> AudioTelemetry
+deriveAudioState isRacing isMuted physics spec =
+    if not isRacing || isMuted then
         { active = False
         , windGain = 0.0
         , windHz = 220.0

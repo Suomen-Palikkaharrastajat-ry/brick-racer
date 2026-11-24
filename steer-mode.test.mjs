@@ -12,7 +12,7 @@ const fakeWindow = (coarse) => ({
 
 test('the steer mode storage key stays the same', () => {
   assert.equal(STEER_MODE_KEY, 'racer.steerMode')
-  assert.deepEqual(tiltSteerOptions, { storageKey: 'racer.steerMode' })
+  assert.deepEqual(tiltSteerOptions, { storageKey: 'racer.steerMode', forceOnPhones: true })
 })
 
 test('tilt is the default steering on a touch phone', () => {
