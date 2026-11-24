@@ -394,7 +394,6 @@ All keyboard handlers reuse `Viewport.Shortcuts.isTextEntryTarget` and `isWidget
 | Aero Tuck / Lean Forward | `W` or `ArrowUp` | Tuck toggle / hold button | Optional forward pitch tilt |
 | Brake / Lean Back | `S` or `ArrowDown` | Right-thumb Brake pedal | — |
 | Handbrake / Drift Kick | `Space` | Drift pill button | — |
-| Cycle Camera Mode | `C` | HUD Camera button | — |
 | Respawn at Checkpoint | `R` | Crash overlay button | — |
 
 On iOS/Safari, enabling tilt steering presents an explicit user-gesture button calling `DeviceOrientationEvent.requestPermission()` via a JS port before streaming normalized `gamma` values into Elm.
@@ -409,9 +408,9 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 ### 6.3 Gameplay HUD (`Racer.HUD`)
 
 Layered cleanly over the full-bleed WebGL canvas using `.elm-tailwind/` utilities and shared tokens from `brick-frame-ui/theme.css`:
-- **Top-Right:** Camera `C` (Chase/Orbit, labelled on wide screens) and an icon-only audio toggle. There is no pause, reset or touch/tilt toggle: phones always steer by tilt, and touch pads only show as a fallback when tilt is refused or missing.
-- **Bottom-Left:** "Vahinko" (damage) panel: a vertical white car skeleton that turns red as integrity drops (each part has its own threshold, wheels first), with live warning chips (`Scraping!`, `Tipping!`, `Off-Track`).
-- **Bottom-Right:** Square analog speed dial (`km/h`, needle), the race timer as a mechanical counter below it, and metrics: checkpoint `n/4` with split delta, course progress with remaining elevation, surface badge and grade `%`.
+- **Top-Right:** Icon-only audio toggle. The camera is fixed to the chase view and has no selector. There is no pause, reset or touch/tilt toggle: phones always steer by tilt, and touch pads only show as a fallback when tilt is refused or missing.
+- **Bottom-Left:** "Vahinko" (damage) panel, half the width of the speed panel: a vertical white car skeleton that turns red as integrity drops (each part has its own threshold, wheels first), with live warning chips (`Scraping!`, `Tipping!`, `Off-Track`).
+- **Bottom-Right:** Square analog speed dial (`km/h`, needle), the race timer as a mechanical counter with one decimal of seconds (`mm:ss.d`), and metrics: checkpoint `n/4` with split delta, metres to the next checkpoint, surface badge and a slope line that tilts with the grade.
 - **Center:** Countdown, crash recovery and transient alert banners. An "Poistu" / "Exit" button appears once the car has stopped (below 1 km/h), which is the only way out of a race during play.
 
 ---

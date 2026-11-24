@@ -355,7 +355,6 @@ type Msg
     | InspectInGarage
     | RestartRace
     | ShowLeaderboardPage ResultsState
-    | CycleCamera
     | RespawnCheckpoint
     | TiltStatusChanged { available : Bool, enabled : Bool }
     | TiltSteerChanged Float
@@ -1524,41 +1523,6 @@ update msg model =
         ShowLeaderboardPage res ->
             ( { model | page = FinishLeaderboardPage res }, Cmd.none )
 
-        CycleCamera ->
-            case model.page of
-                RacePage race ->
-                    let
-                        nextMode =
-                            RacerCamera.cycleMode race.cameraMode
-
-                        cam0 =
-                            race.camera
-
-                        nextCam =
-                            case nextMode of
-                                OrbitCam ->
-                                    { cam0
-                                        | elevation = 0.34
-                                        , distance = 5.2
-                                    }
-
-                                _ ->
-                                    cam0
-                    in
-                    ( { model
-                        | page =
-                            RacePage
-                                { race
-                                    | cameraMode = nextMode
-                                    , camera = nextCam
-                                }
-                      }
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
-
         RespawnCheckpoint ->
             case model.page of
                 RacePage race ->
@@ -1666,6 +1630,19 @@ update msg model =
             updateActiveCamera (Camera.onWheel dy) model
 
 
+{-| Metres from the car to the checkpoint it has to pass next (the finish is
+the last one); 0 once there is none left.
+-}
+nextCheckpointMeters : List { a | index : Int, s : Float } -> PhysicsState -> Float
+nextCheckpointMeters checkpoints physics =
+    case List.filter (\cp -> cp.index == physics.checkpointIndex) checkpoints of
+        cp :: _ ->
+            max 0 (cp.s - physics.progressS)
+
+        [] ->
+            0
+
+
 handleKeyDown : Shortcuts.KeyEvent -> Model -> ( Model, Cmd Msg )
 handleKeyDown keyEvent model =
     if Shortcuts.isTextEntryTarget keyEvent || keyEvent.ctrl || keyEvent.meta || keyEvent.alt then
@@ -1678,10 +1655,7 @@ handleKeyDown keyEvent model =
         in
         case model.page of
             RacePage _ ->
-                if not keyEvent.repeat && norm == "c" then
-                    update CycleCamera model
-
-                else if not keyEvent.repeat && norm == "r" then
+                if not keyEvent.repeat && norm == "r" then
                     update RespawnCheckpoint model
 
                 else
@@ -4236,13 +4210,11 @@ view model =
                                 , p2HudData =
                                     { language = model.language
                                     , physics = p2.physics
-                                    , trackLengthM = race.track.totalLengthM
-                                    , trackTotalDropM = race.track.totalDropM
+                                    , nextCheckpointM = nextCheckpointMeters race.track.checkpoints p2.physics
                                     , elapsedTime = race.elapsedTime
                                     , countdown = p2CountdownMaybe
                                     , crashRecovery = p2CrashMaybe
                                     , audioMuted = model.audioMuted
-                                    , cameraMode = race.cameraMode
                                     , splitDelta = p2.splitDelta
                                     , hudAlert = p2.hudAlert
                                     , showTouchControls = False
@@ -4272,13 +4244,11 @@ view model =
                         model.viewportHeight
                         { language = model.language
                         , physics = race.physics
-                        , trackLengthM = race.track.totalLengthM
-                        , trackTotalDropM = race.track.totalDropM
+                        , nextCheckpointM = nextCheckpointMeters race.track.checkpoints race.physics
                         , elapsedTime = race.elapsedTime
                         , countdown = countdownMaybe
                         , crashRecovery = crashMaybe
                         , audioMuted = model.audioMuted
-                        , cameraMode = race.cameraMode
                         , splitDelta = race.splitDelta
                         , hudAlert = race.hudAlert
                         , showTouchControls = model.showTouchControls
@@ -4292,18 +4262,12 @@ view model =
                         }
                         { onGoMenu = BackToMenu
                         , onRespawnCheckpoint = RespawnCheckpoint
-                        , onCycleCamera = CycleCamera
                         , onToggleAudio = ToggleAudioMute
                         , onTouchSteerLeft = TouchSteerLeft
                         , onTouchSteerRight = TouchSteerRight
                         , onTouchBrake = TouchBrake
                         , onTouchTuck = TouchTuck
                         , onTouchDrift = TouchDrift
-                        }
-                        { onMouseDown = CamMouseDown
-                        , onMouseMove = CamMouseMove
-                        , onMouseUp = CamMouseUp
-                        , onWheel = CamWheel
                         }
                         maybeSplit
                         race.multiplayer

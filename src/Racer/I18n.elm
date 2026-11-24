@@ -6,8 +6,6 @@ module Racer.I18n exposing
     , buildCarHeading
     , buildCarHint
     , buildTab
-    , camChaseLabel
-    , camOrbitLabel
     , carsAndBasesTab
     , changeCarLabel
     , checkpointBanner
@@ -21,7 +19,6 @@ module Racer.I18n exposing
     , dropHintLabel
     , dropZoneButton
     , editCarButton
-    , elevationRemainingLabel
     , exitRaceLabel
     , finishedHeadline
     , garageClearanceLabel
@@ -43,6 +40,7 @@ module Racer.I18n exposing
     , leaveRoomButton
     , menuSubtitle
     , menuTitle
+    , metersToNextCheckpointLabel
     , needsFixBanner
     , needsPolishBanner
     , networkHostGridDesc
@@ -683,30 +681,6 @@ surfaceName lang surf =
             "Meadow"
 
 
-{-| Localized camera mode label.
--}
-camChaseLabel : Language -> String
-camChaseLabel lang =
-    case lang of
-        Fi ->
-            "Takaa (C)"
-
-        En ->
-            "Chase (C)"
-
-
-{-| Orbit cam label.
--}
-camOrbitLabel : Language -> String
-camOrbitLabel lang =
-    case lang of
-        Fi ->
-            "Vapaa (C)"
-
-        En ->
-            "Orbit (C)"
-
-
 {-| Audio muted label.
 -}
 audioMutedLabel : Language -> String
@@ -741,18 +715,6 @@ resetCheckpointLabel lang =
 
         En ->
             "Respawn (R)"
-
-
-{-| Elevation drop remaining label.
--}
-elevationRemainingLabel : Language -> Int -> String
-elevationRemainingLabel lang metersLeft =
-    case lang of
-        Fi ->
-            "-" ++ String.fromInt metersLeft ++ " m jäljellä"
-
-        En ->
-            "-" ++ String.fromInt metersLeft ++ " m drop left"
 
 
 {-| Countdown GO word.
@@ -897,6 +859,18 @@ damageLabel lang =
 
         En ->
             "Damage"
+
+
+{-| HUD line with the distance left to the next checkpoint.
+-}
+metersToNextCheckpointLabel : Language -> Int -> String
+metersToNextCheckpointLabel lang metres =
+    case lang of
+        Fi ->
+            String.fromInt metres ++ " m rastiin"
+
+        En ->
+            String.fromInt metres ++ " m to checkpoint"
 
 
 {-| HUD button that leaves a race once the car has stopped.

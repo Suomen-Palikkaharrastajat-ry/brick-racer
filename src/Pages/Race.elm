@@ -1,4 +1,4 @@
-module Pages.Race exposing (RaceOrbitActions, SplitScreenData, view)
+module Pages.Race exposing (SplitScreenData, view)
 
 {-| Live downhill 3D racing viewport composition (`RacePage`).
 Supports single-player full-bleed racing, dual-player local split-screen driving
@@ -42,16 +42,6 @@ type alias SplitScreenData =
     }
 
 
-{-| Optional mouse/wheel camera handlers active while viewing in `OrbitCam`.
--}
-type alias RaceOrbitActions msg =
-    { onMouseDown : Float -> Float -> msg
-    , onMouseMove : Float -> Float -> msg
-    , onMouseUp : msg
-    , onWheel : Float -> msg
-    }
-
-
 {-| Render the full-viewport WebGL racing scene and overlaid HUD, with optional
 Player 2 split-screen dual viewports, or an online room's cars and room bar.
 -}
@@ -69,21 +59,20 @@ view :
     -> Int
     -> HudViewData
     -> HudActions msg
-    -> RaceOrbitActions msg
     -> Maybe SplitScreenData
     -> Maybe RoomState
     -> MultiplayerActions msg
     -> Html msg
-view bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions maybeSplit maybeMulti multiActions =
+view bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions maybeSplit maybeMulti multiActions =
     div [ Attr.class "is-racing relative w-full h-full overflow-hidden" ]
         [ case maybeMulti of
             Just room ->
-                viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions
+                viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions room multiActions
 
             Nothing ->
                 case maybeSplit of
                     Nothing ->
-                        viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions
+                        viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions
 
                     Just p2 ->
                         viewTwoPlayerSplitScreen bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions p2
@@ -131,11 +120,10 @@ viewRoomRace :
     -> Int
     -> HudViewData
     -> HudActions msg
-    -> RaceOrbitActions msg
     -> RoomState
     -> MultiplayerActions msg
     -> Html msg
-viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions room multiActions =
+viewRoomRace bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions room multiActions =
     let
         localCar =
             { spec = spec
@@ -206,24 +194,8 @@ viewRoomRace bundle track spec meshes props shadowMesh physics debris camera wid
             Grid.selfFirst .slot room.mySlot room.players
                 |> List.map (racerBadge room)
 
-        mouseDecoder msgCtor =
-            Decode.map2 msgCtor
-                (Decode.field "clientX" Decode.float)
-                (Decode.field "clientY" Decode.float)
-
         canvasAttrs =
-            case hudData.cameraMode of
-                OrbitCam ->
-                    [ Html.Events.on "mousedown" (mouseDecoder orbitActions.onMouseDown)
-                    , Html.Events.on "mousemove" (mouseDecoder orbitActions.onMouseMove)
-                    , Html.Events.on "mouseup" (Decode.succeed orbitActions.onMouseUp)
-                    , Html.Events.on "mouseleave" (Decode.succeed orbitActions.onMouseUp)
-                    , Html.Events.preventDefaultOn "wheel"
-                        (Decode.field "deltaY" Decode.float |> Decode.map (\dy -> ( orbitActions.onWheel dy, True )))
-                    ]
-
-                _ ->
-                    []
+            []
     in
     div
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
@@ -427,28 +399,11 @@ viewSinglePlayer :
     -> Int
     -> HudViewData
     -> HudActions msg
-    -> RaceOrbitActions msg
     -> Html msg
-viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions orbitActions =
+viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera width height hudData hudActions =
     let
-        mouseDecoder msgCtor =
-            Decode.map2 msgCtor
-                (Decode.field "clientX" Decode.float)
-                (Decode.field "clientY" Decode.float)
-
         canvasAttrs =
-            case hudData.cameraMode of
-                OrbitCam ->
-                    [ Html.Events.on "mousedown" (mouseDecoder orbitActions.onMouseDown)
-                    , Html.Events.on "mousemove" (mouseDecoder orbitActions.onMouseMove)
-                    , Html.Events.on "mouseup" (Decode.succeed orbitActions.onMouseUp)
-                    , Html.Events.on "mouseleave" (Decode.succeed orbitActions.onMouseUp)
-                    , Html.Events.preventDefaultOn "wheel"
-                        (Decode.field "deltaY" Decode.float |> Decode.map (\dy -> ( orbitActions.onWheel dy, True )))
-                    ]
-
-                _ ->
-                    []
+            []
     in
     div
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]

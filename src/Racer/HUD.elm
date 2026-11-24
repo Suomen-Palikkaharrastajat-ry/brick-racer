@@ -25,11 +25,10 @@ import Json.Decode as Decode
 import Math.Vector3 as Vec3
 import Racer.I18n as RI18n
 import Racer.Leaderboard as Leaderboard
-import Racer.Types exposing (CameraMode(..), CrashReason(..), PhysicsState)
+import Racer.Types exposing (CrashReason(..), PhysicsState)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Tailwind as Tw
-import Tailwind.Breakpoints as Bp
 import Tailwind.Theme as Th
 import UI.Button as Button
 
@@ -49,13 +48,11 @@ type alias HudAlert =
 type alias HudViewData =
     { language : Language
     , physics : PhysicsState
-    , trackLengthM : Float
-    , trackTotalDropM : Float
+    , nextCheckpointM : Float
     , elapsedTime : Float
     , countdown : Maybe Float
     , crashRecovery : Maybe { timer : Float, reason : CrashReason }
     , audioMuted : Bool
-    , cameraMode : CameraMode
     , splitDelta : Maybe Float
     , hudAlert : Maybe HudAlert
     , showTouchControls : Bool
@@ -74,7 +71,6 @@ type alias HudViewData =
 type alias HudActions msg =
     { onGoMenu : msg
     , onRespawnCheckpoint : msg
-    , onCycleCamera : msg
     , onToggleAudio : msg
     , onTouchSteerLeft : Bool -> msg
     , onTouchSteerRight : Bool -> msg
@@ -140,24 +136,18 @@ viewTopArea belowTopBar data actions =
         (viewToolbar data actions :: belowTopBar)
 
 
-{-| Top-right toolbar: camera mode (labelled) and an icon-only audio toggle.
--}
 viewToolbar : HudViewData -> HudActions msg -> Html msg
 viewToolbar data actions =
     let
-        lang =
-            data.language
-
         audioLabel =
             if data.audioMuted then
-                RI18n.audioMutedLabel lang
+                RI18n.audioMutedLabel data.language
 
             else
-                RI18n.audioUnmutedLabel lang
+                RI18n.audioUnmutedLabel data.language
     in
-    div [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.gap Th.s1_dot_5 ] ]
-        [ hudToolbarBtn actions.onCycleCamera (cameraIconName data.cameraMode) (cameraLabel lang data.cameraMode)
-        , hudIconBtn actions.onToggleAudio
+    div [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center ] ]
+        [ hudIconBtn actions.onToggleAudio
             (if data.audioMuted then
                 FeatherIcons.volumeX
 
@@ -175,33 +165,6 @@ screen clear.
 touchPadsVisible : { a | showTouchControls : Bool, tiltEnabled : Bool, tiltAvailable : Bool } -> Bool
 touchPadsVisible data =
     data.showTouchControls && not (data.tiltEnabled && data.tiltAvailable)
-
-
-hudToolbarBtn : msg -> FeatherIcons.Icon -> String -> Html msg
-hudToolbarBtn clickMsg ic labelText =
-    button
-        [ Attr.type_ "button"
-        , onClick clickMsg
-        , Attr.title labelText
-        , Tw.classes
-            [ Tw.flex
-            , Tw.items_center
-            , Tw.gap Th.s1
-            , Tw.px Th.s2_dot_5
-            , Tw.py Th.s1_dot_5
-            , Tw.rounded_lg
-            , Tw.border
-            , Tw.text_xs
-            , Tw.font_semibold
-            , Tw.text_simple Th.white
-            ]
-        , Attr.style "cursor" "pointer"
-        , Attr.style "background" "rgba(15, 23, 42, 0.78)"
-        , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
-        ]
-        [ ic |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml []
-        , span [ Tw.classes [ Tw.hidden, Bp.md [ Tw.inline ] ] ] [ text labelText ]
-        ]
 
 
 {-| Icon-only toolbar button; the label is kept for screen readers and tooltips.
@@ -226,26 +189,6 @@ hudIconBtn clickMsg ic labelText =
         , Attr.style "pointer-events" "auto"
         ]
         [ ic |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml [] ]
-
-
-cameraIconName : CameraMode -> FeatherIcons.Icon
-cameraIconName mode =
-    case mode of
-        ChaseCam ->
-            FeatherIcons.video
-
-        OrbitCam ->
-            FeatherIcons.compass
-
-
-cameraLabel : Language -> CameraMode -> String
-cameraLabel lang mode =
-    case mode of
-        ChaseCam ->
-            RI18n.camChaseLabel lang
-
-        OrbitCam ->
-            RI18n.camOrbitLabel lang
 
 
 speedKmh : PhysicsState -> Float
@@ -411,7 +354,7 @@ viewDamagePanel data =
         [ Tw.classes [ Tw.rounded_xl, Tw.px Th.s3, Tw.py Th.s2_dot_5, Tw.border, Tw.flex, Tw.flex_col, Tw.items_center ]
         , Attr.style "background" "rgba(15, 23, 42, 0.78)"
         , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
-        , Attr.style "width" "min(40vw, 12rem)"
+        , Attr.style "width" "min(20vw, 6rem)"
         ]
         [ div [ Tw.classes [ Tw.flex, Tw.justify_between, Tw.w_full, Tw.text_xs, Tw.font_semibold ], Attr.style "color" "#e2e8f0" ]
             [ span [] [ text (RI18n.damageLabel lang) ]
@@ -534,7 +477,7 @@ viewSpeedPanel data =
         , Attr.style "width" "min(40vw, 9.5rem)"
         ]
         [ viewSpeedDial (speedKmh data.physics)
-        , viewCounter (Leaderboard.formatRaceTime data.elapsedTime)
+        , viewCounter (formatTimer data.elapsedTime)
         , viewMetrics data
         ]
 
@@ -689,6 +632,20 @@ dialLabel kmh =
         [ Svg.text (String.fromInt (round kmh)) ]
 
 
+{-| Race time as `mm:ss.d`: the seconds to one decimal.
+-}
+formatTimer : Float -> String
+formatTimer seconds =
+    let
+        tenths =
+            floor (max 0 seconds * 10)
+
+        pad2 n =
+            String.padLeft 2 '0' (String.fromInt n)
+    in
+    pad2 (tenths // 600) ++ ":" ++ pad2 (modBy 60 (tenths // 10)) ++ "." ++ String.fromInt (modBy 10 tenths)
+
+
 {-| The race timer as a mechanical counter: one dark tile per digit.
 -}
 viewCounter : String -> Html msg
@@ -725,39 +682,24 @@ counterChar c =
             [ text (String.fromChar c) ]
 
 
-{-| Race metrics under the dial: checkpoints and split, course progress and
-elevation left, surface and grade.
+{-| Race metrics under the dial: checkpoints and split, metres to the next
+checkpoint, then the surface and the slope.
 -}
 viewMetrics : HudViewData -> Html msg
 viewMetrics data =
     let
-        lang =
-            data.language
-
-        progressRatio =
-            clamp 0.0 1.0 (data.physics.progressS / max 1.0 data.trackLengthM)
-
-        progressPct =
-            round (progressRatio * 100.0)
-
-        dropRemaining =
-            max 0 (round (data.trackTotalDropM * (1.0 - progressRatio)))
-
         cpTotal =
             4
 
         cpPassed =
             min cpTotal data.physics.checkpointIndex
 
-        gradePct =
-            round (data.physics.gradeRatio * 100.0)
-
         surfaceBadge =
             if data.physics.groundedWheels == 0 then
                 "AIRBORNE!"
 
             else
-                RI18n.surfaceName lang data.physics.surfaceUnderCar
+                RI18n.surfaceName data.language data.physics.surfaceUnderCar
     in
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1, Tw.w_full, Tw.text_xs ], Attr.style "color" "#cbd5e1" ]
         [ metricRow
@@ -781,9 +723,8 @@ viewMetrics data =
                         ]
                         [ text (Leaderboard.formatSplitDelta d) ]
             )
-        , metricRow
-            (span [ Tw.classes [ Tw.tabular_nums, Tw.font_semibold ] ] [ text (String.fromInt progressPct ++ "%") ])
-            (span [] [ text (RI18n.elevationRemainingLabel lang dropRemaining) ])
+        , span [ Tw.classes [ Tw.tabular_nums ] ]
+            [ text (RI18n.metersToNextCheckpointLabel data.language (round data.nextCheckpointM)) ]
         , metricRow
             (span
                 [ Tw.classes [ Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded_sm, Tw.font_semibold ]
@@ -792,7 +733,52 @@ viewMetrics data =
                 ]
                 [ text surfaceBadge ]
             )
-            (span [ Tw.classes [ Tw.tabular_nums ] ] [ text ("-" ++ String.fromInt gradePct ++ "%") ])
+            (viewSlope data.physics.gradeRatio)
+        ]
+
+
+{-| Road slope as a line tilted by the grade with the car on it, the tilt capped
+at 30 degrees. The grade is only ever downhill, so the line always tilts down to
+the right.
+-}
+viewSlope : Float -> Html msg
+viewSlope gradeRatio =
+    let
+        angle =
+            clamp -30.0 30.0 (atan gradeRatio * 180.0 / pi)
+    in
+    Svg.svg
+        [ SvgA.viewBox "0 0 48 24"
+        , Attr.style "width" "2.75rem"
+        , Attr.style "height" "auto"
+        , Attr.style "display" "block"
+        ]
+        [ Svg.line
+            [ SvgA.x1 "0"
+            , SvgA.y1 "12"
+            , SvgA.x2 "48"
+            , SvgA.y2 "12"
+            , SvgA.stroke "rgba(148, 163, 184, 0.45)"
+            , SvgA.strokeWidth "1"
+            , SvgA.strokeDasharray "2 2"
+            ]
+            []
+        , Svg.g
+            [ SvgA.transform ("rotate(" ++ String.fromFloat angle ++ " 24 12)")
+            , SvgA.style "transition: transform 0.3s ease"
+            ]
+            [ Svg.line
+                [ SvgA.x1 "2"
+                , SvgA.y1 "12"
+                , SvgA.x2 "46"
+                , SvgA.y2 "12"
+                , SvgA.stroke "#7dd3fc"
+                , SvgA.strokeWidth "3"
+                , SvgA.strokeLinecap "round"
+                ]
+                []
+            , Svg.circle [ SvgA.cx "24", SvgA.cy "12", SvgA.r "3.5", SvgA.fill "#ffffff" ] []
+            ]
         ]
 
 
