@@ -2,6 +2,7 @@ module Racer.Render exposing
     ( RenderCarSlot
     , buildCarWorldMatrix
     , carStyleForTrack
+    , renderCarWithStyleAndSpins
     , renderGarageViewport
     , renderRaceViewport
     , renderRaceViewportMulti
@@ -142,6 +143,30 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
         steeringWheelEntities =
             renderDynamic meshes.steeringWheel (Mat4.makeRotate (visualYaw * 2.2) (Vec3.normalize (vec3 0 0.65 0.75)))
 
+        driverPos =
+            case meshes.steeringWheel of
+                Just wheelSub ->
+                    Vec3.add wheelSub.pivotLdu (vec3 0 -4 28)
+
+                Nothing ->
+                    vec3 0 -12 0
+
+        driverLean =
+            Mat4.makeRotate (visualYaw * -0.35) (vec3 0 0 1)
+
+        driverWorld =
+            carInMeters
+                |> (\m -> Mat4.mul m (Mat4.makeTranslate driverPos))
+                |> (\m -> Mat4.mul m driverLean)
+
+        driverEntities =
+            case meshes.driver of
+                Just driverScene ->
+                    Scene.renderSceneWithTransform driverWorld driverScene camera style width height
+
+                Nothing ->
+                    []
+
         paddedSpins =
             padSpins (List.length meshes.wheelMeshes) wheelSpins
 
@@ -186,7 +211,25 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
         ++ leftKnuckleEntities
         ++ rightKnuckleEntities
         ++ steeringWheelEntities
+        ++ driverEntities
         ++ wheelEntities
+
+
+{-| Render the vehicle with style and wheel spins, including dynamic driver lean.
+Synonym for `renderVehicle`.
+-}
+renderCarWithStyleAndSpins :
+    Mat4
+    -> Float
+    -> List Float
+    -> Camera
+    -> Style.Style
+    -> CarMeshBundle
+    -> Int
+    -> Int
+    -> List WebGL.Entity
+renderCarWithStyleAndSpins =
+    renderVehicle
 
 
 {-| Render the interactive Garage 3D plinth inspection viewport.

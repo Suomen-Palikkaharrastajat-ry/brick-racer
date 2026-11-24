@@ -56,10 +56,12 @@ import LDraw.Colors as Colors
 import LDraw.Connectivity as Connectivity exposing (BoundingBox3D, ConnectionPoint, ConnectionType(..), PartConnectivity)
 import LDraw.Document as Document exposing (Document, Placement)
 import LDraw.Geometry as Geometry
+import LDraw.Parser as Parser
 import LDraw.Resolve exposing (PartCache, PartStatus(..))
 import LDraw.Types exposing (LDrawLine(..))
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Racer.SceneryModels as SceneryModels
 import Racer.Types exposing (Fix(..), SteeringMechanism(..), ValidationCode(..), ValidationIssue, ValidationSeverity(..), VehicleSpec, WheelSpec, lduToMeters, vec3LduToMeters)
 import Render.Scene as Scene exposing (Scene)
 import Set exposing (Set)
@@ -99,6 +101,7 @@ type alias CarMeshBundle =
     , steeringRightKnuckle : Maybe DynamicSubMesh
     , wheelMeshes : List { wheel : WheelSpec, scene : Scene }
     , steeringWheel : Maybe DynamicSubMesh
+    , driver : Maybe Scene
     , debrisColors : List { r : Float, g : Float, b : Float }
     , carBoundsRadiusLdu : Float
     }
@@ -526,6 +529,38 @@ buildVehicleScenes cache spec placements wheels _ =
 
         radiusLdu =
             max 20.0 (Vec3.length extent * 0.5)
+
+        driverCache =
+            List.foldl
+                (\pName c ->
+                    case Dict.get pName c of
+                        Just (Loaded _) ->
+                            c
+
+                        _ ->
+                            case synthesizePartLines pName of
+                                Just lines ->
+                                    Dict.insert pName (Loaded lines) c
+
+                                Nothing ->
+                                    c
+                )
+                cache
+                [ "3004.dat", "3062b.dat", "54200.dat" ]
+
+        driverParsed =
+            Parser.parseFile SceneryModels.driver
+
+        driverGeom =
+            Geometry.flattenWith Geometry.worldOptions driverParsed driverCache 16 Mat4.identity
+
+        driverScene =
+            Scene.buildScene
+                { triangles = driverGeom.triangles
+                , lines = driverGeom.lines
+                , conditionalLines = []
+                }
+                False
     in
     { chassis = chassisScene
     , steeringBogie = steeringBogie
@@ -533,6 +568,7 @@ buildVehicleScenes cache spec placements wheels _ =
     , steeringRightKnuckle = rightKnuckle
     , wheelMeshes = wheelMeshes
     , steeringWheel = steeringWheel
+    , driver = Just driverScene
     , debrisColors = debrisColors
     , carBoundsRadiusLdu = radiusLdu
     }
