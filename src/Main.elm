@@ -143,6 +143,7 @@ type alias RaceState =
     , topSpeedKmh : Float
     , splitTimes : List Float
     , splitDelta : Maybe Float
+    , splitFlash : Maybe { time : Float, timer : Float }
     , hudAlert : Maybe HudAlert
     , cameraMode : CameraMode
     , camera : Camera
@@ -2169,6 +2170,21 @@ applyRoomEvents model room race =
 stepRaceFrame : Float -> RaceState -> Model -> ( Model, Cmd Msg )
 stepRaceFrame dt race model =
     let
+        nextSplitFlash =
+            race.splitFlash
+                |> Maybe.andThen
+                    (\f ->
+                        let
+                            rem =
+                                f.timer - dt
+                        in
+                        if rem > 0 then
+                            Just { f | timer = rem }
+
+                        else
+                            Nothing
+                    )
+
         nextAlert =
             race.hudAlert
                 |> Maybe.andThen
@@ -2237,6 +2253,7 @@ stepRaceFrame dt race model =
                     { race
                         | subPhase = nextSubPhase
                         , hudAlert = nextAlert
+                        , splitFlash = nextSplitFlash
                         , debris = steppedDebris
                         , shake = decayedShake
                         , camera = nextCam
@@ -2779,6 +2796,7 @@ processPhysicsEvents events extraCmds race model =
                         ( { rAcc
                             | splitTimes = rAcc.splitTimes ++ [ splitT ]
                             , splitDelta = Just delta
+                            , splitFlash = Just { time = splitT, timer = 3.0 }
                             , hudAlert = Just alert
                           }
                         , Ports.playSfx { kind = "checkpoint", intensity = 0.9 } :: cmdAcc
@@ -2980,6 +2998,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , topSpeedKmh = 0.0
             , splitTimes = []
             , splitDelta = Nothing
+            , splitFlash = Nothing
             , hudAlert = Nothing
             , cameraMode = ChaseCam
             , camera = cam
@@ -4216,6 +4235,7 @@ view model =
                                     , crashRecovery = p2CrashMaybe
                                     , audioMuted = model.audioMuted
                                     , splitDelta = p2.splitDelta
+                                    , splitFlash = Nothing
                                     , hudAlert = p2.hudAlert
                                     , showTouchControls = False
                                     , tiltEnabled = False
@@ -4250,6 +4270,7 @@ view model =
                         , crashRecovery = crashMaybe
                         , audioMuted = model.audioMuted
                         , splitDelta = race.splitDelta
+                        , splitFlash = race.splitFlash |> Maybe.map .time
                         , hudAlert = race.hudAlert
                         , showTouchControls = model.showTouchControls
                         , tiltEnabled = model.tilt.enabled

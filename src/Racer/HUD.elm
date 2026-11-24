@@ -54,6 +54,7 @@ type alias HudViewData =
     , crashRecovery : Maybe { timer : Float, reason : CrashReason }
     , audioMuted : Bool
     , splitDelta : Maybe Float
+    , splitFlash : Maybe Float
     , hudAlert : Maybe HudAlert
     , showTouchControls : Bool
     , tiltEnabled : Bool
@@ -477,7 +478,7 @@ viewSpeedPanel data =
         , Attr.style "width" "min(40vw, 9.5rem)"
         ]
         [ viewSpeedDial (speedKmh data.physics)
-        , viewCounter (formatTimer data.elapsedTime)
+        , viewCounter (formatTimer (Maybe.withDefault data.elapsedTime data.splitFlash))
         , viewMetrics data
         ]
 
@@ -682,8 +683,8 @@ counterChar c =
             [ text (String.fromChar c) ]
 
 
-{-| Race metrics under the dial: checkpoints and split, metres to the next
-checkpoint, then the surface and the slope.
+{-| Race metrics under the dial: checkpoints and split on the same line as the
+metres to the next checkpoint, then the surface and the slope.
 -}
 viewMetrics : HudViewData -> Html msg
 viewMetrics data =
@@ -700,13 +701,9 @@ viewMetrics data =
 
             else
                 RI18n.surfaceName data.language data.physics.surfaceUnderCar
-    in
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1, Tw.w_full, Tw.text_xs ], Attr.style "color" "#cbd5e1" ]
-        [ metricRow
-            (span [ Tw.classes [ Tw.tabular_nums, Tw.font_semibold ] ]
-                [ text (String.fromInt cpPassed ++ "/" ++ String.fromInt cpTotal) ]
-            )
-            (case data.splitDelta of
+
+        splitView =
+            case data.splitDelta of
                 Nothing ->
                     text ""
 
@@ -722,9 +719,18 @@ viewMetrics data =
                             )
                         ]
                         [ text (Leaderboard.formatSplitDelta d) ]
+    in
+    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1, Tw.w_full, Tw.text_xs ], Attr.style "color" "#cbd5e1" ]
+        [ metricRow
+            (div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s1 ] ]
+                [ span [ Tw.classes [ Tw.tabular_nums, Tw.font_semibold ] ]
+                    [ text (String.fromInt cpPassed ++ "/" ++ String.fromInt cpTotal) ]
+                , splitView
+                ]
             )
-        , span [ Tw.classes [ Tw.tabular_nums ] ]
-            [ text (RI18n.metersToNextCheckpointLabel data.language (round data.nextCheckpointM)) ]
+            (span [ Tw.classes [ Tw.tabular_nums, Tw.whitespace_nowrap ] ]
+                [ text (RI18n.metersToNextCheckpointLabel data.language (round data.nextCheckpointM)) ]
+            )
         , metricRow
             (span
                 [ Tw.classes [ Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded_sm, Tw.font_semibold ]
