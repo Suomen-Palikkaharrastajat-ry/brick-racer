@@ -410,7 +410,7 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 Layered cleanly over the full-bleed WebGL canvas using `.elm-tailwind/` utilities and shared tokens from `brick-frame-ui/theme.css`:
 - **Top-Right:** Icon-only audio toggle. The camera is fixed to the chase view and has no selector. There is no pause, reset or touch/tilt toggle: phones always steer by tilt, and touch pads only show as a fallback when tilt is refused or missing.
 - **Bottom-Left:** "Vahinko" (damage) panel, half the width of the speed panel: a vertical white car skeleton that turns red as integrity drops (each part has its own threshold, wheels first), with live warning chips (`Scraping!`, `Tipping!`, `Off-Track`).
-- **Bottom-Right:** Square analog speed dial (`km/h`, needle), the race timer as a mechanical counter with one decimal of seconds (`mm:ss.d`); for 3 seconds after a checkpoint it shows that checkpoint's time instead, and metrics: checkpoint `n/4` with split delta, metres to the next checkpoint, surface badge and a slope line that tilts with the grade.
+- **Bottom-Right:** Square analog speed dial (`km/h`, needle), the race timer as a mechanical counter with one decimal of seconds (`mm:ss.d`); for 3 seconds after a checkpoint, that checkpoint's time replaces the metres figure, and metrics: checkpoint `n/4` with split delta, metres to the next checkpoint, surface badge and a slope line that tilts with the grade.
 - **Center:** Countdown, crash recovery and transient alert banners. An "Poistu" / "Exit" button appears once the car has stopped (below 1 km/h), which is the only way out of a race during play.
 
 ---

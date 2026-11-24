@@ -759,7 +759,7 @@ warningScraping : Language -> String
 warningScraping lang =
     case lang of
         Fi ->
-            "POHJA RAAPII"
+            "RAAPII"
 
         En ->
             "SCRAPING"
@@ -771,10 +771,10 @@ warningTipping : Language -> String
 warningTipping lang =
     case lang of
         Fi ->
-            "KAATUMISVAARA"
+            "KAATUU"
 
         En ->
-            "TIPPING!"
+            "TIPPING"
 
 
 {-| Off-track warning badge.
@@ -783,10 +783,10 @@ warningOffTrack : Language -> String
 warningOffTrack lang =
     case lang of
         Fi ->
-            "RADAN ULKONA"
+            "ULKONA"
 
         En ->
-            "OFF-TRACK"
+            "OFFROAD"
 
 
 {-| Inspect car button label.

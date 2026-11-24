@@ -478,7 +478,7 @@ viewSpeedPanel data =
         , Attr.style "width" "min(40vw, 9.5rem)"
         ]
         [ viewSpeedDial (speedKmh data.physics)
-        , viewCounter (formatTimer (Maybe.withDefault data.elapsedTime data.splitFlash))
+        , viewCounter (formatTimer data.elapsedTime)
         , viewMetrics data
         ]
 
@@ -709,7 +709,7 @@ viewMetrics data =
 
                 Just d ->
                     span
-                        [ Tw.classes [ Tw.font_semibold, Tw.tabular_nums ]
+                        [ Tw.classes [ Tw.font_semibold, Tw.tabular_nums, Tw.whitespace_nowrap ]
                         , Attr.style "color"
                             (if d <= 0.0 then
                                 "#4ade80"
@@ -718,7 +718,7 @@ viewMetrics data =
                                 "#fbbf24"
                             )
                         ]
-                        [ text (Leaderboard.formatSplitDelta d) ]
+                        [ text (formatDelta d) ]
     in
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1, Tw.w_full, Tw.text_xs ], Attr.style "color" "#cbd5e1" ]
         [ metricRow
@@ -728,8 +728,23 @@ viewMetrics data =
                 , splitView
                 ]
             )
-            (span [ Tw.classes [ Tw.tabular_nums, Tw.whitespace_nowrap ] ]
-                [ text (RI18n.metersToNextCheckpointLabel data.language (round data.nextCheckpointM)) ]
+            (case data.splitFlash of
+                Just t ->
+                    span
+                        [ Tw.classes [ Tw.tabular_nums, Tw.font_semibold, Tw.whitespace_nowrap ]
+                        , Attr.style "color"
+                            (if Maybe.withDefault 0 data.splitDelta <= 0 then
+                                "#4ade80"
+
+                             else
+                                "#fbbf24"
+                            )
+                        ]
+                        [ text (formatSeconds t) ]
+
+                Nothing ->
+                    span [ Tw.classes [ Tw.tabular_nums, Tw.whitespace_nowrap ] ]
+                        [ text (RI18n.metersToNextCheckpointLabel data.language (round data.nextCheckpointM)) ]
             )
         , metricRow
             (span
@@ -741,6 +756,35 @@ viewMetrics data =
             )
             (viewSlope data.physics.gradeRatio)
         ]
+
+
+{-| Checkpoint time in seconds with one decimal, e.g. `32.6 s`.
+-}
+formatSeconds : Float -> String
+formatSeconds seconds =
+    let
+        tenths =
+            floor (max 0 seconds * 10)
+    in
+    String.fromInt (tenths // 10) ++ "." ++ String.fromInt (modBy 10 tenths) ++ " s"
+
+
+{-| Split delta with its sign and one decimal, e.g. `+23.0 s`.
+-}
+formatDelta : Float -> String
+formatDelta delta =
+    let
+        tenths =
+            floor (abs delta * 10)
+
+        sign =
+            if delta < 0 then
+                "-"
+
+            else
+                "+"
+    in
+    sign ++ String.fromInt (tenths // 10) ++ "." ++ String.fromInt (modBy 10 tenths) ++ " s"
 
 
 {-| Road slope as a line tilted by the grade with the car on it, the tilt capped
