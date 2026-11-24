@@ -534,49 +534,67 @@ bandColor trackId surface segIdx bandIdx =
         field =
             fieldColors trackId segIdx
 
+        -- Alternating red and white curb rumble strips along road edge bands (4 and 8)
+        isCurb =
+            (bandIdx == 4 || bandIdx == 8)
+                && (surface == DirtRoad || surface == GravelRoad || surface == ForestTrack || surface == GrassPath)
+                && (modBy 4 (segIdx // 2) < 2)
+
         base =
-            case bandIdx of
-                0 ->
-                    field.far
+            if isCurb then
+                if modBy 4 (segIdx // 2) == 0 then
+                    ldrawColor 4
 
-                1 ->
-                    field.near
+                else
+                    ldrawColor 15
 
-                2 ->
-                    field.near
+            else
+                case bandIdx of
+                    0 ->
+                        field.far
 
-                3 ->
-                    field.verge
+                    1 ->
+                        field.near
 
-                4 ->
-                    road.edge
+                    2 ->
+                        field.near
 
-                5 ->
-                    road.road
+                    3 ->
+                        field.verge
 
-                6 ->
-                    road.center
+                    4 ->
+                        road.edge
 
-                7 ->
-                    road.road
+                    5 ->
+                        road.road
 
-                8 ->
-                    road.edge
+                    6 ->
+                        road.center
 
-                9 ->
-                    field.verge
+                    7 ->
+                        road.road
 
-                10 ->
-                    field.near
+                    8 ->
+                        road.edge
 
-                11 ->
-                    field.near
+                    9 ->
+                        field.verge
 
-                _ ->
-                    field.far
+                    10 ->
+                        field.near
+
+                    11 ->
+                        field.near
+
+                    _ ->
+                        field.far
 
         jitter =
-            1.0 + 0.04 * patchNoise segIdx bandIdx
+            if isCurb then
+                1.0
+
+            else
+                1.0 + 0.04 * patchNoise segIdx bandIdx
     in
     Vec3.scale jitter base
 
