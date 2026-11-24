@@ -101,15 +101,12 @@ initRaceCamera viewportHeight physics spec =
            )
 
 
-{-| Cycle between `ChaseCam`, `HoodCam`, and `OrbitCam`.
+{-| Cycle between `ChaseCam` and `OrbitCam`.
 -}
 cycleMode : CameraMode -> CameraMode
 cycleMode mode =
     case mode of
         ChaseCam ->
-            HoodCam
-
-        HoodCam ->
             OrbitCam
 
         OrbitCam ->
@@ -177,34 +174,6 @@ updateRaceCamera dt mode physics spec cam =
                 , elevation = nextEl
                 , distance = nextDist
                 , target = nextTarget
-            }
-
-        HoodCam ->
-            let
-                hoodHeight =
-                    clamp 0.32 1.2 (carCenterHeight * 0.82 + 0.18)
-
-                eyeOrigin =
-                    physics.position
-                        |> Vec3.add (vec3 0 hoodHeight 0)
-                        |> Vec3.add (Vec3.scale 0.08 fwd)
-
-                lookDistance =
-                    3.0
-
-                slopeDown =
-                    clamp -0.25 0.1 -(physics.gradeRatio * 0.35)
-
-                targetPt =
-                    eyeOrigin
-                        |> Vec3.add (Vec3.scale lookDistance fwd)
-                        |> Vec3.add (vec3 0 (lookDistance * slopeDown) 0)
-            in
-            { baseCam
-                | azimuth = physics.yaw + pi
-                , elevation = -slopeDown * 0.8
-                , distance = lookDistance
-                , target = targetPt
             }
 
         OrbitCam ->

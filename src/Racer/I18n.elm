@@ -8,7 +8,6 @@ module Racer.I18n exposing
     , buildCarHint
     , buildTab
     , camChaseLabel
-    , camHoodLabel
     , camOrbitLabel
     , carsAndBasesTab
     , changeCarLabel
@@ -712,18 +711,6 @@ camChaseLabel lang =
 
         En ->
             "Chase (C)"
-
-
-{-| Hood cam label.
--}
-camHoodLabel : Language -> String
-camHoodLabel lang =
-    case lang of
-        Fi ->
-            "Ohjaamo (C)"
-
-        En ->
-            "Hood (C)"
 
 
 {-| Orbit cam label.

@@ -78,7 +78,6 @@ type alias HudActions msg =
     , onRespawnCheckpoint : msg
     , onCycleCamera : msg
     , onToggleAudio : msg
-    , onToggleTouchUi : msg
     , onTouchSteerLeft : Bool -> msg
     , onTouchSteerRight : Bool -> msg
     , onTouchBrake : Bool -> msg
@@ -255,22 +254,9 @@ viewTopBar data actions =
                     RI18n.audioUnmutedLabel lang
                 )
             , hudToolbarBtn actions.onRespawnCheckpoint FeatherIcons.rotateCcw (RI18n.resetCheckpointLabel lang)
-            , if tiltSteering data then
-                text ""
-
-              else
-                hudToolbarBtn actions.onToggleTouchUi FeatherIcons.grid "Touch"
-            , viewTiltToggle data
             , hudToolbarBtn actions.onTogglePause FeatherIcons.pause (RI18n.pauseLabel lang)
             ]
         ]
-
-
-{-| Whether the phone is steering by tilt right now.
--}
-tiltSteering : HudViewData -> Bool
-tiltSteering data =
-    data.tiltEnabled && data.tiltAvailable
 
 
 {-| Whether the on-screen steering and brake pads are shown: only while the
@@ -280,61 +266,6 @@ screen clear.
 touchPadsVisible : { a | showTouchControls : Bool, tiltEnabled : Bool, tiltAvailable : Bool } -> Bool
 touchPadsVisible data =
     data.showTouchControls && not (data.tiltEnabled && data.tiltAvailable)
-
-
-{-| Small icon-only toolbar toggle for tilt steering (green while on), shown
-only on devices that can tilt. The tap is handled in `tilt-steer.js` (`data-tilt-toggle`) so the iOS
-permission prompt runs inside the tap itself.
--}
-viewTiltToggle : HudViewData -> Html msg
-viewTiltToggle data =
-    if data.tiltAvailable then
-        let
-            label =
-                if data.tiltEnabled then
-                    RI18n.tiltEnabledLabel data.language
-
-                else
-                    RI18n.tiltDisabledLabel data.language
-        in
-        button
-            [ Attr.type_ "button"
-            , Attr.attribute "data-tilt-toggle" ""
-            , Attr.attribute "aria-pressed"
-                (if data.tiltEnabled then
-                    "true"
-
-                 else
-                    "false"
-                )
-            , Attr.attribute "aria-label" label
-            , Attr.title label
-            , Tw.classes
-                [ Tw.flex
-                , Tw.items_center
-                , Tw.gap Th.s1
-                , Tw.px Th.s2_dot_5
-                , Tw.py Th.s1_dot_5
-                , Tw.rounded_lg
-                , Tw.border
-                , Tw.text_xs
-                , Tw.font_semibold
-                , Tw.text_simple Th.white
-                ]
-            , Attr.style "cursor" "pointer"
-            , Attr.style "background"
-                (if data.tiltEnabled then
-                    "rgba(22, 163, 74, 0.9)"
-
-                 else
-                    "rgba(15, 23, 42, 0.78)"
-                )
-            , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
-            ]
-            [ FeatherIcons.smartphone |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml [] ]
-
-    else
-        text ""
 
 
 hudToolbarBtn : msg -> FeatherIcons.Icon -> String -> Html msg
@@ -370,9 +301,6 @@ cameraIconName mode =
         ChaseCam ->
             FeatherIcons.video
 
-        HoodCam ->
-            FeatherIcons.eye
-
         OrbitCam ->
             FeatherIcons.compass
 
@@ -382,9 +310,6 @@ cameraLabel lang mode =
     case mode of
         ChaseCam ->
             RI18n.camChaseLabel lang
-
-        HoodCam ->
-            RI18n.camHoodLabel lang
 
         OrbitCam ->
             RI18n.camOrbitLabel lang

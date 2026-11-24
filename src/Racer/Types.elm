@@ -541,7 +541,6 @@ type alias PhysicsState =
 -}
 type CameraMode
     = ChaseCam
-    | HoodCam
     | OrbitCam
 
 

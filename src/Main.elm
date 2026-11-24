@@ -360,7 +360,6 @@ type Msg
     | TogglePause
     | ResumeRace
     | RespawnCheckpoint
-    | ToggleTouchUi
     | TiltStatusChanged { available : Bool, enabled : Bool }
     | TiltSteerChanged Float
     | TouchSteerLeft Bool
@@ -1617,9 +1616,6 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
-
-        ToggleTouchUi ->
-            ( { model | showTouchControls = not model.showTouchControls }, Cmd.none )
 
         TiltStatusChanged status ->
             ( { model | tilt = { enabled = status.enabled, available = status.available, steer = 0.0 } }
@@ -4368,7 +4364,6 @@ view model =
                         , onRespawnCheckpoint = RespawnCheckpoint
                         , onCycleCamera = CycleCamera
                         , onToggleAudio = ToggleAudioMute
-                        , onToggleTouchUi = ToggleTouchUi
                         , onTouchSteerLeft = TouchSteerLeft
                         , onTouchSteerRight = TouchSteerRight
                         , onTouchBrake = TouchBrake

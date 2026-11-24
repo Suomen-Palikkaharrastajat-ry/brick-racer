@@ -76,7 +76,7 @@ brick-racer/
 │   │   ├── Track.elm           # Seeded 3D Catmull-Rom spline, heightmap blend, obstacles
 │   │   ├── TerrainMesh.elm     # Chunked WebGL terrain, track ribbon & obstacle meshes
 │   │   ├── TerrainShader.elm   # Custom vertex-colored biome/fog terrain & sky dome shaders
-│   │   ├── Camera.elm          # Chase, Hood/Cockpit, and Finish/Inspection Orbit camera rigs
+│   │   ├── Camera.elm          # Chase and Finish/Inspection Orbit camera rigs
 │   │   ├── Audio.elm           # Pure derivation of continuous audio parameters from PhysicsState
 │   │   ├── Leaderboard.elm     # Per-track PB splits, car class ratings, localStorage codecs
 │   │   └── HUD.elm             # Speedometer, timer/splits, stability meter, course progress
@@ -405,15 +405,14 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 `Racer.Camera` outputs a standard `Render.Camera.Camera` record (`target`, `azimuth`, `elevation`, `distance`, `projection`) so `Render.Shader`, `Render.EdgeShader`, and `Render.Instanced.frustumFromMatrix` work identically across Garage and Race scenes:
 
 1. **Chase Cam (Default):** Follows behind the car's velocity/heading vector with spring-damped yaw lag (`1.5–4.5 m` scaled gently to car bounding radius via `Viewport.Framing.ModelBounds`, widens FOV slightly at high speed for sensation of velocity).
-2. **Hood / Cockpit Cam:** Mounted slightly above `minY + 0.7 * height` looking forward over the hood, bricks, and spinning `3829c01.dat` steering wheel if present!
-3. **Trackside / Free Orbit Cam:** Available during Garage inspection, Pause, and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
+2. **Trackside / Free Orbit Cam:** Available during Garage inspection, Pause, and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
 
 ### 6.3 Gameplay HUD (`Racer.HUD`)
 
 Layered cleanly over the full-bleed WebGL canvas using `.elm-tailwind/` utilities and shared tokens from `brick-frame-ui/theme.css`:
 - **Top-Left:** Race Timer (`01:14.32`), live Checkpoint Split badge (`-0.62 s` green / `+0.41 s` amber), current Checkpoint (`2 / 4`).
 - **Top-Center:** Course Progress Bar showing start-to-finish percentage, remaining elevation drop (`-82 m left`), and checkpoint ticks.
-- **Top-Right:** Compact icon toolbar (Camera `C`, Audio Mute, Reset `R`, Pause `Esc`).
+- **Top-Right:** Compact icon toolbar (Camera `C` Chase/Orbit, Audio Mute, Reset `R`, Pause `Esc`). There is no touch or tilt toggle: phones always steer by tilt.
 - **Bottom-Left:** Structural Integrity / Stability Gauge (100%–0%) + live warning flashes (`Scraping!`, `Tipping!`, `Off-Track`).
 - **Bottom-Right:** Digital + Arc Speedometer (`km/h`), instantaneous grade `%`, and surface grip badge (`Tarmac` / `Gravel` / `Grass` / `Airborne!`).
 - **Center Transient Banners:** `3 - 2 - 1 - ROLL!`, `+AIR TIME!`, `Checkpoint Reached`, and Pause / Crash Recovery / Finish overlays.
@@ -525,7 +524,7 @@ type alias RaceState =
     , elapsedTime : Float
     , accumulator : Float             -- Fixed-timestep remainder
     , input : InputState              -- Pressed keys + touch + tilt
-    , cameraMode : CameraMode         -- Chase | Hood | Orbit
+    , cameraMode : CameraMode         -- Chase | Orbit
     , camera : Camera
     , particles : List BrickDebris    -- Pop-off bricks and smashed-scenery bricks (max 72)
     , splitTimes : List Float

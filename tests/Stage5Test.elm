@@ -165,12 +165,11 @@ suite =
                         ()
             ]
         , describe "Racer.Camera and Render"
-            [ test "camera mode cycles Chase -> Hood -> Orbit -> Chase" <|
+            [ test "camera mode cycles Chase -> Orbit -> Chase" <|
                 \_ ->
                     Expect.equal
-                        ( HoodCam, OrbitCam, ChaseCam )
+                        ( OrbitCam, ChaseCam )
                         ( RacerCamera.cycleMode ChaseCam
-                        , RacerCamera.cycleMode HoodCam
                         , RacerCamera.cycleMode OrbitCam
                         )
             , test "race camera extends farPlane > 1000m for mountain vistas" <|
@@ -182,13 +181,13 @@ suite =
                         camChase =
                             RacerCamera.updateRaceCamera 0.016 ChaseCam basePhysics vehicleSpec cam0
 
-                        camHood =
-                            RacerCamera.updateRaceCamera 0.016 HoodCam basePhysics vehicleSpec cam0
+                        camOrbit =
+                            RacerCamera.updateRaceCamera 0.016 OrbitCam basePhysics vehicleSpec cam0
                     in
                     Expect.all
                         [ \_ -> Expect.greaterThan 1000.0 (Camera.farPlane camChase)
-                        , \_ -> Expect.greaterThan 1000.0 (Camera.farPlane camHood)
-                        , \_ -> Expect.notEqual (Camera.position camChase) (Camera.position camHood)
+                        , \_ -> Expect.greaterThan 1000.0 (Camera.farPlane camOrbit)
+                        , \_ -> Expect.notEqual (Camera.position camChase) (Camera.position camOrbit)
                         ]
                         ()
             , test "buildCarWorldMatrix translates local origin to physics.position" <|

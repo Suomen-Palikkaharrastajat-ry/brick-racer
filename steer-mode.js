@@ -6,4 +6,6 @@
 // Keep the key stable: changing it would forget every saved choice.
 export const STEER_MODE_KEY = 'racer.steerMode'
 
-export const tiltSteerOptions = { storageKey: STEER_MODE_KEY }
+// Phones always steer by tilt; the touch pads are only a fallback for when
+// the sensor is missing or permission is refused.
+export const tiltSteerOptions = { storageKey: STEER_MODE_KEY, forceOnPhones: true }
