@@ -73,6 +73,8 @@ sources =
         ++ [ ( "3001.dat", BrickModels.singlePart "3001.dat" )
            , ( "3003.dat", BrickModels.singlePart "3003.dat" )
            , ( debrisPart, BrickModels.singlePart debrisPart )
+           , ( "54200.dat", BrickModels.singlePart "54200.dat" )
+           , ( "6141.dat", BrickModels.singlePart "6141.dat" )
            ]
 
 
@@ -300,34 +302,47 @@ tintOf code =
 -- DEBRIS
 
 
-{-| Draw the loose bricks of a crash: catalog 1 x 2 bricks in each piece's
-colour, shrinking away over their last half second.
+{-| Draw the loose bricks of a crash: catalog 1 x 2 bricks, 1 x 1 cheese slopes
+and 1 x 1 round studs in each piece's colour, shrinking away over their last
+half second.
 -}
 debrisEntities : BrickProps.View -> Props -> List DebrisPiece -> List WebGL.Entity
 debrisEntities v props pieces =
-    case Dict.get debrisPart props of
-        Just prop ->
-            List.concatMap
-                (\piece ->
-                    let
-                        fade =
-                            clamp 0.0 1.0 ((piece.lifetime - piece.age) / 0.5)
+    List.indexedMap Tuple.pair pieces
+        |> List.concatMap
+            (\( idx, piece ) ->
+                let
+                    partFile =
+                        case modBy 3 idx of
+                            0 ->
+                                debrisPart
 
-                        s =
-                            Vec3.toRecord (Vec3.scale fade piece.size)
+                            1 ->
+                                "54200.dat"
 
-                        c =
-                            Vec3.toRecord piece.color
+                            _ ->
+                                "6141.dat"
+                in
+                case Dict.get partFile props of
+                    Just prop ->
+                        let
+                            fade =
+                                clamp 0.0 1.0 ((piece.lifetime - piece.age) / 0.5)
 
-                        world =
-                            Mat4.makeTranslate piece.position
-                                |> (\m -> Mat4.mul m (Mat4.makeRotate piece.rotation (vec3 1 0.7 0.4)))
-                                |> (\m -> Mat4.mul m (Mat4.makeTranslate3 0 (-s.y / 2) 0))
-                                |> (\m -> Mat4.mul m (BrickProps.fitBox { width = max 0.001 s.x, height = max 0.001 s.y, depth = max 0.001 s.z } prop))
-                    in
-                    BrickProps.draw v world (vec4 c.x c.y c.z 1) 0 prop
-                )
-                pieces
+                            s =
+                                Vec3.toRecord (Vec3.scale fade piece.size)
 
-        Nothing ->
-            []
+                            c =
+                                Vec3.toRecord piece.color
+
+                            world =
+                                Mat4.makeTranslate piece.position
+                                    |> (\m -> Mat4.mul m (Mat4.makeRotate piece.rotation (vec3 1 0.7 0.4)))
+                                    |> (\m -> Mat4.mul m (Mat4.makeTranslate3 0 (-s.y / 2) 0))
+                                    |> (\m -> Mat4.mul m (BrickProps.fitBox { width = max 0.001 s.x, height = max 0.001 s.y, depth = max 0.001 s.z } prop))
+                        in
+                        BrickProps.draw v world (vec4 c.x c.y c.z 1) 0 prop
+
+                    Nothing ->
+                        []
+            )
