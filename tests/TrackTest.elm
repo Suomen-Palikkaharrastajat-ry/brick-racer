@@ -7,6 +7,7 @@ deterministic seeding, course length/steepness, and roadside scenery clearance.
 import Array
 import Expect
 import Math.Vector3 as Vec3
+import Racer.TerrainMesh as TerrainMesh
 import Racer.Track as Track
 import Racer.Types exposing (SurfaceType(..), TrackId(..), allTrackIds, trackIdFromString, trackIdToString)
 import Test exposing (Test, describe, test)
@@ -22,6 +23,47 @@ suite =
             ]
         , describe "Courses are short and steep"
             (List.map verifyShortAndSteep allTrackIds)
+        , describe "Start grid boxes and starting line detail"
+            [ test "segIdx -1 paints bright white starting line across road bands (bands 5, 6, 7)" <|
+                \_ ->
+                    let
+                        c5 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -1 5
+
+                        c6 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -1 6
+
+                        c7 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -1 7
+                    in
+                    Expect.all
+                        [ \_ -> Expect.equal c5 c6
+                        , \_ -> Expect.equal c6 c7
+                        ]
+                        ()
+            , test "segIdx -2 staging paddock box paints alternating yellow and white grid boxes with dark road center" <|
+                \_ ->
+                    let
+                        c5 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -2 5
+
+                        c6 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -2 6
+
+                        c7 =
+                            TerrainMesh.bandColor FarmLane DirtRoad -2 7
+
+                        whiteStartLine =
+                            TerrainMesh.bandColor FarmLane DirtRoad -1 5
+                    in
+                    Expect.all
+                        [ \_ -> Expect.equal c7 whiteStartLine
+                        , \_ -> Expect.notEqual c5 whiteStartLine
+                        , \_ -> Expect.notEqual c6 c5
+                        , \_ -> Expect.notEqual c6 c7
+                        ]
+                        ()
+            ]
         , test "Track ids round-trip and retired mountain ids map to countryside courses" <|
             \_ ->
                 Expect.all

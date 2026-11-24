@@ -1,6 +1,7 @@
 module Racer.TerrainMesh exposing
     ( TrackChunk
     , TrackRenderBundle
+    , bandColor
     , buildGaragePlinthMesh
     , buildTrackRenderBundle
     , rebuildChunkScenery
@@ -525,6 +526,10 @@ fieldColors trackId segIdx =
             }
 
 
+{-| Color of a ground band at station index `bandIdx` (0 to 12) along cross-section segment `segIdx`.
+Segment -1 holds the crisp white starting line leading up to the start arch at `s = 0`,
+while segment -2 provides alternating yellow hazard and white grid staging stalls.
+-}
 bandColor : TrackId -> SurfaceType -> Int -> Int -> Vec3
 bandColor trackId surface segIdx bandIdx =
     let
@@ -540,6 +545,10 @@ bandColor trackId surface segIdx bandIdx =
                 && (surface == DirtRoad || surface == GravelRoad || surface == ForestTrack || surface == GrassPath)
                 && (modBy 4 (segIdx // 2) < 2)
 
+        isStartMark =
+            (segIdx == -1 && bandIdx >= 5 && bandIdx <= 7)
+                || (segIdx == -2 && bandIdx >= 5 && bandIdx <= 7)
+
         base =
             if isCurb then
                 if modBy 4 (segIdx // 2) == 0 then
@@ -547,6 +556,18 @@ bandColor trackId surface segIdx bandIdx =
 
                 else
                     ldrawColor 15
+
+            else if segIdx == -1 && bandIdx >= 5 && bandIdx <= 7 then
+                ldrawColor 15
+
+            else if segIdx == -2 && bandIdx == 5 then
+                ldrawColor 14
+
+            else if segIdx == -2 && bandIdx == 6 then
+                road.road
+
+            else if segIdx == -2 && bandIdx == 7 then
+                ldrawColor 15
 
             else
                 case bandIdx of
@@ -590,7 +611,7 @@ bandColor trackId surface segIdx bandIdx =
                         field.far
 
         jitter =
-            if isCurb then
+            if isCurb || isStartMark then
                 1.0
 
             else
