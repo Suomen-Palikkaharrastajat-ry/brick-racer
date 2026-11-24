@@ -452,8 +452,33 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
                         meshes
                         safeW
                         safeH
+
+                speed =
+                    Vec3.length physics.velocity
+
+                driftIntensity =
+                    clamp 0.0 1.0 ((abs physics.steerAngle - 0.08) * 3.2 * clamp 0.0 1.0 (speed / 4.0))
+
+                skidEntities =
+                    if driftIntensity > 0.05 then
+                        let
+                            skidMat sideX =
+                                Mat4.makeTranslate (vec3 (Vec3.getX physics.position) (groundBelowCar.height + 0.02) (Vec3.getZ physics.position))
+                                    |> (\m -> Mat4.mul m (Mat4.makeRotate physics.yaw (vec3 0 1 0)))
+                                    |> (\m -> Mat4.mul m (Mat4.makeTranslate3 sideX 0.0 (carLenM * 0.25)))
+                                    |> (\m -> Mat4.mul m (Mat4.makeScale3 (carWidthM * 0.16) 1.0 (carLenM * 0.45 * (1.0 + driftIntensity))))
+
+                            fade =
+                                1.0 - driftIntensity * 0.4
+                        in
+                        [ TerrainShader.shadowEntity (skidMat (-carWidthM * 0.38)) shadowMesh camera safeW safeH fade
+                        , TerrainShader.shadowEntity (skidMat (carWidthM * 0.38)) shadowMesh camera safeW safeH fade
+                        ]
+
+                    else
+                        []
             in
-            TerrainShader.shadowEntity shadowMat shadowMesh camera safeW safeH clearance :: carEntities
+            TerrainShader.shadowEntity shadowMat shadowMesh camera safeW safeH clearance :: skidEntities ++ carEntities
 
         -- A car out of health has broken apart into its bricks (now debris):
         -- draw nothing for it until it is rebuilt.
