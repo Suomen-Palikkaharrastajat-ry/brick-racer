@@ -76,16 +76,11 @@ initRaceCamera viewportHeight physics spec =
         radiusM =
             max 0.7 (lduToMeters (Vec3.length extent * 0.5))
 
-        fwd =
-            Physics.forwardVector physics.yaw
-
         carCenterHeight =
             max 0.35 (lduToMeters (Vec3.getY spec.boundsMaxLdu))
 
         target =
-            physics.position
-                |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08) 0)
-                |> Vec3.add (Vec3.scale chaseLookAhead fwd)
+            chaseAimPoint physics carCenterHeight
     in
     Camera.init
         |> Camera.setViewportHeight (toFloat (max 1 viewportHeight))
@@ -127,9 +122,6 @@ updateRaceCamera dt mode physics spec cam =
         speed =
             Vec3.length physics.velocity
 
-        fwd =
-            Physics.forwardVector physics.yaw
-
         carCenterHeight =
             max 0.35 (lduToMeters (Vec3.getY spec.boundsMaxLdu))
 
@@ -142,9 +134,10 @@ updateRaceCamera dt mode physics spec cam =
                 desiredAz =
                     physics.yaw + pi - physics.yawRate * 0.09
 
-                -- Look slightly downward as the slope steepens so roadbed fills lower 2/3
+                -- A little above the car so its shape reads, higher on steep slopes so the
+                -- road stays in view, and a touch lower at speed for a faster feel.
                 desiredEl =
-                    clamp 0.16 0.45 (0.25 + physics.gradeRatio * 0.38)
+                    clamp 0.2 0.5 (0.3 + physics.gradeRatio * 0.34 - clamp 0.0 chaseSpeedDropRad (speed * 0.0015))
 
                 desiredDist =
                     chaseDistance radiusM speed
@@ -155,9 +148,7 @@ updateRaceCamera dt mode physics spec cam =
                     clamp -chaseTurnLeadM chaseTurnLeadM (physics.yawRate * chaseTurnLeadGain)
 
                 lookAheadTarget =
-                    physics.position
-                        |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08) 0)
-                        |> Vec3.add (Vec3.scale chaseLookAhead fwd)
+                    chaseAimPoint physics carCenterHeight
                         |> Vec3.add (Vec3.scale turnLead (Physics.forwardVector (physics.yaw + pi / 2)))
 
                 alpha =
@@ -195,6 +186,21 @@ updateRaceCamera dt mode physics spec cam =
             }
 
 
+{-| Point the chase camera aims at: part way up the car and a little ahead of
+it, following the road's grade so the car stays centred on steep stretches
+instead of sliding down the screen.
+-}
+chaseAimPoint : PhysicsState -> Float -> Vec3
+chaseAimPoint physics carCenterHeight =
+    let
+        fwd =
+            Physics.forwardVector physics.yaw
+    in
+    physics.position
+        |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08 - chaseLookAhead * physics.gradeRatio) 0)
+        |> Vec3.add (Vec3.scale chaseLookAhead fwd)
+
+
 {-| Chase camera distance (m) behind its target for a car of bounding radius
 `radiusM` at `speedMps`.
 
@@ -208,7 +214,7 @@ chaseDistance : Float -> Float -> Float
 chaseDistance radiusM speedMps =
     let
         base =
-            clamp 2.4 4.6 (1.6 + radiusM * 1.7)
+            clamp 2.1 4.0 (1.35 + radiusM * 1.5)
 
         pullback =
             clamp 0.0 chaseSpeedPullbackM (max 0.0 speedMps * 0.012)
@@ -221,6 +227,14 @@ chaseDistance radiusM speedMps =
 chaseSpeedPullbackM : Float
 chaseSpeedPullbackM =
     0.45
+
+
+{-| Most the chase camera sinks with speed (rad of elevation), for a lower,
+faster-feeling view without the car getting smaller.
+-}
+chaseSpeedDropRad : Float
+chaseSpeedDropRad =
+    0.04
 
 
 {-| Sideways aim lead in metres at most, and metres of lead per rad/s of yaw rate.
@@ -240,7 +254,7 @@ the car sits in the middle of the view rather than low in it.
 -}
 chaseAimHeight : Float
 chaseAimHeight =
-    0.5
+    0.3
 
 
 {-| How far (m) ahead of the car the chase camera aims. Small, so the car sits

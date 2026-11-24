@@ -2738,22 +2738,30 @@ processPhysicsEvents events extraCmds race model =
             stepEv ev ( rAcc, cmdAcc ) =
                 case ev of
                     Impact { impulse, scrape } ->
+                        let
+                            bumped =
+                                { rAcc | shake = min 1.0 (rAcc.shake + impactShake scrape impulse) }
+                        in
                         if not scrape && impulse > 1.2 then
-                            ( rAcc
+                            ( bumped
                             , Ports.playSfx { kind = "impact", intensity = clamp 0.15 1.0 (impulse / 18.0) } :: cmdAcc
                             )
 
                         else
-                            ( rAcc, cmdAcc )
+                            ( bumped, cmdAcc )
 
                     Landing { impulse } ->
+                        let
+                            bumped =
+                                { rAcc | shake = min 1.0 (rAcc.shake + landingShake impulse) }
+                        in
                         if impulse > 1.0 then
-                            ( rAcc
+                            ( bumped
                             , Ports.playSfx { kind = "landing", intensity = clamp 0.15 1.0 (impulse / 16.0) } :: cmdAcc
                             )
 
                         else
-                            ( rAcc, cmdAcc )
+                            ( bumped, cmdAcc )
 
                     BrickDetached _ ->
                         let
@@ -3873,6 +3881,26 @@ isScenerySmash ev =
 
         _ ->
             False
+
+
+{-| Camera shake (0–1) added by a knock of `impulse` (0.1–1, from the physics
+events): light taps and wall scrapes barely move the view, a hard hit jolts it.
+-}
+impactShake : Bool -> Float -> Float
+impactShake scrape impulse =
+    if scrape then
+        max 0.0 (impulse - 0.3) * 0.35
+
+    else
+        max 0.0 (impulse - 0.2) * 0.7
+
+
+{-| Camera shake (0–1) added by a landing of `impulse` (0.1–1): ordinary ramp
+hops are free, a drop that costs health gives a short thump.
+-}
+landingShake : Float -> Float
+landingShake impulse =
+    max 0.0 (impulse - 0.5) * 0.9
 
 
 {-| Jitter the camera target by a decaying `shake` amount (0–1) for crash feedback.
