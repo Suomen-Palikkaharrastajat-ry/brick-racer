@@ -691,6 +691,9 @@ sceneryDebrisStyle kind =
         SlopeBlock ->
             { colors = [ ldrawColor 14, ldrawColor 0, ldrawColor 14, ldrawColor 72 ], count = 10, scale = 0.85 }
 
+        Bleachers ->
+            { colors = [ ldrawColor 72, ldrawColor 71, ldrawColor 4, ldrawColor 1, ldrawColor 14 ], count = 12, scale = 1.0 }
+
 
 
 -- ── Brick launch ramps ───────────────────────────────────────────────────────

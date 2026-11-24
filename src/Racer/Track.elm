@@ -1057,6 +1057,9 @@ scenerySpec kind offRoll sizeRoll =
         SlopeBlock ->
             { offsetM = 1.5 + offRoll * 1.0, radiusM = 1.0, heightM = 0.8 }
 
+        Bleachers ->
+            { offsetM = 3.6, radiusM = 2.2, heightM = 1.8 }
+
 
 {-| The brick-built crashables of `Racer.SceneryModels` made only of the car
 editor's dock parts. They also stay 6 m clear of the launch ramps, so a car
@@ -1155,6 +1158,9 @@ generateScenery track =
 
                         SlopeBlock ->
                             heading + (yawRoll - 0.5) * 0.2
+
+                        Bleachers ->
+                            heading + side * (pi / 2.0)
 
                         GardenGnome ->
                             -- Gnomes face the road, give or take.
@@ -1262,15 +1268,68 @@ generateScenery track =
                     |> placeSide -1.0 sVal
                     |> placeSide 1.0 sVal
 
+        placeBleacher sVal side cur =
+            case tryPlace Bleachers side sVal 0.0 0.0 0.0 cur of
+                Just obs ->
+                    { cur | acc = obs :: cur.acc, nextId = cur.nextId + 1 }
+
+                Nothing ->
+                    let
+                        smp =
+                            splineSampleAtS track sVal
+
+                        spec =
+                            scenerySpec Bleachers 0.0 0.0
+
+                        rightFlat =
+                            normalizeXZ smp.right
+
+                        lateralD =
+                            side * (smp.halfWidth + spec.offsetM)
+
+                        posXZ =
+                            Vec3.add smp.center (Vec3.scale lateralD rightFlat)
+
+                        q =
+                            sampleAtHinted smp.s track (Vec3.getX posXZ) (Vec3.getZ posXZ)
+
+                        heading =
+                            atan2 (Vec3.getX smp.tangent) (Vec3.getZ smp.tangent)
+                    in
+                    { cur
+                        | acc =
+                            { id = cur.nextId
+                            , kind = Bleachers
+                            , s = smp.s
+                            , position = vec3 (Vec3.getX posXZ) (q.height - 0.12) (Vec3.getZ posXZ)
+                            , radiusM = spec.radiusM
+                            , heightM = spec.heightM
+                            , yaw = heading + side * (pi / 2.0)
+                            }
+                                :: cur.acc
+                        , nextId = cur.nextId + 1
+                    }
+
+        startCursor =
+            { acc = []
+            , rng = Random.initialSeed (track.config.seed * 3571 + 91)
+            , nextId = 1
+            , fenceLeft = 0
+            , fenceRight = 0
+            }
+                |> placeBleacher 10.0 -1.0
+                |> placeBleacher 10.0 1.0
+
+        procedural =
+            List.foldl step startCursor positions
+
+        finishBleacherS =
+            track.finishS - 6.0
+
         final =
-            List.foldl step
-                { acc = []
-                , rng = Random.initialSeed (track.config.seed * 3571 + 91)
-                , nextId = 1
-                , fenceLeft = 0
-                , fenceRight = 0
-                }
-                positions
+            procedural
+                |> placeBleacher finishBleacherS -1.0
+                |> placeBleacher finishBleacherS 1.0
     in
     List.reverse final.acc
         |> List.sortBy .s
