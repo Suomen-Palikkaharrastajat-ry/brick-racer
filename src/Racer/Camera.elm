@@ -149,10 +149,16 @@ updateRaceCamera dt mode physics spec cam =
                 desiredDist =
                     chaseDistance radiusM speed
 
+                -- The aim leads towards the way the nose is turning, so the car sits
+                -- off-centre in the turn and the road ahead of it stays in view.
+                turnLead =
+                    clamp -chaseTurnLeadM chaseTurnLeadM (physics.yawRate * chaseTurnLeadGain)
+
                 lookAheadTarget =
                     physics.position
                         |> Vec3.add (vec3 0 (carCenterHeight * chaseAimHeight + 0.08) 0)
                         |> Vec3.add (Vec3.scale chaseLookAhead fwd)
+                        |> Vec3.add (Vec3.scale turnLead (Physics.forwardVector (physics.yaw + pi / 2)))
 
                 alpha =
                     clamp 0.0 1.0 (dt * 9.0)
@@ -215,6 +221,18 @@ chaseDistance radiusM speedMps =
 chaseSpeedPullbackM : Float
 chaseSpeedPullbackM =
     0.45
+
+
+{-| Sideways aim lead in metres at most, and metres of lead per rad/s of yaw rate.
+-}
+chaseTurnLeadM : Float
+chaseTurnLeadM =
+    0.5
+
+
+chaseTurnLeadGain : Float
+chaseTurnLeadGain =
+    0.35
 
 
 {-| Share of the car's height the chase camera aims at (plus a few cm), so

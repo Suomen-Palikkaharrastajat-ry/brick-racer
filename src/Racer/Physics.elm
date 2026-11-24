@@ -828,7 +828,7 @@ stepFixed dt track spec input state =
             obsRes.cooldown
 
         totalDamage =
-            obsRes.damage + wallRes.damage + vertical.landingDamage
+            (obsRes.damage + wallRes.damage + vertical.landingDamage) * damageScale
 
         nextIntegrity =
             max 0.0 (state.integrity - totalDamage)
@@ -1259,6 +1259,14 @@ breaks apart into its bricks (`Crashed StructuralCollapse`).
 maxHealth : Float
 maxHealth =
     100.0
+
+
+{-| Every point of damage taken is multiplied by this, so a few hard hits
+break the car apart rather than wearing it down forever.
+-}
+damageScale : Float
+damageScale =
+    2.2
 
 
 {-| Health lost bouncing off scenery that does not break (a tree, a cottage)

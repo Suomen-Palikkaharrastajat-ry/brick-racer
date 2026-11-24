@@ -359,7 +359,7 @@ suite =
                     landFrom 13.0 Physics.maxHealth
                         |> Tuple.first
                         |> .integrity
-                        |> Expect.all [ Expect.lessThan 90.0, Expect.greaterThan 60.0 ]
+                        |> Expect.all [ Expect.lessThan 40.0, Expect.greaterThan 10.0 ]
             , test "a hard landing on the last bit of health wrecks the car" <|
                 \_ ->
                     landFrom 13.0 10.0

@@ -402,7 +402,7 @@ On iOS/Safari, enabling tilt steering presents an explicit user-gesture button c
 
 `Racer.Camera` outputs a standard `Render.Camera.Camera` record (`target`, `azimuth`, `elevation`, `distance`, `projection`) so `Render.Shader`, `Render.EdgeShader`, and `Render.Instanced.frustumFromMatrix` work identically across Garage and Race scenes:
 
-1. **Chase Cam (Default):** Follows behind the car's velocity/heading vector with spring-damped yaw lag (`1.5–4.5 m` scaled gently to car bounding radius via `Viewport.Framing.ModelBounds`, widens FOV slightly at high speed for sensation of velocity).
+1. **Chase Cam (Default):** Follows behind the car's velocity/heading vector with spring-damped yaw lag; its aim leads up to 0.5 m towards the way the nose is turning, so the road ahead of a bend stays in view (`1.5–4.5 m` scaled gently to car bounding radius via `Viewport.Framing.ModelBounds`, widens FOV slightly at high speed for sensation of velocity).
 2. **Trackside / Free Orbit Cam:** Available during Garage inspection and Finish podium replay (`Render.Camera.rotate`, `zoom` via mouse/touch drag).
 
 ### 6.3 Gameplay HUD (`Racer.HUD`)
