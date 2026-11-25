@@ -8,6 +8,8 @@ module Racer.Types exposing
     , GeneratedTrack
     , InputState
     , LeaderboardEntry
+    , LoopRide
+    , LoopSection
     , ObstacleKind(..)
     , PhysicsEvent(..)
     , PhysicsState
@@ -15,6 +17,7 @@ module Racer.Types exposing
     , RaceMode(..)
     , RampZone
     , SegmentFeature(..)
+    , SideRamp
     , SteeringMechanism(..)
     , SurfaceType(..)
     , TerrainSample
@@ -300,6 +303,64 @@ type alias BrickRamp =
     }
 
 
+{-| Brick-built vertical loop-the-loop standing on the road.
+
+The car leaves the road at `entryS`, runs once round a vertical circle of
+radius `radiusM` (upside down at the top) and comes back down onto the same
+road at `exitS`; the circle is stretched along the road by `exitS - entryS`.
+So that the way down passes beside the way up, the lane swings sideways by up
+to `driftM` (signed like `roadOffsetM`) as it climbs and to the other side as
+it comes down, and is back on the road centre line at both ends. The lane is
+`laneHalfWidthM` wide each side of its centre; at both ends it widens to the
+full road (`apronHalfWidthM`), so a car anywhere on the road is funnelled in.
+The geometry lives in `Racer.Track.loopFrame`.
+
+-}
+type alias LoopSection =
+    { entryS : Float
+    , exitS : Float
+    , radiusM : Float
+    , driftM : Float
+    , laneHalfWidthM : Float
+    , apronHalfWidthM : Float
+    }
+
+
+{-| A car riding round a loop: which loop (index into `GeneratedTrack.loops`),
+its angle round the circle (`theta`, 0 at the entry to 2 pi at the exit), its
+lateral offset in the lane (signed like `roadOffsetM`) and its speed along the
+lane (m/s, negative when it rolls back).
+-}
+type alias LoopRide =
+    { loopIndex : Int
+    , theta : Float
+    , lateralM : Float
+    , speed : Float
+    }
+
+
+{-| Rounded brick side ramp (a quarter pipe of curved slope bricks) along one
+edge of the road, on `side` (-1 left, +1 right, as the sign of `roadOffsetM`).
+
+Between `startS` and `endS` it rises from the road at `innerOffsetM` from the
+road centre (just inside the road edge) in a curve that steepens to about 60
+degrees at `outerOffsetM` (out over the verge), `heightM` up, behind which a
+grassy shelf fades gently back into the field. Its ends are rounded off along the road. It covers only the
+outer metre of the road, so the road stays free; a car steered into it rides
+up the curve and is turned back towards the road, or flies off its top.
+`Racer.Track.sideRampLift` gives its shape.
+
+-}
+type alias SideRamp =
+    { startS : Float
+    , endS : Float
+    , side : Float
+    , innerOffsetM : Float
+    , outerOffsetM : Float
+    , heightM : Float
+    }
+
+
 {-| Washboard / cobble ripple zone.
 -}
 type alias WashZone =
@@ -327,6 +388,8 @@ type alias GeneratedTrack =
     , bucketSizeM : Float
     , ramps : List RampZone
     , brickRamps : List BrickRamp
+    , loops : List LoopSection
+    , sideRamps : List SideRamp
     , washes : List WashZone
     }
 
@@ -537,6 +600,7 @@ type alias PhysicsState =
     , lastImpactCooldown : Float
     , nextPopThreshold : Float
     , gradeRatio : Float
+    , loopRide : Maybe LoopRide
     }
 
 

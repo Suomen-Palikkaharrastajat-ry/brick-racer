@@ -1,15 +1,20 @@
 module Racer.Track exposing
-    ( RampLift
+    ( LoopFrame
+    , RampLift
+    , SideLift
     , brickRampLift
     , fieldUndulation
     , generate
     , groundHeightAt
+    , loopFrame
+    , loopLaneHalfWidth
     , obstaclesNear
     , recoveryBankGrade
     , recoveryCorridorM
     , removeObstacles
     , sampleAt
     , sampleAtHinted
+    , sideRampLift
     , splineSampleAtS
     , trackConfigFor
     , vergeWidthM
@@ -28,8 +33,10 @@ Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads:
 Each course is lined with brick-built scenery (trees, bushes, fences, rocks,
 signposts, hay bales, cottages, barns, crates, barrels, garden gnomes, brick
 wall sections, brick pallets, tile stacks, brick gates and slope blocks) that
-the racer can smash apart, and has a few brick-built launch
-ramps on one lane of the road (`brickRamps`, see `brickRampLift`).
+the racer can smash apart, has a few brick-built launch ramps on one lane of
+the road (`brickRamps`, see `brickRampLift`), a few rounded side ramps of
+curved slope bricks along the road edges (`sideRamps`, see `sideRampLift`) and
+one brick loop-the-loop (`loops`, see `loopFrame`).
 
 Exposes continuous `sampleAt` / `sampleAtHinted` heightmap + finite-difference surface
 normal queries and O(1) spatial-bucketed `obstaclesNear` collision lookups.
@@ -44,9 +51,11 @@ import Racer.Types
         , Checkpoint
         , ControlPoint
         , GeneratedTrack
+        , LoopSection
         , ObstacleKind(..)
         , RampZone
         , SegmentFeature(..)
+        , SideRamp
         , SurfaceType(..)
         , TerrainSample
         , TrackConfig
@@ -171,11 +180,19 @@ generate config =
             , bucketSizeM = bucketSizeM
             , ramps = ramps
             , brickRamps = []
+            , loops = []
+            , sideRamps = []
             , washes = washes
             }
 
+        loopedTrack =
+            { bareTrack | loops = placeLoops bareTrack }
+
+        bareRampedTrack =
+            { loopedTrack | brickRamps = placeBrickRamps loopedTrack }
+
         rampedTrack =
-            { bareTrack | brickRamps = placeBrickRamps bareTrack }
+            { bareRampedTrack | sideRamps = placeSideRamps bareRampedTrack }
 
         obstacles =
             generateScenery rampedTrack
@@ -1090,7 +1107,8 @@ type alias SceneryCursor =
 Fences come in short runs parallel to the road; every other piece is picked from
 the course theme. Pieces never overlap each other or the roadbed (checked against
 the real nearest-road projection so bends cannot pull the road into them), and
-the start pad and checkpoint arches stay clear.
+the start pad, the checkpoint arches and the loops stay clear, and nothing
+stands behind a side ramp or where a car flying off it comes down.
 
 -}
 generateScenery : GeneratedTrack -> List TrackObstacle
@@ -1114,10 +1132,15 @@ generateScenery track =
 
         nearGate sVal =
             List.any (\cp -> abs (cp.s - sVal) < 7.0) track.checkpoints
+                || List.any (\lp -> sVal > lp.entryS - loopSceneryClearM && sVal < lp.exitS + loopSceneryClearM) track.loops
 
         nearRamp sVal =
             List.any (\rp -> sVal > rp.startS - 6.0 && sVal < rp.endS + 6.0) track.brickRamps
                 || List.any (\rp -> sVal > rp.startS - 6.0 && sVal < rp.endS + 6.0) track.ramps
+
+        nearSideRamp side sVal =
+            -- Room behind a side ramp for a car that flies off it.
+            List.any (\sr -> sr.side == side && sVal > sr.startS - 12.0 && sVal < sr.endS + 35.0) track.sideRamps
 
         tryPlace kind side sVal offRoll sizeRoll yawRoll cur =
             let
@@ -1208,7 +1231,7 @@ generateScenery track =
                 clearOfRamps =
                     not (List.member kind dockBuiltScenery && nearRamp sVal)
             in
-            if clearOfRoad && clearOfOthers && clearOfRamps then
+            if clearOfRoad && clearOfOthers && clearOfRamps && not (nearSideRamp side sVal) then
                 Just
                     { id = cur.nextId
                     , kind = kind
@@ -1354,9 +1377,12 @@ brickRampLateral rp signedD =
 {-| Put a few brick launch ramps on the course, seeded by the course seed.
 
 Each one stands on straight, unbanked road away from the start, the checkpoint
-arches, the finish, the humps and the rough patches, with a clear landing after
-it. It covers one lane only (about 40 % of the road width), on a seeded side, so
-there is always a free lane beside it.
+arches, the finish, the humps, the rough patches and the loop (a car must reach
+the loop on its wheels), with a clear landing after it. It covers one lane only
+(about 40 % of the road width), on a seeded side, so there is always a free
+lane beside it. Up to four per course, at least 70 m apart, rising 0.9 m
+over 7 m; none on the steepest (over 40 %) pitches, where a flying car would
+land hard.
 
 -}
 placeBrickRamps : GeneratedTrack -> List BrickRamp
@@ -1366,22 +1392,26 @@ placeBrickRamps track =
             Random.initialSeed (track.config.seed * 7919 + 413)
 
         ( rolls, _ ) =
-            Random.step (Random.list 8 (Random.float 0.0 1.0)) rng0
+            Random.step (Random.list 18 (Random.float 0.0 1.0)) rng0
 
         roll i =
             List.drop i rolls |> List.head |> Maybe.withDefault 0.5
 
         lengthM =
-            6.5
+            8.0
 
         lipHeightM =
-            0.75
+            0.9
 
         landingM =
-            18.0
+            22.0
+
+        -- Ramps start at least this far apart, so each has its own run-up.
+        spacingM =
+            70.0
 
         candidates =
-            [ 0.15, 0.36, 0.6, 0.86 ]
+            [ 0.12, 0.2, 0.29, 0.38, 0.47, 0.56, 0.66, 0.76, 0.86 ]
                 |> List.indexedMap
                     (\i frac ->
                         { startS = track.finishS * frac + (roll (2 * i) - 0.5) * 8.0
@@ -1397,11 +1427,17 @@ placeBrickRamps track =
         clearOf zoneStart zoneEnd c =
             c.startS + lengthM + landingM < zoneStart - 6.0 || c.startS > zoneEnd + 6.0
 
+        -- Straight and unbanked, and not on the steepest pitches, where the
+        -- road falls away under a flying car so fast that it lands hard.
         straightEnough c =
             List.range 0 (round ((lengthM + landingM) / 3.0))
                 |> List.all
                     (\k ->
-                        abs (splineSampleAtS track (c.startS + toFloat k * 3.0)).bankingRad < 0.06
+                        let
+                            smp =
+                                splineSampleAtS track (c.startS + toFloat k * 3.0)
+                        in
+                        abs smp.bankingRad < 0.06 && Vec3.getY smp.tangent > -0.4
                     )
 
         usable c =
@@ -1410,6 +1446,7 @@ placeBrickRamps track =
                 && List.all (\cp -> clearOf (cp.s - 8.0) (cp.s + 8.0) c) track.checkpoints
                 && List.all (\rp -> clearOf rp.startS rp.endS c) track.ramps
                 && List.all (\w -> clearOf w.startS w.endS c) track.washes
+                && List.all (\lp -> clearOf (lp.entryS - loopRunInM) (lp.exitS + loopRunOutM) c) track.loops
                 && straightEnough c
 
         toRamp c =
@@ -1423,11 +1460,509 @@ placeBrickRamps track =
             , centerOffsetM = c.side * hw * 0.42
             , halfWidthM = hw * 0.4
             }
+
+        spaced c picked =
+            if List.all (\p -> abs (p.startS - c.startS) >= spacingM) picked then
+                c :: picked
+
+            else
+                picked
     in
     candidates
         |> List.filter usable
-        |> List.take 3
+        |> List.foldl spaced []
+        |> List.reverse
+        |> List.take 4
         |> List.map toRamp
+
+
+
+-- ── Rounded side ramps ───────────────────────────────────────────────────────
+
+
+{-| Height of the side ramps at one point, how fast it grows per metre of arc
+length (`grade`) and per metre of signed road offset (`sideGrade`), so the car
+can climb them with the right vertical speed and feel their slope.
+-}
+type alias SideLift =
+    { lift : Float
+    , grade : Float
+    , sideGrade : Float
+    }
+
+
+{-| How far (m) behind its lip a side ramp's top fades back into the field.
+Slowly enough that the ground behind it still rises away from the road, so a
+car that flies over the lip rolls back to it instead of being trapped.
+-}
+sideRampBackM : Float
+sideRampBackM =
+    16.0
+
+
+{-| Length (m) over which a side ramp's ends are rounded off along the road.
+-}
+sideRampTaperM : Float
+sideRampTaperM =
+    4.0
+
+
+{-| Extra height of the rounded side ramps at arc length `s` and signed road
+offset `signedD` (as in `TerrainSample.roadOffsetM`). Zero away from them.
+
+Like the brick ramps they are not part of the ground heightfield:
+`Racer.TerrainMesh` draws their bricks with this lift and `Racer.Physics` adds
+it (and its slope) to its wheel probes.
+
+-}
+sideRampLift : GeneratedTrack -> Float -> Float -> SideLift
+sideRampLift track s signedD =
+    List.foldl
+        (\sr acc ->
+            if s > sr.startS && s < sr.endS && signedD * sr.side > sr.innerOffsetM then
+                let
+                    p =
+                        sideRampProfile sr (abs signedD)
+
+                    taper =
+                        smoothstep sr.startS (sr.startS + sideRampTaperM) s
+                            * (1.0 - smoothstep (sr.endS - sideRampTaperM) sr.endS s)
+
+                    dTaper =
+                        (smoothstep sr.startS (sr.startS + sideRampTaperM) (s + 0.01)
+                            * (1.0 - smoothstep (sr.endS - sideRampTaperM) sr.endS (s + 0.01))
+                            - taper
+                        )
+                            / 0.01
+                in
+                { lift = acc.lift + sr.heightM * taper * p.height
+                , grade = acc.grade + sr.heightM * dTaper * p.height
+                , sideGrade = acc.sideGrade + sr.side * sr.heightM * taper * p.slope
+                }
+
+            else
+                acc
+        )
+        { lift = 0.0, grade = 0.0, sideGrade = 0.0 }
+        track.sideRamps
+
+
+{-| The quarter-pipe cross-section of a side ramp at distance `absD` from the
+road centre: height as a share of its full height, and its slope per metre.
+A circular arc that starts flat at the inner edge and steepens to about 60
+degrees at the outer edge, then a grassy shelf that fades gently back into the
+field.
+-}
+sideRampProfile : SideRamp -> Float -> { height : Float, slope : Float }
+sideRampProfile sr absD =
+    let
+        widthM =
+            max 0.1 (sr.outerOffsetM - sr.innerOffsetM)
+
+        k =
+            0.9
+
+        norm =
+            1.0 - sqrt (1.0 - k * k)
+
+        u =
+            (absD - sr.innerOffsetM) / widthM
+    in
+    if u <= 0.0 then
+        { height = 0.0, slope = 0.0 }
+
+    else if u <= 1.0 then
+        { height = (1.0 - sqrt (1.0 - k * k * u * u)) / norm
+        , slope = (k * k * u / sqrt (1.0 - k * k * u * u)) / norm / widthM
+        }
+
+    else
+        let
+            back =
+                (absD - sr.outerOffsetM) / sideRampBackM
+        in
+        if back < 1.0 then
+            { height = 1.0 - back * back * (3.0 - 2.0 * back)
+            , slope = -6.0 * back * (1.0 - back) / sideRampBackM
+            }
+
+        else
+            { height = 0.0, slope = 0.0 }
+
+
+{-| Put a few rounded side ramps along the road edges, seeded by the course
+seed (which 12 m slots are tried first, and on which side).
+
+Each is 16 m long and 1.2 m high, on a seeded side, covering only the outer
+metre of the road (so the road stays free) and the verge beside it, on road
+that is not banked hard, away from the start, the finish, the checkpoint arches
+and their gantries, the humps, the rough patches, the brick ramps and their
+landings, and the loop. Up to three per course, at least 60 m apart.
+
+-}
+placeSideRamps : GeneratedTrack -> List SideRamp
+placeSideRamps track =
+    let
+        lengthM =
+            16.0
+
+        slotM =
+            12.0
+
+        slotCount =
+            max 1 (floor (track.finishS / slotM))
+
+        ( rolls, _ ) =
+            Random.step (Random.list (2 * slotCount + 1) (Random.float 0.0 1.0)) (Random.initialSeed (track.config.seed * 7919 + 1601))
+
+        rollArr =
+            Array.fromList rolls
+
+        roll i =
+            Array.get i rollArr |> Maybe.withDefault 0.5
+
+        -- One candidate every 12 m (with a seeded shift), on a seeded side,
+        -- tried in a seeded order, so the ramps land in different places on
+        -- every seed but always where there is room.
+        candidates =
+            List.range 0 (slotCount - 1)
+                |> List.map
+                    (\i ->
+                        { startS = roll (2 * slotCount) * slotM + toFloat i * slotM
+                        , side =
+                            if roll (2 * i + 1) < 0.5 then
+                                -1.0
+
+                            else
+                                1.0
+                        , order = roll (2 * i)
+                        }
+                    )
+                |> List.sortBy .order
+
+        clearOf zoneStart zoneEnd c =
+            c.startS + lengthM < zoneStart - 6.0 || c.startS > zoneEnd + 6.0
+
+        gentle c =
+            List.range 0 (round (lengthM / 2.0))
+                |> List.all (\k -> abs (splineSampleAtS track (c.startS + toFloat k * 2.0)).bankingRad < 0.15)
+
+        usable c =
+            (c.startS > 50.0)
+                && (c.startS + lengthM < track.finishS - 20.0)
+                && List.all (\cp -> clearOf (cp.s - 10.0) (cp.s + 10.0) c) track.checkpoints
+                && List.all (\cp -> clearOf (cp.s - 63.0) (cp.s - 47.0) c) track.checkpoints
+                && List.all (\rp -> clearOf rp.startS rp.endS c) track.ramps
+                && List.all (\w -> clearOf w.startS w.endS c) track.washes
+                && List.all (\rp -> clearOf rp.startS (rp.endS + 22.0) c) track.brickRamps
+                -- Well before a loop, so a car that rode one still has the
+                -- speed to get round.
+                && List.all (\lp -> clearOf (lp.entryS - loopRunInM - 50.0) (lp.exitS + loopRunOutM) c) track.loops
+                && gentle c
+
+        toSideRamp c =
+            let
+                hw =
+                    (splineSampleAtS track (c.startS + lengthM * 0.5)).halfWidth
+            in
+            { startS = c.startS
+            , endS = c.startS + lengthM
+            , side = c.side
+            , innerOffsetM = hw - 1.0
+            , outerOffsetM = hw + 1.4
+            , heightM = 1.2
+            }
+
+        spaced c picked =
+            if List.all (\p -> abs (p.startS - c.startS) >= 60.0) picked then
+                c :: picked
+
+            else
+                picked
+    in
+    candidates
+        |> List.filter usable
+        |> List.foldl spaced []
+        |> List.reverse
+        |> List.take 3
+        |> List.map toSideRamp
+
+
+
+-- ── Brick loop-the-loops ─────────────────────────────────────────────────────
+
+
+{-| Straight road (m) kept before a loop: no ramp lands in it, so a car reaches
+the loop on its wheels.
+-}
+loopRunInM : Float
+loopRunInM =
+    30.0
+
+
+{-| Straight road (m) kept after a loop for the car to settle.
+-}
+loopRunOutM : Float
+loopRunOutM =
+    16.0
+
+
+{-| No scenery stands within this many metres of a loop, along the road.
+-}
+loopSceneryClearM : Float
+loopSceneryClearM =
+    8.0
+
+
+{-| Angle round the loop (rad from each end) over which the lane narrows from
+the full road to its own width.
+-}
+loopApronRad : Float
+loopApronRad =
+    0.7
+
+
+{-| Angle round the loop (rad from each end) at which the lane has swung fully
+to one side. The way up and the way down cross (seen from the side) near here,
+so they are then a full `2 * driftM` apart.
+-}
+loopSwingRad : Float
+loopSwingRad =
+    1.0
+
+
+{-| Put one brick loop-the-loop on the course, seeded by the course seed.
+
+It goes near a seeded point a little before half way, where cars are up to
+speed (about 15 to 23 m/s), on the nearest stretch of straight, unbanked road
+with room for the run-in and run-out, away from the checkpoint arches and their
+sponsor gantries, the humps and the rough patches. The 3.5 m radius loop needs
+about 12 m/s at the entry; slower cars fall off near the top or roll back.
+
+-}
+placeLoops : GeneratedTrack -> List LoopSection
+placeLoops track =
+    let
+        ( rolls, _ ) =
+            Random.step (Random.list 2 (Random.float 0.0 1.0)) (Random.initialSeed (track.config.seed * 7919 + 977))
+
+        roll i =
+            List.drop i rolls |> List.head |> Maybe.withDefault 0.5
+
+        radiusM =
+            3.5
+
+        stretchM =
+            9.8
+
+        preferredS =
+            track.finishS * (0.4 + 0.16 * roll 0)
+
+        side =
+            if roll 1 < 0.5 then
+                -1.0
+
+            else
+                1.0
+
+        -- Nearest first: preferred, +3 m, -3 m, +6 m, ...
+        candidates =
+            List.range 0 140
+                |> List.map
+                    (\k ->
+                        if modBy 2 k == 0 then
+                            preferredS + 3.0 * toFloat (k // 2)
+
+                        else
+                            preferredS - 3.0 * toFloat ((k + 1) // 2)
+                    )
+
+        zoneOf entryS =
+            { start = entryS - loopRunInM, end = entryS + stretchM + loopRunOutM }
+
+        clearOf zoneStart zoneEnd z =
+            z.end < zoneStart - 6.0 || z.start > zoneEnd + 6.0
+
+        flatTangent sVal =
+            normalizeXZ (splineSampleAtS track sVal).tangent
+
+        straight z =
+            List.all (\k -> abs (splineSampleAtS track (z.start + toFloat k * 2.0)).bankingRad < 0.05)
+                (List.range 0 (round ((z.end - z.start) / 2.0)))
+                && Vec3.dot (flatTangent z.start) (flatTangent z.end)
+                > 0.995
+
+        usable entryS =
+            let
+                z =
+                    zoneOf entryS
+            in
+            (entryS > 160.0)
+                && (z.end < track.finishS - 40.0)
+                && List.all (\cp -> clearOf (cp.s - 8.0) (cp.s + 8.0) z) track.checkpoints
+                && List.all (\cp -> clearOf (cp.s - 63.0) (cp.s - 47.0) z) track.checkpoints
+                && List.all (\rp -> clearOf rp.startS rp.endS z) track.ramps
+                && List.all (\w -> clearOf w.startS w.endS z) track.washes
+                && straight z
+
+        toLoop entryS =
+            { entryS = entryS
+            , exitS = entryS + stretchM
+            , radiusM = radiusM
+            , driftM = side * 2.0
+            , laneHalfWidthM = 1.3
+            , apronHalfWidthM = (splineSampleAtS track entryS).halfWidth
+            }
+    in
+    candidates
+        |> List.filter usable
+        |> List.head
+        |> Maybe.map (toLoop >> List.singleton)
+        |> Maybe.withDefault []
+
+
+{-| Where a car is on a loop and which way it faces, at angle `theta` round it
+(0 at the entry, `2 pi` at the exit) and `lateral` metres off the lane centre
+(signed like `roadOffsetM`).
+
+`position` is on the lane surface; `tangent` is the unit direction of travel,
+`up` the unit lane normal (towards the middle of the loop, so pointing down at
+the top) and `right` the unit lane right, all at right angles. `curvature` is
+how fast the lane bends towards `up` per metre (1 / radius at the top), and
+`arcPerRad` the metres of lane per radian of `theta`.
+
+-}
+type alias LoopFrame =
+    { position : Vec3
+    , tangent : Vec3
+    , up : Vec3
+    , right : Vec3
+    , curvature : Float
+    , arcPerRad : Float
+    }
+
+
+{-| The lane of `loop` at angle `theta`, `lateral` metres off its centre (see
+`LoopFrame`).
+
+The lane is a circle of the loop's radius in the road's vertical plane, carried
+along the road from the entry to the exit as it turns, and swung sideways by
+the drift. Its ends lie on the road surface, along the road. It only reads the
+road at the loop's two ends, so it is smooth everywhere.
+
+-}
+loopFrame : GeneratedTrack -> LoopSection -> Float -> Float -> LoopFrame
+loopFrame track loop theta lateral =
+    let
+        entry =
+            splineSampleAtS track loop.entryS
+
+        exit =
+            splineSampleAtS track loop.exitS
+
+        f0 =
+            normalizeSafe entry.tangent (vec3 0 0 1)
+
+        f1 =
+            normalizeSafe exit.tangent f0
+
+        r0 =
+            normalizeXZ entry.right
+
+        r1 =
+            normalizeXZ exit.right
+
+        pointAt th =
+            let
+                u =
+                    th / (2.0 * pi)
+
+                fwd =
+                    normalizeSafe (vec3Lerp u f0 f1) f0
+
+                rightFlat =
+                    normalizeSafe (vec3Lerp u r0 r1) r0
+
+                upward =
+                    normalizeSafe (Vec3.cross rightFlat fwd) (vec3 0 1 0)
+            in
+            vec3Lerp u entry.center exit.center
+                |> Vec3.add (Vec3.scale (loop.radiusM * sin th) fwd)
+                |> Vec3.add (Vec3.scale (loop.radiusM * (1.0 - cos th)) upward)
+                |> Vec3.add (Vec3.scale (loopDrift loop th + lateral) rightFlat)
+
+        h =
+            1.0e-3
+
+        p0 =
+            pointAt theta
+
+        pPlus =
+            pointAt (theta + h)
+
+        pMinus =
+            pointAt (theta - h)
+
+        d1 =
+            Vec3.scale (0.5 / h) (Vec3.sub pPlus pMinus)
+
+        d2 =
+            Vec3.scale (1.0 / (h * h)) (Vec3.add (Vec3.sub pPlus (Vec3.scale 2.0 p0)) pMinus)
+
+        arcPerRad =
+            max 1.0e-4 (Vec3.length d1)
+
+        tangent =
+            Vec3.scale (1.0 / arcPerRad) d1
+
+        bend =
+            Vec3.scale (1.0 / (arcPerRad * arcPerRad))
+                (Vec3.sub d2 (Vec3.scale (Vec3.dot d2 tangent) tangent))
+
+        laneRightRaw =
+            normalizeSafe (vec3Lerp (theta / (2.0 * pi)) r0 r1) r0
+
+        laneRight =
+            normalizeSafe (Vec3.sub laneRightRaw (Vec3.scale (Vec3.dot laneRightRaw tangent) tangent)) laneRightRaw
+
+        up =
+            normalizeSafe (Vec3.cross laneRight tangent) (vec3 0 1 0)
+    in
+    { position = p0
+    , tangent = tangent
+    , up = up
+    , right = laneRight
+    , curvature = Vec3.dot bend up
+    , arcPerRad = arcPerRad
+    }
+
+
+{-| Sideways swing of the lane centre at angle `theta`: none at the ends, to
+`driftM` on the way up, across the top to `-driftM` on the way down, and back.
+Flat at both ends, so the lane meets the road straight.
+-}
+loopDrift : LoopSection -> Float -> Float
+loopDrift loop theta =
+    loop.driftM
+        * (smoothstep 0.0 loopSwingRad theta
+            - 2.0
+            * smoothstep loopSwingRad (2.0 * pi - loopSwingRad) theta
+            + smoothstep (2.0 * pi - loopSwingRad) (2.0 * pi) theta
+          )
+
+
+{-| Half width of a loop's lane at angle `theta`: the full road at both ends,
+narrowing to the lane's own width over the first and last `loopApronRad`.
+-}
+loopLaneHalfWidth : LoopSection -> Float -> Float
+loopLaneHalfWidth loop theta =
+    let
+        fromEnd =
+            min theta (2.0 * pi - theta)
+    in
+    loop.laneHalfWidthM
+        + (loop.apronHalfWidthM - loop.laneHalfWidthM)
+        * (1.0 - smoothstep 0.0 loopApronRad fromEnd)
 
 
 bucketObstacles : Float -> Int -> List TrackObstacle -> Array (List TrackObstacle)

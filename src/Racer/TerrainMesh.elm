@@ -9,8 +9,8 @@ module Racer.TerrainMesh exposing
     )
 
 {-| Chunked WebGL countryside ground (unpaved road, verges and fields, launch
-humps) in the brick look of LEGO plates and tiles, the brick launch ramps on
-it, and the garage display plinth mesh.
+humps) in the brick look of LEGO plates and tiles, the brick launch ramps and
+loop-the-loops on it, and the garage display plinth mesh.
 
 Each chunk also lists the brick-built roadside scenery still standing in it
 and the arches it holds; `Racer.Scenery` draws those from catalog models, so
@@ -29,7 +29,9 @@ import Racer.Types
         ( BrickRamp
         , Checkpoint
         , GeneratedTrack
+        , LoopSection
         , ObstacleKind(..)
+        , SideRamp
         , SurfaceType(..)
         , TrackId(..)
         , TrackObstacle
@@ -38,8 +40,8 @@ import Racer.Types
 import WebGL
 
 
-{-| One spatial `100 m` slice of ground and the brick launch ramps that start
-in it (`mesh`), the brick-built scenery still standing in it (`scenery`) and its
+{-| One spatial `100 m` slice of ground and the brick launch ramps and loops
+and side ramps that start in it (`mesh`), the brick-built scenery still standing in it (`scenery`) and its
 start, checkpoint and finish arches.
 -}
 type alias TrackChunk =
@@ -263,6 +265,16 @@ buildChunk track chunkSizeM numChunks chunkIdx =
                 |> List.filter (\rp -> rp.startS >= minS && rp.startS < maxS)
                 |> List.concatMap (buildBrickRampTris track)
 
+        sideRampTris =
+            track.sideRamps
+                |> List.filter (\sr -> sr.startS >= minS && sr.startS < maxS)
+                |> List.concatMap (buildSideRampTris track)
+
+        loopTris =
+            track.loops
+                |> List.filter (\lp -> lp.entryS >= minS && lp.entryS < maxS)
+                |> List.concatMap (buildLoopTris track)
+
         centerSample =
             Track.splineSampleAtS track ((minS + maxS) * 0.5)
     in
@@ -271,7 +283,7 @@ buildChunk track chunkSizeM numChunks chunkIdx =
     , maxS = maxS
     , boundsCenter = centerSample.center
     , boundsRadius = chunkSizeM * 0.85 + 52.0
-    , mesh = WebGL.triangles (ribbonTris ++ rampTris)
+    , mesh = WebGL.triangles (ribbonTris ++ rampTris ++ sideRampTris ++ loopTris)
     , scenery = sceneryInRange minS maxS track.obstacles
     , arches = arches
     }
@@ -849,6 +861,253 @@ buildBrickRampTris track rp =
                     )
     in
     topQuads ++ backFace ++ lipStuds
+
+
+
+-- ── Rounded side ramps ───────────────────────────────────────────────────────
+
+
+{-| A rounded side ramp of curved slope bricks: rows of red and white curves
+rising from the road edge, a yellow lip along the top and a green shelf behind
+it fading back into the field. Every point's height comes from `Track.sideRampLift`, so the bricks
+match what the wheels feel.
+-}
+buildSideRampTris : GeneratedTrack -> SideRamp -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+buildSideRampTris track sr =
+    let
+        rows =
+            16
+
+        arcSteps =
+            8
+
+        rowS k =
+            sr.startS + (sr.endS - sr.startS) * toFloat k / toFloat rows
+
+        widthM =
+            sr.outerOffsetM - sr.innerOffsetM
+
+        -- Lateral stations (distance from the road centre): along the curve,
+        -- just short of the lip, then across the shelf behind it.
+        stations =
+            List.map (\j -> sr.innerOffsetM + widthM * min 0.999 (toFloat j / toFloat arcSteps)) (List.range 0 arcSteps)
+                ++ List.map (\j -> sr.outerOffsetM + 16.0 * toFloat j / 6.0) (List.range 1 6)
+
+        topAt sVal absD =
+            let
+                smp =
+                    Track.splineSampleAtS track sVal
+
+                d =
+                    sr.side * absD
+
+                ptXZ =
+                    Vec3.add smp.center (Vec3.scale d (normalizeXZ smp.right))
+
+                ground =
+                    Track.groundHeightAt track sVal (Vec3.getX ptXZ) (Vec3.getZ ptXZ)
+            in
+            vec3 (Vec3.getX ptXZ) (ground + (Track.sideRampLift track sVal d).lift + 0.02) (Vec3.getZ ptXZ)
+
+        color k j =
+            if j >= arcSteps then
+                ldrawColor 2
+
+            else if j == arcSteps - 1 then
+                ldrawColor 14
+
+            else if modBy 2 (k // 2 + j // 3) == 0 then
+                ldrawColor 4
+
+            else
+                ldrawColor 15
+
+        quadAt k j ( d0, d1 ) =
+            let
+                a =
+                    topAt (rowS k) d0
+
+                b =
+                    topAt (rowS k) d1
+
+                c =
+                    topAt (rowS (k + 1)) d1
+
+                d =
+                    topAt (rowS (k + 1)) d0
+
+                n0 =
+                    normalizeSafe (Vec3.cross (Vec3.sub b a) (Vec3.sub d a)) (vec3 0 1 0)
+
+                n =
+                    if Vec3.getY n0 < 0.0 then
+                        Vec3.negate n0
+
+                    else
+                        n0
+            in
+            facing n a b c d (color k j)
+    in
+    List.range 0 (rows - 1)
+        |> List.concatMap (\k -> List.indexedMap (quadAt k) (adjacentPairs stations) |> List.concat)
+
+
+
+-- ── Brick loops ──────────────────────────────────────────────────────────────
+
+
+{-| A loop-the-loop of bricks: a smooth grey lane with a yellow centre stripe,
+red and white kerbs (flush with the road at both ends, where the lane widens
+to the whole road), an orange outer skin and two grey brick pillars under its
+sides. Every point comes from `Track.loopFrame`, so the lane is where the car
+rides it.
+-}
+buildLoopTris : GeneratedTrack -> LoopSection -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+buildLoopTris track loop =
+    let
+        segments =
+            96
+
+        kerbW =
+            0.25
+
+        skinM =
+            0.22
+
+        -- Just above the road, so the lane's ends do not flicker into it.
+        liftM =
+            0.03
+
+        section i =
+            let
+                th =
+                    2.0 * pi * toFloat i / toFloat segments
+
+                hw =
+                    Track.loopLaneHalfWidth loop th
+
+                kerbH =
+                    0.3 * smoothstep 0.0 0.3 (min th (2.0 * pi - th))
+
+                at lat along =
+                    let
+                        f =
+                            Track.loopFrame track loop th lat
+                    in
+                    Vec3.add f.position (Vec3.scale along f.up)
+
+                mid =
+                    Track.loopFrame track loop th 0.0
+            in
+            { lane = List.map (\d -> at d liftM) [ -hw, -0.12, 0.12, hw ]
+            , leftKerb = [ at -hw liftM, at -hw (liftM + kerbH), at (-hw - kerbW) (liftM + kerbH), at (-hw - kerbW) (liftM - skinM) ]
+            , rightKerb = [ at hw liftM, at hw (liftM + kerbH), at (hw + kerbW) (liftM + kerbH), at (hw + kerbW) (liftM - skinM) ]
+            , skin = [ at (-hw - kerbW) (liftM - skinM), at (hw + kerbW) (liftM - skinM) ]
+            , up = mid.up
+            , right = mid.right
+            }
+
+        sections =
+            List.map section (List.range 0 segments)
+
+        strips i ( a, b ) =
+            let
+                laneColor j =
+                    if j == 1 then
+                        if modBy 4 i < 2 then
+                            ldrawColor 14
+
+                        else
+                            ldrawColor 71
+
+                    else
+                        ldrawColor 71
+
+                kerbColor =
+                    if modBy 4 i < 2 then
+                        ldrawColor 4
+
+                    else
+                        ldrawColor 15
+
+                band pts0 pts1 normals colors =
+                    List.map2 Tuple.pair (adjacentPairs pts0) (adjacentPairs pts1)
+                        |> List.map3 (\n col ( ( p0, p1 ), ( q0, q1 ) ) -> facing n p0 p1 q1 q0 col) normals colors
+                        |> List.concat
+
+                lane =
+                    band a.lane b.lane [ a.up, a.up, a.up ] [ laneColor 0, laneColor 1, laneColor 2 ]
+
+                leftKerb =
+                    band a.leftKerb b.leftKerb [ a.right, a.up, Vec3.negate a.right ] [ kerbColor, kerbColor, ldrawColor 25 ]
+
+                rightKerb =
+                    band a.rightKerb b.rightKerb [ Vec3.negate a.right, a.up, a.right ] [ kerbColor, kerbColor, ldrawColor 25 ]
+
+                skin =
+                    band a.skin b.skin [ Vec3.negate a.up ] [ ldrawColor 25 ]
+            in
+            lane ++ leftKerb ++ rightKerb ++ skin
+
+        pillar th =
+            let
+                f =
+                    Track.loopFrame track loop th 0.0
+
+                top =
+                    Vec3.add f.position (Vec3.scale -skinM f.up)
+
+                groundY =
+                    Track.groundHeightAt track loop.entryS (Vec3.getX top) (Vec3.getZ top)
+
+                across =
+                    normalizeXZ f.right
+
+                along =
+                    vec3 -(Vec3.getZ across) 0 (Vec3.getX across)
+
+                corner sa sb y =
+                    Vec3.add (vec3 (Vec3.getX top) y (Vec3.getZ top))
+                        (Vec3.add (Vec3.scale (0.28 * sa) across) (Vec3.scale (0.28 * sb) along))
+
+                side ( sa0, sb0 ) ( sa1, sb1 ) =
+                    let
+                        n =
+                            normalizeSafe (Vec3.add (Vec3.scale (sa0 + sa1) across) (Vec3.scale (sb0 + sb1) along)) across
+                    in
+                    facing n (corner sa0 sb0 groundY) (corner sa1 sb1 groundY) (corner sa1 sb1 (Vec3.getY top)) (corner sa0 sb0 (Vec3.getY top)) (ldrawColor 72)
+            in
+            if Vec3.getY top > groundY + 0.5 then
+                adjacentPairs [ ( 1, 1 ), ( -1, 1 ), ( -1, -1 ), ( 1, -1 ), ( 1, 1 ) ]
+                    |> List.concatMap (\( c0, c1 ) -> side c0 c1)
+
+            else
+                []
+    in
+    (List.indexedMap strips (adjacentPairs sections) |> List.concat)
+        ++ pillar (pi / 2.0)
+        ++ pillar (3.0 * pi / 2.0)
+
+
+{-| A smooth quad `a b c d` wound so its front face looks along `n`, as the
+ground's back-face culling needs.
+-}
+facing : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+facing n a b c d col =
+    if Vec3.dot (Vec3.cross (Vec3.sub b a) (Vec3.sub c a)) n >= 0.0 then
+        smoothQuad a b c d n col
+
+    else
+        smoothQuad a d c b n col
+
+
+smoothstep : Float -> Float -> Float -> Float
+smoothstep edge0 edge1 x =
+    let
+        t =
+            clamp 0.0 1.0 ((x - edge0) / max 1.0e-5 (edge1 - edge0))
+    in
+    t * t * (3.0 - 2.0 * t)
 
 
 cylinderAt : Vec3 -> Float -> Float -> Int -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )

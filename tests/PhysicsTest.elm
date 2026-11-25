@@ -551,7 +551,344 @@ suite =
                     , \_ -> Expect.equal (vec3 0 0 0) p2.velocity
                     ]
                     ()
+        , describe "Brick loops" loopTests
+        , describe "Rounded side ramps" sideRampTests
         ]
+
+
+loopTests : List Test
+loopTests =
+    [ test "A car at racing speed rides round the loop upside down and comes back down onto the road" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                run =
+                    runRecorded 240 loopTestTrack spec (loopApproach loopTestTrack spec 15.0)
+
+                onLoop =
+                    List.filter (\st -> st.loopRide /= Nothing) run.states
+
+                final =
+                    List.reverse run.states |> List.head |> Maybe.withDefault (loopApproach loopTestTrack spec 15.0)
+
+                roadY =
+                    Vec3.getY (Track.splineSampleAtS loopTestTrack 60.0).center
+
+                highest =
+                    List.map (.position >> Vec3.getY) onLoop |> List.maximum |> Maybe.withDefault roadY
+            in
+            Expect.all
+                [ \_ -> Expect.atLeast 30 (List.length onLoop)
+                , \_ -> Expect.lessThan -0.95 (List.map carUpY onLoop |> List.minimum |> Maybe.withDefault 1.0)
+                , \_ -> Expect.atLeast (roadY + 5.0) highest
+                , \_ -> Expect.equal Nothing final.loopRide
+                , \_ -> Expect.equal 4 final.groundedWheels
+                , \_ -> Expect.greaterThan 80.0 final.progressS
+                , \_ -> Expect.atMost 0.3 (heightAboveRamp loopTestTrack final)
+                , \_ -> Expect.lessThan 0.3 (abs final.pitch - 0.29)
+                , \_ -> Expect.greaterThan 12.0 (Vec3.length final.velocity)
+                , \_ -> Expect.within (Expect.Absolute 1.0e-9) 100.0 final.integrity
+                , \_ -> Expect.equal False (List.any isCrash run.events)
+                , \_ -> Expect.equal True (pairwiseNonDecreasing (List.map .progressS run.states))
+                ]
+                ()
+    , test "The car moves smoothly round the loop: no jumps in position or heading" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                run =
+                    runRecorded 150 loopTestTrack spec (loopApproach loopTestTrack spec 15.0)
+
+                steps =
+                    List.map2 (\a b -> ( Vec3.distance a.position b.position, Vec3.dot (carForward a) (carForward b) )) run.states (List.drop 1 run.states)
+            in
+            Expect.all
+                [ \_ -> Expect.atMost 0.6 (List.map Tuple.first steps |> List.maximum |> Maybe.withDefault 0.0)
+                , \_ -> Expect.atLeast 0.9 (List.map Tuple.second steps |> List.minimum |> Maybe.withDefault 1.0)
+                ]
+                ()
+    , test "A loop ride is deterministic at the fixed timestep" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "pinewood-classic"
+
+                a =
+                    simulateSteps 120 loopTestTrack spec neutralInput (loopApproach loopTestTrack spec 15.0)
+
+                b =
+                    simulateSteps 120 loopTestTrack spec neutralInput (loopApproach loopTestTrack spec 15.0)
+            in
+            Expect.equal a b
+    , test "A car too slow for the loop rolls back out of it onto the road" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                run =
+                    runRecorded 420 loopTestTrack spec (loopApproachAt 58.0 loopTestTrack spec 4.0)
+
+                thetas =
+                    List.filterMap (.loopRide >> Maybe.map .theta) run.states
+
+                final =
+                    List.reverse run.states |> List.head |> Maybe.withDefault (loopApproach loopTestTrack spec 4.0)
+            in
+            Expect.all
+                [ \_ -> Expect.greaterThan 0 (List.length thetas)
+                , \_ -> Expect.lessThan (pi / 2.0) (List.maximum thetas |> Maybe.withDefault 0.0)
+                , \_ -> Expect.equal Nothing final.loopRide
+                , \_ -> Expect.equal 4 final.groundedWheels
+                , \_ -> Expect.equal False (List.any isCrash run.events)
+                ]
+                ()
+    , test "A car that is not quite fast enough falls off near the top, lands and turns upright" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                run =
+                    runRecorded 300 loopTestTrack spec (loopApproachAt 58.0 loopTestTrack spec 9.5)
+
+                pairs =
+                    List.map2 Tuple.pair run.states (List.drop 1 run.states)
+
+                fellOff =
+                    List.filter (\( a, b ) -> a.loopRide /= Nothing && b.loopRide == Nothing && b.groundedWheels == 0) pairs
+
+                final =
+                    List.reverse run.states |> List.head |> Maybe.withDefault (loopApproach loopTestTrack spec 9.5)
+            in
+            Expect.all
+                [ \_ -> Expect.equal 1 (List.length fellOff)
+                , \_ -> Expect.greaterThan (pi / 2.0) (List.filterMap (.loopRide >> Maybe.map .theta) run.states |> List.maximum |> Maybe.withDefault 0.0)
+                , \_ -> Expect.lessThan (3.0 * pi / 2.0) (List.filterMap (.loopRide >> Maybe.map .theta) run.states |> List.maximum |> Maybe.withDefault 0.0)
+                , \_ -> Expect.equal True (List.any isLanding run.events)
+                , \_ -> Expect.equal Nothing final.loopRide
+                , \_ -> Expect.atLeast 1 final.groundedWheels
+                , \_ -> Expect.atMost 0.76 (abs final.pitch)
+                , \_ -> Expect.lessThan 100.0 final.integrity
+                , \_ -> Expect.greaterThan 0.0 final.integrity
+                ]
+                ()
+    , test "Driving off the road beside the loop entry does not get on it" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                beside =
+                    loopApproach loopTestTrack spec 15.0
+                        |> (\st -> { st | position = Vec3.add st.position (vec3 -9.0 0 0) })
+
+                run =
+                    runRecorded 120 loopTestTrack spec beside
+            in
+            Expect.equal [] (List.filter (\st -> st.loopRide /= Nothing) run.states |> List.map .progressS)
+    , test "Respawning at a checkpoint takes the car off the loop" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                onLoop =
+                    simulateSteps 90 loopTestTrack spec neutralInput (loopApproach loopTestTrack spec 15.0)
+            in
+            Expect.all
+                [ \_ -> Expect.notEqual Nothing onLoop.loopRide
+                , \_ -> Expect.equal Nothing (Physics.respawnAtCheckpoint onLoop).loopRide
+                ]
+                ()
+    ]
+
+
+sideRampTests : List Test
+sideRampTests =
+    [ test "A car steered into a side ramp rides up its curve and comes back down without crashing" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                start =
+                    sideRampApproach spec 4.0
+
+                run =
+                    runRecorded 240 sideRampTestTrack spec start
+
+                heights =
+                    List.map (heightAboveRamp sideRampTestTrack) run.states
+
+                lifts =
+                    List.map
+                        (\st ->
+                            let
+                                g =
+                                    Track.sampleAt sideRampTestTrack (Vec3.getX st.position) (Vec3.getZ st.position)
+                            in
+                            (Track.sideRampLift sideRampTestTrack g.nearestS g.roadOffsetM).lift
+                        )
+                        run.states
+
+                final =
+                    List.reverse run.states |> List.head |> Maybe.withDefault start
+            in
+            Expect.all
+                [ \_ -> Expect.greaterThan 0.4 (List.maximum lifts |> Maybe.withDefault 0.0)
+                , \_ -> Expect.lessThan 2.5 (List.maximum heights |> Maybe.withDefault 0.0)
+                , \_ -> Expect.equal False (List.any isCrash run.events)
+                , \_ -> Expect.atLeast 1 final.groundedWheels
+                , \_ -> Expect.greaterThan 70.0 final.progressS
+                , \_ -> Expect.atLeast 60.0 final.integrity
+                ]
+                ()
+    , test "On the ramp the ground tilts back towards the road" <|
+        \_ ->
+            let
+                smp =
+                    Track.splineSampleAtS sideRampTestTrack 45.0
+
+                onRamp =
+                    Vec3.add smp.center (Vec3.scale 8.5 smp.right)
+
+                g =
+                    Track.sampleAt sideRampTestTrack (Vec3.getX onRamp) (Vec3.getZ onRamp)
+
+                s =
+                    Track.sideRampLift sideRampTestTrack g.nearestS g.roadOffsetM
+            in
+            Expect.all
+                [ \_ -> Expect.greaterThan 0.3 s.lift
+                , \_ -> Expect.greaterThan 0.5 s.sideGrade
+                ]
+                ()
+    , test "Driving down the middle of the road past a side ramp stays on the ground" <|
+        \_ ->
+            let
+                spec =
+                    loadSpec "turntable-kart"
+
+                run =
+                    runRecorded 120 sideRampTestTrack spec (rampApproach sideRampTestTrack spec 15.0)
+            in
+            Expect.equal [] (List.filter (\st -> st.groundedWheels == 0) run.states |> List.map .progressS)
+    ]
+
+
+{-| The 30 % test road with one rounded side ramp from 30 m to 60 m on its
+right edge (the road is 8 m wide each side of its centre).
+-}
+sideRampTestTrack : GeneratedTrack
+sideRampTestTrack =
+    let
+        base =
+            buildFlatTestTrack -0.3 200.0
+    in
+    { base
+        | sideRamps =
+            [ { startS = 30.0, endS = 60.0, side = 1.0, innerOffsetM = 7.0, outerOffsetM = 9.4, heightM = 1.2 } ]
+    }
+
+
+{-| The car 5 m right of the road centre at 30 m, rolling down the road at
+12 m/s and heading right towards the side ramp at `lateralSpeed`.
+-}
+sideRampApproach : VehicleSpec -> Float -> PhysicsState
+sideRampApproach spec lateralSpeed =
+    let
+        s0 =
+            Physics.initPhysics sideRampTestTrack spec
+
+        smp =
+            Track.splineSampleAtS sideRampTestTrack 30.0
+
+        velocity =
+            Vec3.add (Vec3.scale 12.0 smp.tangent) (Vec3.scale lateralSpeed smp.right)
+    in
+    { s0
+        | position = Vec3.add smp.center (Vec3.scale 5.0 smp.right)
+        , velocity = velocity
+        , yaw = atan2 (Vec3.getX velocity) (Vec3.getZ velocity)
+        , progressS = 30.0
+    }
+
+
+{-| The 30 % test road with one brick loop from 60 m to 69.8 m, 3.5 m radius.
+-}
+loopTestTrack : GeneratedTrack
+loopTestTrack =
+    let
+        base =
+            buildFlatTestTrack -0.3 200.0
+    in
+    { base
+        | loops =
+            [ { entryS = 60.0, exitS = 69.8, radiusM = 3.5, driftM = 2.0, laneHalfWidthM = 1.3, apronHalfWidthM = 8.0 } ]
+    }
+
+
+{-| The car on the road 20 m before the loop, rolling straight at it.
+-}
+loopApproach : GeneratedTrack -> VehicleSpec -> Float -> PhysicsState
+loopApproach =
+    loopApproachAt 40.0
+
+
+loopApproachAt : Float -> GeneratedTrack -> VehicleSpec -> Float -> PhysicsState
+loopApproachAt s track spec speed =
+    let
+        s0 =
+            Physics.initPhysics track spec
+
+        smp =
+            Track.splineSampleAtS track s
+    in
+    { s0
+        | position = smp.center
+        , velocity = Vec3.scale speed smp.tangent
+        , progressS = s
+    }
+
+
+{-| World up of the car's roof: below -0.9 means upside down.
+-}
+carUpY : PhysicsState -> Float
+carUpY st =
+    cos st.roll * cos st.pitch
+
+
+{-| World forward of the car's nose, from its yaw, roll and pitch.
+-}
+carForward : PhysicsState -> Vec3.Vec3
+carForward st =
+    let
+        -- Rx(pitch) then Rz(roll) then Ry(yaw) applied to +Z.
+        x1 =
+            sin st.roll * sin st.pitch
+
+        y1 =
+            -(cos st.roll * sin st.pitch)
+
+        z1 =
+            cos st.pitch
+    in
+    vec3 (cos st.yaw * x1 + sin st.yaw * z1) y1 (-(sin st.yaw) * x1 + cos st.yaw * z1)
+
+
+pairwiseNonDecreasing : List Float -> Bool
+pairwiseNonDecreasing xs =
+    case xs of
+        a :: b :: rest ->
+            b >= a && pairwiseNonDecreasing (b :: rest)
+
+        _ ->
+            True
 
 
 {-| A straight 30 % downhill test road with one brick ramp at 40-46.5 m in its
@@ -784,5 +1121,7 @@ buildFlatTestTrack dyDz totalLen =
     , bucketSizeM = 25.0
     , ramps = []
     , brickRamps = []
+    , loops = []
+    , sideRamps = []
     , washes = []
     }

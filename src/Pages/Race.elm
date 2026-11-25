@@ -172,6 +172,7 @@ viewRoomRace bundle track spec meshes props shadowMesh physics debris camera wid
                                 , lastImpactCooldown = 0.0
                                 , nextPopThreshold = 1.0
                                 , gradeRatio = 0.0
+                                , loopRide = Nothing
                                 }
 
                             ( remSpec, remMeshes ) =

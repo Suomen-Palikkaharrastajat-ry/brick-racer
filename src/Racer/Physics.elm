@@ -23,10 +23,19 @@ loads and pitch/roll chassis tilt, surface-dependent rolling resistance and late
 tire slip, articulated steering vs fixed-axle weight-shift authority, aerodynamic drag
 with aero tuck, obstacle impulses, structural brick pop-off events, and checkpoint tracking.
 
-Brick launch ramps (`Track.brickRampLift`) are added to the ground under the
-wheel probes. Climbing one gives the car its upward speed, and where the ground
+Brick launch ramps (`Track.brickRampLift`) and rounded side ramps
+(`Track.sideRampLift`, which also tilt the ground normal) are added to the
+ground under the wheel probes. Climbing one gives the car its upward speed, and where the ground
 falls away under the car faster than it can fall (the ramp's lip, the back of a
 hump), the car flies on a ballistic arc until the normal landing code catches it.
+
+The brick loops (`GeneratedTrack.loops`) cannot be a heightfield: their lane
+goes over the top of itself. A car that crosses a loop's entry on the road
+rides its lane instead (`PhysicsState.loopRide`): a point on the lane surface
+(`Track.loopFrame`) moving along it under gravity, drag and rolling resistance,
+held on by the lane's support force. It leaves the lane at the exit, back onto
+the road; if it is too slow, it rolls back out of the entry or, where the
+support force would have to pull, falls off and flies like any airborne car.
 
 -}
 
@@ -37,6 +46,8 @@ import Racer.Types
         ( CrashReason(..)
         , GeneratedTrack
         , InputState
+        , LoopRide
+        , LoopSection
         , ObstacleKind(..)
         , PhysicsEvent(..)
         , PhysicsState
@@ -115,6 +126,7 @@ initPhysics track spec =
     , lastImpactCooldown = 0.0
     , nextPopThreshold = 80.0
     , gradeRatio = max 0.0 -(Vec3.getY terrain.nearestTangent)
+    , loopRide = Nothing
     }
 
 
@@ -179,6 +191,7 @@ respawnAtCheckpoint state =
         , progressS = state.checkpointAnchor.s
         , lastImpactCooldown = 0.5
         , highSpeedBonus = False
+        , loopRide = Nothing
     }
 
 
@@ -255,6 +268,33 @@ stepFixed :
     -> ( PhysicsState, List PhysicsEvent )
 stepFixed dt track spec input state =
     let
+        riding =
+            state.loopRide
+                |> Maybe.andThen
+                    (\ride ->
+                        List.drop ride.loopIndex track.loops
+                            |> List.head
+                            |> Maybe.map (Tuple.pair ride)
+                    )
+    in
+    case riding of
+        Just ( ride, loop ) ->
+            stepOnLoop dt track spec input loop ride state
+
+        Nothing ->
+            stepOnGround dt track spec input { state | loopRide = Nothing }
+                |> enterLoop track state
+
+
+stepOnGround :
+    Float
+    -> GeneratedTrack
+    -> VehicleSpec
+    -> InputState
+    -> PhysicsState
+    -> ( PhysicsState, List PhysicsEvent )
+stepOnGround dt track spec input state =
+    let
         mass =
             max 12.0 spec.totalMassKg
 
@@ -276,6 +316,9 @@ stepFixed dt track spec input state =
 
         centerRamp =
             Track.brickRampLift track centerTerrain.nearestS centerTerrain.roadOffsetM
+
+        centerSideRamp =
+            Track.sideRampLift track centerTerrain.nearestS centerTerrain.roadOffsetM
 
         speed =
             Vec3.length state.velocity
@@ -634,6 +677,21 @@ stepFixed dt track spec input state =
             else
                 0.0
 
+        -- Likewise on a rounded side ramp, climbing it sideways or along the road.
+        sideSlopeVy =
+            if centerSideRamp.lift > 0.0 then
+                let
+                    tanFlat =
+                        normalizeSafe (vec3 (Vec3.getX centerTerrain.nearestTangent) 0 (Vec3.getZ centerTerrain.nearestTangent)) (vec3 0 0 1)
+
+                    rightFlat =
+                        vec3 -(Vec3.getZ tanFlat) 0 (Vec3.getX tanFlat)
+                in
+                Vec3.dot state.velocity rightFlat * centerSideRamp.sideGrade + Vec3.dot state.velocity tanFlat * centerSideRamp.grade
+
+            else
+                0.0
+
         vertical =
             let
                 predictedY =
@@ -642,7 +700,7 @@ stepFixed dt track spec input state =
             if predictedY <= minAvgHeight then
                 let
                     terrainSlopeVy =
-                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy
+                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy + sideSlopeVy
 
                     penetration =
                         minAvgHeight - predictedY
@@ -690,7 +748,7 @@ stepFixed dt track spec input state =
                         Vec3.getY state.position + (minAvgHeight - Vec3.getY state.position) * min 1.0 (dt * 32.0)
 
                     terrainSlopeVy =
-                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy
+                        vFwd * Vec3.getY centerTerrain.nearestTangent + rampSlopeVy + sideSlopeVy
                 in
                 { y = max minAvgHeight terrainFollowY, vy = terrainSlopeVy, landing = [], landingDamage = 0.0 }
 
@@ -781,11 +839,24 @@ stepFixed dt track spec input state =
         pitchDiff =
             targetRoadPitch - state.pitch
 
+        -- A car that fell off a loop can still be nose up or upside down:
+        -- it turns back over towards the road at a steady rate.
+        tumblingBack =
+            abs state.pitch > 0.76
+
         nextPitchRate =
-            clamp -4.0 4.0 (state.pitchRate + (pitchDiff * 42.0 - state.pitchRate * 13.5 + input.brake * 2.4) * dt)
+            if tumblingBack then
+                0.0
+
+            else
+                clamp -4.0 4.0 (state.pitchRate + (pitchDiff * 42.0 - state.pitchRate * 13.5 + input.brake * 2.4) * dt)
 
         nextPitch =
-            clamp -0.75 0.75 (state.pitch + nextPitchRate * dt)
+            if tumblingBack then
+                state.pitch - clamp -(loopTumbleRate * dt) (loopTumbleRate * dt) state.pitch
+
+            else
+                clamp -0.75 0.75 (state.pitch + nextPitchRate * dt)
 
         -- Spin each wheel cleanly from longitudinal wheel speed
         wheelSpinDelta w =
@@ -973,19 +1044,266 @@ groundFallAwayM =
     0.1
 
 
-{-| Add the brick ramps standing on the road to a ground sample's height.
+{-| Add the brick ramps standing on the road to a ground sample's height, and
+the rounded side ramps to its height and its slope (so gravity turns a car on
+one back towards the road).
 -}
 withBrickRamps : GeneratedTrack -> Racer.Types.TerrainSample -> Racer.Types.TerrainSample
 withBrickRamps track smp =
     let
         ramp =
             Track.brickRampLift track smp.nearestS smp.roadOffsetM
+
+        side =
+            Track.sideRampLift track smp.nearestS smp.roadOffsetM
+
+        withSide =
+            if side.lift > 0.0 then
+                let
+                    tanFlat =
+                        normalizeSafe (vec3 (Vec3.getX smp.nearestTangent) 0 (Vec3.getZ smp.nearestTangent)) (vec3 0 0 1)
+
+                    rightFlat =
+                        vec3 -(Vec3.getZ tanFlat) 0 (Vec3.getX tanFlat)
+
+                    -- The normal as (-dh/dx, 1, -dh/dz), less the side ramp's gradient.
+                    slopeForm =
+                        Vec3.scale (1.0 / max 0.05 (Vec3.getY smp.normal)) smp.normal
+                            |> Vec3.add (Vec3.scale -side.sideGrade rightFlat)
+                            |> Vec3.add (Vec3.scale -side.grade tanFlat)
+                in
+                { smp
+                    | height = smp.height + side.lift
+                    , normal = normalizeSafe slopeForm smp.normal
+                }
+
+            else
+                smp
     in
     if ramp.lift > 0.0 then
-        { smp | height = smp.height + ramp.lift }
+        { withSide | height = withSide.height + ramp.lift }
 
     else
-        smp
+        withSide
+
+
+
+-- ── Brick loops ──────────────────────────────────────────────────────────────
+
+
+{-| Rolling resistance of a loop's smooth brick lane, per unit support force.
+-}
+loopRollingResist : Float
+loopRollingResist =
+    0.02
+
+
+{-| How fast (rad/s) a car that fell off a loop upside down turns back over.
+-}
+loopTumbleRate : Float
+loopTumbleRate =
+    5.0
+
+
+{-| After a step on the ground: a car that crossed a loop's entry on its wheels,
+on the road and rolling forward, starts riding the loop's lane.
+-}
+enterLoop : GeneratedTrack -> PhysicsState -> ( PhysicsState, List PhysicsEvent ) -> ( PhysicsState, List PhysicsEvent )
+enterLoop track before ( after, events ) =
+    let
+        crossed =
+            List.indexedMap Tuple.pair track.loops
+                |> List.filter (\( _, lp ) -> before.progressS < lp.entryS && after.progressS >= lp.entryS)
+                |> List.head
+    in
+    case crossed of
+        Just ( idx, loop ) ->
+            let
+                ground =
+                    Track.sampleAtHinted after.progressS track (Vec3.getX after.position) (Vec3.getZ after.position)
+
+                entryFrame =
+                    Track.loopFrame track loop 0.0 ground.roadOffsetM
+
+                speedAlong =
+                    Vec3.dot after.velocity entryFrame.tangent
+
+                onRoad =
+                    abs ground.roadOffsetM <= loop.apronHalfWidthM + 0.3
+
+                -- On its wheels, or only skipping over a bump.
+                nearGround =
+                    Vec3.getY after.position - ground.height < 0.35
+            in
+            if nearGround && onRoad && speedAlong > 2.0 then
+                let
+                    ride =
+                        { loopIndex = idx
+                        , theta = clamp 0.0 0.3 ((ground.nearestS - loop.entryS) / entryFrame.arcPerRad)
+                        , lateralM = ground.roadOffsetM
+                        , speed = speedAlong
+                        }
+                in
+                ( poseOnLoop track loop ride after, events )
+
+            else
+                ( after, events )
+
+        Nothing ->
+            ( after, events )
+
+
+{-| One fixed step riding round a loop's lane.
+
+The car is a point on the lane surface moving along it: gravity along the lane,
+aero drag and rolling resistance on the support force change its speed. The
+support force the lane must give (per unit mass) is `v^2 * curvature + g * up_y`;
+where that would have to be negative (too slow over the top) the car falls off.
+The lane narrows from the full road at the entry, so the car is squeezed into
+it. Steering and brakes do nothing on the lane.
+
+-}
+stepOnLoop :
+    Float
+    -> GeneratedTrack
+    -> VehicleSpec
+    -> InputState
+    -> LoopSection
+    -> LoopRide
+    -> PhysicsState
+    -> ( PhysicsState, List PhysicsEvent )
+stepOnLoop dt track spec input loop ride state =
+    let
+        mass =
+            max 12.0 spec.totalMassKg
+
+        halfTrack =
+            max 0.25 (spec.trackWidthM * 0.5)
+
+        frame =
+            Track.loopFrame track loop ride.theta ride.lateralM
+
+        v =
+            ride.speed
+
+        support =
+            v * v * frame.curvature + gravityAccel * Vec3.getY frame.up
+
+        tuckMult =
+            1.0 - 0.18 * clamp 0.0 1.0 input.aeroTuck
+
+        dragAccel =
+            0.5 * airDensity * spec.dragCoeff * spec.frontalAreaM2 * tuckMult * v * v / mass
+
+        resist =
+            if abs v > 0.05 then
+                (dragAccel + loopRollingResist * max 0.0 support)
+                    * (if v > 0.0 then
+                        1.0
+
+                       else
+                        -1.0
+                      )
+
+            else
+                0.0
+
+        nextSpeed =
+            v + (-gravityAccel * Vec3.getY frame.tangent - resist) * dt
+
+        nextTheta =
+            ride.theta + nextSpeed * dt / frame.arcPerRad
+
+        maxLat =
+            max 0.0 (Track.loopLaneHalfWidth loop (clamp 0.0 (2.0 * pi) nextTheta) - halfTrack)
+
+        nextRide =
+            { ride
+                | theta = clamp 0.0 (2.0 * pi) nextTheta
+                , lateralM = clamp -maxLat maxLat ride.lateralM
+                , speed = nextSpeed
+            }
+
+        nextFrame =
+            Track.loopFrame track loop nextRide.theta nextRide.lateralM
+
+        nextSupport =
+            nextSpeed * nextSpeed * nextFrame.curvature + gravityAccel * Vec3.getY nextFrame.up
+
+        spun =
+            { state
+                | wheelSpinAngles =
+                    List.map2 (\ang w -> ang + (nextSpeed / max 0.08 w.radiusM) * dt) state.wheelSpinAngles spec.wheels
+                , steerAngle = state.steerAngle * 0.9
+                , leanInput = { x = 0.0, y = input.aeroTuck - input.brake }
+            }
+
+        posed =
+            poseOnLoop track loop nextRide spun
+
+        newS =
+            max state.progressS (loop.entryS + (loop.exitS - loop.entryS) * nextRide.theta / (2.0 * pi))
+
+        ( nextCpIndex, nextAnchor, cpEvents ) =
+            checkCheckpoints track state.checkpointIndex state.checkpointAnchor state.progressS newS posed.position posed.yaw
+
+        progressed =
+            { posed | progressS = newS, checkpointIndex = nextCpIndex, checkpointAnchor = nextAnchor }
+
+        wheelCount =
+            max 1 (List.length spec.wheels)
+    in
+    if nextTheta >= 2.0 * pi || nextTheta <= 0.0 then
+        -- Out of the exit onto the road, or rolled back out of the entry.
+        ( { progressed | loopRide = Nothing, groundedWheels = wheelCount }, cpEvents )
+
+    else if nextSupport < 0.0 then
+        -- Too slow to be held on: off the lane, into the air.
+        ( { progressed
+            | loopRide = Nothing
+            , position = Vec3.add progressed.position (Vec3.scale 0.05 nextFrame.up)
+            , groundedWheels = 0
+            , airborneTime = dt
+          }
+        , cpEvents
+        )
+
+    else
+        ( progressed, cpEvents )
+
+
+{-| Put the car on a loop's lane where `ride` says, facing along it, with the
+lane under its wheels.
+-}
+poseOnLoop : GeneratedTrack -> LoopSection -> LoopRide -> PhysicsState -> PhysicsState
+poseOnLoop track loop ride state =
+    let
+        frame =
+            Track.loopFrame track loop ride.theta ride.lateralM
+
+        -- The car's world matrix is T * Ry(yaw) * Rz(roll) * Rx(pitch), with
+        -- its left along local +X, up along +Y and forward along +Z.
+        left =
+            Vec3.negate frame.right
+    in
+    { state
+        | position = frame.position
+        , velocity = Vec3.scale ride.speed frame.tangent
+        , yaw = atan2 -(Vec3.getZ left) (Vec3.getX left)
+        , yawRate = 0.0
+        , roll = asin (clamp -1.0 1.0 (Vec3.getY left))
+        , rollRate = 0.0
+        , pitch = atan2 -(Vec3.getY frame.tangent) (Vec3.getY frame.up)
+        , pitchRate = 0.0
+        , groundedWheels = max 1 (List.length state.wheelSpinAngles)
+        , airborneTime = 0.0
+        , chassisScraping = False
+        , offTrack = False
+        , highSpeedBonus = False
+        , rolloverTimer = 0.0
+        , gradeRatio = 0.0
+        , loopRide = Just ride
+    }
 
 
 {-| Horizontal forward unit vector `(sin yaw, 0, cos yaw)` at vehicle heading `yaw` radians.
@@ -1301,13 +1619,14 @@ obstacleImpactDamage impactSpeed =
 
 
 {-| Health lost landing from the air at `impactVel` m/s into the ground. Small
-hops and the brick ramps' normal landings are free; dropping in from high up
-costs up to 36.
+hops and the brick ramps' normal landings at racing speed (up to about 5 m/s
+into the ground) are free; dropping in from high up, such as off the top of a
+loop, costs up to 36.
 -}
 landingDamage : Float -> Float
 landingDamage impactVel =
-    if impactVel > 4.5 then
-        clamp 4.0 36.0 ((impactVel - 4.5) * 4.0)
+    if impactVel > 5.5 then
+        clamp 4.0 36.0 ((impactVel - 5.5) * 4.0)
 
     else
         0.0

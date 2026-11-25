@@ -131,8 +131,17 @@ updateRaceCamera dt mode physics spec cam =
     case mode of
         ChaseCam ->
             let
+                -- Round a loop the camera swings out to a three-quarter view from
+                -- behind and backs off, so the whole loop and the car on it show.
+                onLoop =
+                    physics.loopRide /= Nothing
+
                 desiredAz =
-                    physics.yaw + pi - physics.yawRate * 0.09
+                    if onLoop then
+                        physics.yaw + pi + chaseLoopSwingRad
+
+                    else
+                        physics.yaw + pi - physics.yawRate * 0.09
 
                 -- A little above the car so its shape reads, higher on steep slopes so the
                 -- road stays in view, and a touch lower at speed for a faster feel.
@@ -140,7 +149,11 @@ updateRaceCamera dt mode physics spec cam =
                     clamp 0.2 0.5 (0.3 + physics.gradeRatio * 0.34 - clamp 0.0 chaseSpeedDropRad (speed * 0.0015))
 
                 desiredDist =
-                    chaseDistance radiusM speed
+                    if onLoop then
+                        max chaseLoopDistanceM (chaseDistance radiusM speed)
+
+                    else
+                        chaseDistance radiusM speed
 
                 -- The aim leads towards the way the nose is turning, so the car sits
                 -- off-centre in the turn and the road ahead of it stays in view.
@@ -220,6 +233,19 @@ chaseDistance radiusM speedMps =
             clamp 0.0 chaseSpeedPullbackM (max 0.0 speedMps * 0.012)
     in
     base + pullback
+
+
+{-| How far (m) the chase camera backs off, and how far round (rad) it swings
+to the side, while the car rides a loop.
+-}
+chaseLoopDistanceM : Float
+chaseLoopDistanceM =
+    10.0
+
+
+chaseLoopSwingRad : Float
+chaseLoopSwingRad =
+    0.8
 
 
 {-| Most the chase camera backs off with speed (m).
