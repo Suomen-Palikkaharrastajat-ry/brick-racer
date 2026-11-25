@@ -6,21 +6,12 @@ editor's dock, and the seeded placement keeps the pieces off the road, off the
 start pad, clear of the checkpoint and finish arches and clear of the ramps.
 -}
 
-import Dict
 import Expect
-import LDraw.Catalog as Catalog
-import LDraw.Document as Document
-import Math.Matrix4 as Mat4
 import Math.Vector3 as Vec3
-import Racer.Analyze as Analyze
 import Racer.Editor as Editor
-import Racer.Render as Render
 import Racer.SceneryModels as SceneryModels
-import Racer.StarterBases as StarterBases
 import Racer.Track as Track
 import Racer.Types exposing (ObstacleKind(..), TrackId, allTrackIds, trackIdToString)
-import Render.Camera as Camera
-import Render.Style as Style
 import Test exposing (Test, describe, test)
 
 
@@ -33,62 +24,6 @@ suite =
             (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) allTrackIds)
         , describe "Every course has some of them"
             (List.map verifyPresence allTrackIds)
-        , describe "Driver model"
-            [ test "Driver model is listed in SceneryModels.all and uses catalog parts" <|
-                \_ ->
-                    let
-                        files =
-                            partFiles SceneryModels.driver
-
-                        listed =
-                            List.map Tuple.first SceneryModels.all
-                    in
-                    Expect.all
-                        [ \_ -> Expect.equal True (List.member "driver" listed)
-                        , \_ -> Expect.equal [ "3004.dat", "3062b.dat", "54200.dat" ] files
-                        ]
-                        ()
-            , test "CarMeshBundle driver is only present when vehicle has cockpit and renders with dynamic lean" <|
-                \_ ->
-                    case StarterBases.all of
-                        starter :: _ ->
-                            let
-                                bareDoc =
-                                    Document.parse starter.text
-
-                                bareAnalyzed =
-                                    Analyze.analyzeDocument starter.file bareDoc Dict.empty Catalog.emptyPartIndex
-
-                                docWithSeat =
-                                    Document.parse (starter.text ++ "\n1 16 0 -16 0 1 0 0 0 1 0 0 0 1 4079.dat\n")
-
-                                seatAnalyzed =
-                                    Analyze.analyzeDocument starter.file docWithSeat Dict.empty Catalog.emptyPartIndex
-
-                                cam =
-                                    Camera.init
-
-                                entities =
-                                    Render.renderCarWithStyleAndSpins
-                                        Mat4.identity
-                                        0.25
-                                        [ 0.0, 0.0, 0.0, 0.0 ]
-                                        cam
-                                        Style.defaultStyle
-                                        seatAnalyzed.meshes
-                                        800
-                                        600
-                            in
-                            Expect.all
-                                [ \_ -> Expect.equal Nothing bareAnalyzed.meshes.driver
-                                , \_ -> Expect.notEqual Nothing seatAnalyzed.meshes.driver
-                                , \_ -> Expect.atLeast 1 (List.length entities)
-                                ]
-                                ()
-
-                        [] ->
-                            Expect.fail "No starter base available"
-            ]
         , describe "Bleachers model"
             [ test "Bleachers model is listed in SceneryModels.all and uses curated parts" <|
                 \_ ->

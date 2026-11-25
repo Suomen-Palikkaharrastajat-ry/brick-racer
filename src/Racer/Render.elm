@@ -143,12 +143,6 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
         steeringWheelEntities =
             renderDynamic meshes.steeringWheel (Mat4.makeRotate (visualYaw * 2.2) (Vec3.normalize (vec3 0 0.65 0.75)))
 
-        driverLean =
-            Mat4.makeRotate (visualYaw * -0.35) (vec3 0 0 1)
-
-        driverEntities =
-            renderDynamic meshes.driver driverLean
-
         paddedSpins =
             padSpins (List.length meshes.wheelMeshes) wheelSpins
 
@@ -193,11 +187,10 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
         ++ leftKnuckleEntities
         ++ rightKnuckleEntities
         ++ steeringWheelEntities
-        ++ driverEntities
         ++ wheelEntities
 
 
-{-| Render the vehicle with style and wheel spins, including dynamic driver lean.
+{-| Render the vehicle with style and wheel spins.
 Synonym for `renderVehicle`.
 -}
 renderCarWithStyleAndSpins :

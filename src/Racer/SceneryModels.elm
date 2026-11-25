@@ -1,4 +1,4 @@
-module Racer.SceneryModels exposing (all, barrels, bleachers, brickGate, brickPallet, brickWall, crate, crateStack, driver, gnome, slopeBlock, tileStack)
+module Racer.SceneryModels exposing (all, barrels, bleachers, brickGate, brickPallet, brickWall, crate, crateStack, gnome, slopeBlock, tileStack)
 
 {-| The racer's own crashable roadside props, as LDraw models of catalog
 parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
@@ -30,7 +30,6 @@ all =
     , ( "tileStack", tileStack )
     , ( "brickGate", brickGate )
     , ( "slopeBlock", slopeBlock )
-    , ( "driver", driver )
     , ( "bleachers", bleachers )
     ]
 
@@ -337,22 +336,6 @@ slopeBlock =
             )
             [ -20, 20 ]
         )
-
-
-
--- DRIVER
-
-
-{-| A micro-minifig driver sitting in racing posture: a racing blue 1 x 2 brick torso,
-a yellow 1 x 1 round brick head, and a white cheese slope helmet.
--}
-driver : String
-driver =
-    model "Driver"
-        [ part blue ( 0, -24, 0 ) Straight "3004.dat"
-        , part yellow ( 0, -48, 0 ) Straight "3062b.dat"
-        , part white ( 0, -48, 0 ) Straight "54200.dat"
-        ]
 
 
 
