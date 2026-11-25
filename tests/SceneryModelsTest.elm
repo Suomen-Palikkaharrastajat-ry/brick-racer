@@ -90,7 +90,7 @@ verifyCatalogParts ( name, ldr ) =
 -}
 courseBiomes : List Map.Biome
 courseBiomes =
-    [ Map.Farmland, Map.Boreal, Map.Fell ]
+    Map.allBiomes
 
 
 verifyPlacement : Map.Biome -> Int -> Test

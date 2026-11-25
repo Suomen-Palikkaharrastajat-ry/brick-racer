@@ -205,7 +205,7 @@ suite =
                                 [ "halfWidth out of range" ]
                         )
                     )
-        , test "every seed of the three countryside courses passes validation" <|
+        , test "every seed of every biome passes validation" <|
             \_ ->
                 Expect.equal []
                     (List.concatMap
@@ -221,7 +221,7 @@ suite =
                                 )
                                 (List.range 1 40 ++ [ 42, 77, 99, 109, 1234 ])
                         )
-                        [ Farmland, Boreal, Fell ]
+                        Map.allBiomes
                     )
         , test "the same map always gives the same course" <|
             \_ ->

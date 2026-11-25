@@ -570,7 +570,8 @@ fieldColors biome segIdx =
 {-| The field and verge colours of a course in a season. Summer keeps the
 course's own colours. Spring is bright green, with light-green strips on the
 farm; autumn is tan with dark orange strips and a dark tan verge; winter is
-white snow with a light bluish grey verge.
+white snow with a light bluish grey verge. The desert keeps its sand in every
+season (`groundSeason`).
 -}
 seasonFieldColors : MapParams -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
 seasonFieldColors map segIdx =
@@ -578,7 +579,7 @@ seasonFieldColors map segIdx =
         strip =
             modBy 10 (segIdx + 1000) < 5
     in
-    case map.season of
+    case groundSeason map of
         Summer ->
             fieldColors map.biome segIdx
 
@@ -609,6 +610,19 @@ seasonFieldColors map segIdx =
             , near = ldrawColor 15
             , far = ldrawColor 15
             }
+
+
+{-| The season the ground shows. The desert has no green spring, autumn
+leaves or winter snow (its winter weathers have no snow either), so its
+ground always shows its summer sand.
+-}
+groundSeason : MapParams -> Season
+groundSeason map =
+    if map.biome == Desert then
+        Summer
+
+    else
+        map.season
 
 
 {-| Road colours in a season: in winter the road edges and the grassy
@@ -651,7 +665,7 @@ bandColor : MapParams -> SurfaceType -> Int -> Int -> Vec3
 bandColor map surface segIdx bandIdx =
     let
         road =
-            seasonRoadColors map.season surface
+            seasonRoadColors (groundSeason map) surface
 
         field =
             seasonFieldColors map segIdx

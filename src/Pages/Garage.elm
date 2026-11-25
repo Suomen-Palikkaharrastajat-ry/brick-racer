@@ -544,7 +544,8 @@ viewCourseSelection data actions =
                 [ text (RI18n.mapTitle lang data.map ++ " ⏱ " ++ personalBest) ]
             ]
         , div
-            [ Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.text_xs ]
+            [ Attr.class "racer-map-picker"
+            , Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.text_xs ]
             , Attr.style "background" "rgba(7, 25, 38, 0.75)"
             , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
             , Attr.style "color" Brand.legoWhite

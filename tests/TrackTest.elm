@@ -86,6 +86,15 @@ suite =
                     , \_ -> Expect.notEqual (field Autumn) (field Spring)
                     ]
                     ()
+        , test "The desert keeps its sand in every season, also under its road edges" <|
+            \_ ->
+                let
+                    band season surface bandIdx =
+                        TerrainMesh.bandColor { biome = Desert, season = season, weather = Map.Clear, seed = 1 } surface 5 bandIdx
+                in
+                Expect.equal
+                    (List.map (\_ -> List.map (band Summer DirtRoad) (List.range 0 12)) Map.allSeasons)
+                    (List.map (\season -> List.map (band season DirtRoad) (List.range 0 12)) Map.allSeasons)
         , test "A course keeps its map and takes the map's seed" <|
             \_ ->
                 let
@@ -211,7 +220,7 @@ suite =
 -}
 courseBiomes : List Biome
 courseBiomes =
-    [ Farmland, Boreal, Fell ]
+    Map.allBiomes
 
 
 {-| A summer, clear map of a biome with a seed.

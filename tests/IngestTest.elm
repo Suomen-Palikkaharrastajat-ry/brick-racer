@@ -158,6 +158,51 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed to decode #map=...&model= hash: " ++ Debug.toString err)
+        , test "parseHash reads a map code anywhere in the hash and ignores old track= and seed= parts" <|
+            \_ ->
+                Expect.equal
+                    [ Just borealWinter, Nothing, Nothing, Just borealWinter ]
+                    (List.map (Ingest.parseHash >> .map)
+                        [ "#map=boreal-winter-snow-4242"
+                        , "#track=forest-trail&seed=4242"
+                        , "#map=not-a-map&b/abc"
+                        , "https://pienajot.palikkaharrastajat.fi/#garage&map=BOREAL-WINTER-SNOW-4242&b/abc"
+                        ]
+                    )
+        , test "every map code round-trips through race and garage hashes" <|
+            \_ ->
+                let
+                    doc =
+                        Document.parse "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat"
+
+                    maps =
+                        List.concatMap
+                            (\b ->
+                                List.concatMap
+                                    (\s -> List.map (\w -> { biome = b, season = s, weather = w, seed = 999999 }) (Map.allowedWeathers b s))
+                                    Map.allSeasons
+                            )
+                            Map.allBiomes
+                in
+                Expect.all
+                    [ \_ ->
+                        Expect.equal (List.map Just maps)
+                            (List.map (\m -> (Ingest.parseHash (Ingest.encodeRaceHash m doc)).map) maps)
+                    , \_ ->
+                        Expect.equal (List.map Just maps)
+                            (List.map (\m -> (Ingest.parseHash (Ingest.encodeGarageHash m doc)).map) maps)
+                    , \_ ->
+                        Expect.equal True
+                            (String.startsWith "#map=boreal-winter-snow-4242&b/" (Ingest.encodeRaceHash borealWinter doc))
+                    , \_ ->
+                        Expect.equal True
+                            (String.startsWith "#garage&map=boreal-winter-snow-4242&b/" (Ingest.encodeGarageHash borealWinter doc))
+                    ]
+                    ()
+        , test "hashWithoutTrackParams strips map= along with the old track= and seed=" <|
+            \_ ->
+                Expect.equal "model=x&free=1"
+                    (Ingest.hashWithoutTrackParams "#map=fell-summer-fog-3&track=farm-lane&seed=2&garage&model=x&free=1")
         , test "a #room= hash carries no map" <|
             \_ ->
                 Expect.equal Nothing (Ingest.parseHash "#room=ABCD").map

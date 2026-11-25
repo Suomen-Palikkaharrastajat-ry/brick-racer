@@ -253,7 +253,7 @@ suite =
                                     |> List.concatMap (\seed -> pointsSlopingAway (Track.generate (Track.trackConfigFor { biome = biome, season = Map.Summer, weather = Map.Clear, seed = seed })))
                                     |> Expect.equal []
                     )
-                    [ ( "Farmland", Map.Farmland ), ( "Boreal", Map.Boreal ), ( "Fell", Map.Fell ) ]
+                    [ ( "Farmland", Map.Farmland ), ( "Boreal", Map.Boreal ), ( "Fell", Map.Fell ), ( "Desert", Map.Desert ) ]
                 )
             , test "no tow on the road or its verge" <|
                 \_ ->

@@ -186,6 +186,71 @@ suite =
                         , \_ -> Expect.equal [] (Leaderboard.decodeLeaderboard oldJson).entries
                         ]
                         ()
+            , test "the leaderboard key is the generator version and the exact map code" <|
+                \_ ->
+                    Expect.equal "g1:farmland-summer-clear-1" (Map.leaderboardKey farmland)
+            , test "decoding drops old and other-version entries one by one and keeps the current ones" <|
+                \_ ->
+                    let
+                        json =
+                            """[
+                              {"trackId":"farm-lane","vehicleName":"Old","timeSeconds":40.0,"topSpeedKmh":90.0,"wheelCount":4,"steeringLabel":"x","seed":1},
+                              {"mapCode":"g0:farmland-summer-clear-1","vehicleName":"Stale","timeSeconds":41.0,"topSpeedKmh":90.0,"wheelCount":4,"steeringLabel":"x"},
+                              {"mapCode":"g1:farmland-summer-clear-1","vehicleName":"New","timeSeconds":55.0,"topSpeedKmh":90.0,"wheelCount":4,"steeringLabel":"x"},
+                              {"mapCode":"g1:farmland-summer-clear-1","vehicleName":"Broken","timeSeconds":"fast"}
+                            ]"""
+                    in
+                    Expect.equal [ "New" ] (List.map .vehicleName (Leaderboard.decodeLeaderboard json).entries)
+            , test "the board keeps the fastest runs per map and the most recently raced maps" <|
+                \_ ->
+                    let
+                        run seed time =
+                            { mapCode = Map.leaderboardKey { farmland | seed = seed }
+                            , vehicleName = "Kart"
+                            , timeSeconds = time
+                            , topSpeedKmh = 90.0
+                            , wheelCount = 4
+                            , steeringLabel = "Fixed"
+                            }
+
+                        record entries =
+                            List.foldl (\e acc -> Tuple.first (Leaderboard.recordRun e acc)) Leaderboard.empty entries
+
+                        manyRunsOneMap =
+                            List.map (\i -> run 1 (toFloat (70 - i))) (List.range 1 10)
+
+                        manyMaps =
+                            List.map (\seed -> run seed 60.0) (List.range 2 (Leaderboard.maxMaps + 5))
+
+                        lb =
+                            record (manyRunsOneMap ++ manyMaps)
+
+                        mapCount =
+                            lb.entries
+                                |> List.map .mapCode
+                                |> List.foldl
+                                    (\k acc ->
+                                        if List.member k acc then
+                                            acc
+
+                                        else
+                                            k :: acc
+                                    )
+                                    []
+                                |> List.length
+                    in
+                    Expect.all
+                        [ \_ ->
+                            Expect.equal (List.range 60 (59 + Leaderboard.maxPerMap))
+                                (List.map (.timeSeconds >> round) (Leaderboard.entriesForMap farmland (record manyRunsOneMap)))
+                        , \_ -> Expect.equal Leaderboard.maxMaps mapCount
+
+                        -- The map raced first has fallen off; the latest is kept.
+                        , \_ -> Expect.equal [] (Leaderboard.entriesForMap farmland lb)
+                        , \_ -> Expect.equal 1 (List.length (Leaderboard.entriesForMap { farmland | seed = Leaderboard.maxMaps + 5 } lb))
+                        , \_ -> Expect.equal lb (Leaderboard.decodeLeaderboard (Leaderboard.encodeLeaderboard lb))
+                        ]
+                        ()
             ]
         , describe "Racer.Camera and Render"
             [ test "camera mode cycles Chase -> Orbit -> Chase" <|

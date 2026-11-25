@@ -7,6 +7,8 @@ module Racer.Leaderboard exposing
     , entriesForMap
     , formatRaceTime
     , formatSplitDelta
+    , maxMaps
+    , maxPerMap
     , recordRun
     )
 

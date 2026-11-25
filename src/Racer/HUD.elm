@@ -164,8 +164,8 @@ viewToolbar data actions =
         ]
 
 
-{-| The course title with a small badge under it naming the map's biome,
-season and weather, for example "Boreal · Winter · Snow".
+{-| The course title (the map's biome, season and weather in the player's
+language, for example "Metsä · Talvi · Lumisade") with the map code under it.
 -}
 viewMapBadge : HudViewData -> Html msg
 viewMapBadge data =
@@ -176,22 +176,8 @@ viewMapBadge data =
         , Attr.style "color" "#ffffff"
         ]
         [ div [ Tw.classes [ Tw.font_semibold, Tw.whitespace_nowrap ] ] [ text data.courseTitle ]
-        , div [ Tw.classes [ Tw.whitespace_nowrap ], Attr.style "color" "#cbd5e1" ] [ text (mapLabel data.map) ]
+        , div [ Tw.classes [ Tw.whitespace_nowrap ], Attr.style "color" "#cbd5e1" ] [ text (Map.toCode data.map) ]
         ]
-
-
-{-| "Farmland · Summer · Clear": the map's biome, season and weather names.
--}
-mapLabel : MapParams -> String
-mapLabel map =
-    [ Map.biomeToString map.biome, Map.seasonToString map.season, Map.weatherToString map.weather ]
-        |> List.map capitalize
-        |> String.join " · "
-
-
-capitalize : String -> String
-capitalize word =
-    String.toUpper (String.left 1 word) ++ String.dropLeft 1 word
 
 
 {-| Whether the on-screen steering and brake pads are shown: only while the
