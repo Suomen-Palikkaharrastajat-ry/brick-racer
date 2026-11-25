@@ -110,7 +110,7 @@ carCornersOnScreen aspect spec speed grade =
 slope back down toward the road: (s, offset) pairs. Further out, on the inside
 of tight bends the road's own grade can win; the recovery tow covers that.
 -}
-pointsSlopingAway : GeneratedTrack -> List ( Float, Float )
+pointsSlopingAway : GeneratedTrack -> List ( ( Float, Float ), ( Float, Float, Float ) )
 pointsSlopingAway track =
     let
         stations =
@@ -138,7 +138,8 @@ pointsSlopingAway track =
                     Vec3.getX t.normal * Vec3.getX toRoad + Vec3.getZ t.normal * Vec3.getZ toRoad
             in
             if abs t.roadOffsetM > t.halfWidthM + 0.5 && downhillToRoad <= 0.0 then
-                Just ( s, offset )
+                -- Where, how much it slopes away, and which road point is nearest.
+                Just ( ( s, offset ), ( downhillToRoad, t.nearestS - s, t.roadOffsetM ) )
 
             else
                 Nothing

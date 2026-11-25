@@ -629,7 +629,7 @@ verifySideRamps id seed =
                 -- Its curve: flat where it leaves the road, steep at the lip, and
                 -- only on its own side of the road.
                 badShape =
-                    List.filter
+                    List.filterMap
                         (\sr ->
                             let
                                 mid =
@@ -671,23 +671,56 @@ verifySideRamps id seed =
 
                                 noHollow =
                                     List.map2 (\a b -> b >= a - 0.03) behind (List.drop 1 behind) |> List.all identity
+
+                                hollows =
+                                    List.map2 (\a b -> b - a) behind (List.drop 1 behind)
+                                        |> List.indexedMap Tuple.pair
+                                        |> List.filter (\( _, rise ) -> rise < -0.03)
+
+                                reasons =
+                                    List.filterMap identity
+                                        [ if rising then
+                                            Nothing
+
+                                          else
+                                            Just "not rising"
+                                        , if noHollow then
+                                            Nothing
+
+                                          else
+                                            Just ("hollow behind the lip at (0.5 m step, rise) " ++ Debug.toString hollows)
+                                        , if nearInner > 0.2 then
+                                            Just "steep at the inner edge"
+
+                                          else
+                                            Nothing
+                                        , if atLip < 1.2 then
+                                            Just "not steep at the lip"
+
+                                          else
+                                            Nothing
+                                        , if abs (top - sr.heightM) > 0.01 then
+                                            Just "top is not the ramp height"
+
+                                          else
+                                            Nothing
+                                        , if
+                                            ((Track.sideRampLift track mid 0.0).lift /= 0.0)
+                                                || ((Track.sideRampLift track mid (-sr.side * (sr.outerOffsetM - 0.1))).lift /= 0.0)
+                                                || ((Track.sideRampLift track (sr.startS - 0.5) (sr.side * sr.outerOffsetM)).lift /= 0.0)
+                                                || ((Track.sideRampLift track (sr.endS + 0.5) (sr.side * sr.outerOffsetM)).lift /= 0.0)
+                                          then
+                                            Just "lifts outside the ramp"
+
+                                          else
+                                            Nothing
+                                        ]
                             in
-                            not rising
-                                || not noHollow
-                                || nearInner
-                                > 0.2
-                                || atLip
-                                < 1.2
-                                || abs (top - sr.heightM)
-                                > 0.01
-                                || (Track.sideRampLift track mid 0.0).lift
-                                /= 0.0
-                                || (Track.sideRampLift track mid (-sr.side * (sr.outerOffsetM - 0.1))).lift
-                                /= 0.0
-                                || (Track.sideRampLift track (sr.startS - 0.5) (sr.side * sr.outerOffsetM)).lift
-                                /= 0.0
-                                || (Track.sideRampLift track (sr.endS + 0.5) (sr.side * sr.outerOffsetM)).lift
-                                /= 0.0
+                            if List.isEmpty reasons then
+                                Nothing
+
+                            else
+                                Just ( sr.startS, reasons )
                         )
                         track.sideRamps
 
