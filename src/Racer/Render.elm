@@ -26,6 +26,7 @@ import Html.Attributes as Attr
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Analyze exposing (CarMeshBundle)
+import Racer.Precipitation as Rain
 import Racer.Scenery as Scenery exposing (Props)
 import Racer.TerrainMesh exposing (TrackChunk, TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
@@ -473,12 +474,21 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
         debrisEntities =
             Scenery.debrisEntities propView props debris
 
+        precipitationEntities =
+            case cars of
+                first :: _ ->
+                    Rain.entities camera safeW safeH bundle.map { progressM = first.physics.progressS, velocity = first.physics.velocity }
+
+                [] ->
+                    []
+
         allEntities =
             [ TerrainShader.skyEntity camera bundle.map safeW safeH ]
                 ++ groundEntities
                 ++ carsEntities
                 ++ propEntities
                 ++ debrisEntities
+                ++ precipitationEntities
     in
     WebGL.toHtmlWith
         [ WebGL.alpha False
