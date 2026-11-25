@@ -4266,6 +4266,8 @@ view model =
                                 , p2Camera = p2.camera
                                 , p2HudData =
                                     { language = model.language
+                                    , courseTitle = RI18n.trackTitle model.language race.track.config.id
+                                    , map = race.track.config.map
                                     , physics = p2.physics
                                     , nextCheckpointM = nextCheckpointMeters race.track.checkpoints p2.physics
                                     , elapsedTime = race.elapsedTime
@@ -4301,6 +4303,8 @@ view model =
                         model.viewportWidth
                         model.viewportHeight
                         { language = model.language
+                        , courseTitle = RI18n.trackTitle model.language race.track.config.id
+                        , map = race.track.config.map
                         , physics = race.physics
                         , nextCheckpointM = nextCheckpointMeters race.track.checkpoints race.physics
                         , elapsedTime = race.elapsedTime

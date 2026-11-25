@@ -9,7 +9,8 @@ module Racer.HUD exposing
     , viewHudOverlayWith
     )
 
-{-| Gameplay HUD overlay: a toolbar with camera and audio, an analog speed dial
+{-| Gameplay HUD overlay: a toolbar with the course title and a badge naming
+the map's biome, season and weather, and audio, an analog speed dial
 with the race counter and metrics under it, the damage skeleton, and the
 countdown, crash, exit and fallback touch prompts.
 -}
@@ -17,6 +18,7 @@ countdown, crash, exit and fallback touch prompts.
 import Char
 import DesignTokens.Colors as Brand
 import FeatherIcons
+import Game.MapParams as Map exposing (MapParams)
 import Html exposing (Html, button, div, span, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick)
@@ -47,6 +49,8 @@ type alias HudAlert =
 -}
 type alias HudViewData =
     { language : Language
+    , courseTitle : String
+    , map : MapParams
     , physics : PhysicsState
     , nextCheckpointM : Float
     , elapsedTime : Float
@@ -147,8 +151,9 @@ viewToolbar data actions =
             else
                 RI18n.audioUnmutedLabel data.language
     in
-    div [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center ] ]
-        [ hudIconBtn actions.onToggleAudio
+    div [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
+        [ viewMapBadge data
+        , hudIconBtn actions.onToggleAudio
             (if data.audioMuted then
                 FeatherIcons.volumeX
 
@@ -157,6 +162,36 @@ viewToolbar data actions =
             )
             audioLabel
         ]
+
+
+{-| The course title with a small badge under it naming the map's biome,
+season and weather, for example "Boreal · Winter · Snow".
+-}
+viewMapBadge : HudViewData -> Html msg
+viewMapBadge data =
+    div
+        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_end, Tw.px Th.s3, Tw.py Th.s0_dot_5, Tw.rounded_xl, Tw.border, Tw.text_xs ]
+        , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
+        , Attr.style "background" "rgba(15, 23, 42, 0.78)"
+        , Attr.style "color" "#ffffff"
+        ]
+        [ div [ Tw.classes [ Tw.font_semibold, Tw.whitespace_nowrap ] ] [ text data.courseTitle ]
+        , div [ Tw.classes [ Tw.whitespace_nowrap ], Attr.style "color" "#cbd5e1" ] [ text (mapLabel data.map) ]
+        ]
+
+
+{-| "Farmland · Summer · Clear": the map's biome, season and weather names.
+-}
+mapLabel : MapParams -> String
+mapLabel map =
+    [ Map.biomeToString map.biome, Map.seasonToString map.season, Map.weatherToString map.weather ]
+        |> List.map capitalize
+        |> String.join " · "
+
+
+capitalize : String -> String
+capitalize word =
+    String.toUpper (String.left 1 word) ++ String.dropLeft 1 word
 
 
 {-| Whether the on-screen steering and brake pads are shown: only while the
