@@ -258,7 +258,7 @@ validationIssues track =
         n =
             Array.length samples
 
-        sampleAt i =
+        sampleNo i =
             Array.get i samples
 
         lengthIssue =
@@ -279,7 +279,7 @@ validationIssues track =
                 Nothing
 
         steep i =
-            case ( sampleAt i, sampleAt (i + 10) ) of
+            case ( sampleNo i, sampleNo (i + 10) ) of
                 ( Just a, Just b ) ->
                     let
                         ds =
@@ -303,7 +303,7 @@ validationIssues track =
         -- Turn of the course over 4 m (two samples either side): the arc
         -- length divided by the turn angle is the bend radius, which must be 18 m or more.
         tight i =
-            case ( sampleAt (i - 1), sampleAt i, sampleAt (i + 1) ) of
+            case ( sampleNo (i - 1), sampleNo i, sampleNo (i + 1) ) of
                 ( Just a, _, Just b ) ->
                     let
                         cross =
@@ -334,7 +334,7 @@ validationIssues track =
         spaced =
             List.range 0 (n - 1)
                 |> List.filter (\i -> modBy 4 i == 0)
-                |> List.filterMap (\i -> Maybe.map (\sample -> ( i, sample )) (sampleAt i))
+                |> List.filterMap (\i -> Maybe.map (\sample -> ( i, sample )) (sampleNo i))
 
         touching ( i, a ) ( j, b ) =
             i
