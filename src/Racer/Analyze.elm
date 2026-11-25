@@ -101,7 +101,7 @@ type alias CarMeshBundle =
     , steeringRightKnuckle : Maybe DynamicSubMesh
     , wheelMeshes : List { wheel : WheelSpec, scene : Scene }
     , steeringWheel : Maybe DynamicSubMesh
-    , driver : Maybe Scene
+    , driver : Maybe DynamicSubMesh
     , debrisColors : List { r : Float, g : Float, b : Float }
     , carBoundsRadiusLdu : Float
     }
@@ -300,6 +300,24 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
                 |> List.filter (\r -> r.cleanId == "30663" || r.cleanId == "2819")
                 |> List.head
 
+        seatRec =
+            carRecords
+                |> List.filter (\r -> r.cleanId == "4079")
+                |> List.head
+
+        driverPivotLdu =
+            case seatRec of
+                Just seat ->
+                    Just (vec3 (Vec3.getX seat.carCenter) (Vec3.getY seat.carMinCorner + 4) (Vec3.getZ seat.carCenter))
+
+                Nothing ->
+                    case steeringWheelRec of
+                        Just sw ->
+                            Just (vec3 (Vec3.getX sw.carCenter) (Vec3.getY sw.carMinCorner) (Vec3.getZ sw.carCenter + 20))
+
+                        Nothing ->
+                            Nothing
+
         looseIdSet =
             Set.fromList looseIds
 
@@ -371,6 +389,7 @@ analyzeDocumentWithMode mode title doc rawCache partIndex =
             , hasSteeringWheelIndicator = steeringWheelRec /= Nothing
             , steeringWheelPivotLdu = Maybe.map .carCenter isolatedRimRec
             , steeringWheelIds = Maybe.map (\r -> [ r.placement.id ]) isolatedRimRec |> Maybe.withDefault []
+            , driverPivotLdu = driverPivotLdu
             , loosePlacementIds = looseIds
             , issues = issues
             , isDrivable = isDrivable
@@ -530,37 +549,50 @@ buildVehicleScenes cache spec placements wheels _ =
         radiusLdu =
             max 20.0 (Vec3.length extent * 0.5)
 
-        driverCache =
-            List.foldl
-                (\pName c ->
-                    case Dict.get pName c of
-                        Just (Loaded _) ->
-                            c
+        driver =
+            case spec.driverPivotLdu of
+                Nothing ->
+                    Nothing
 
-                        _ ->
-                            case synthesizePartLines pName of
-                                Just lines ->
-                                    Dict.insert pName (Loaded lines) c
+                Just pivot ->
+                    let
+                        driverCache =
+                            List.foldl
+                                (\pName c ->
+                                    case Dict.get pName c of
+                                        Just (Loaded _) ->
+                                            c
 
-                                Nothing ->
-                                    c
-                )
-                cache
-                [ "3004.dat", "3062b.dat", "54200.dat" ]
+                                        _ ->
+                                            case synthesizePartLines pName of
+                                                Just lines ->
+                                                    Dict.insert pName (Loaded lines) c
 
-        driverParsed =
-            Parser.parseFile SceneryModels.driver
+                                                Nothing ->
+                                                    c
+                                )
+                                cache
+                                [ "3004.dat", "3062b.dat", "54200.dat" ]
 
-        driverGeom =
-            Geometry.flattenWith Geometry.worldOptions driverParsed driverCache 16 Mat4.identity
+                        driverParsed =
+                            Parser.parseFile SceneryModels.driver
 
-        driverScene =
-            Scene.buildScene
-                { triangles = driverGeom.triangles
-                , lines = driverGeom.lines
-                , conditionalLines = []
-                }
-                False
+                        driverGeom =
+                            Geometry.flattenWith Geometry.worldOptions driverParsed driverCache 16 Mat4.identity
+
+                        driverScene =
+                            Scene.buildScene
+                                { triangles = driverGeom.triangles
+                                , lines = driverGeom.lines
+                                , conditionalLines = []
+                                }
+                                False
+                    in
+                    Just
+                        { pivotLdu = pivot
+                        , scene = driverScene
+                        , colorHexSamples = [ { r = 0.0, g = 0.33, b = 0.75 } ]
+                        }
     in
     { chassis = chassisScene
     , steeringBogie = steeringBogie
@@ -568,7 +600,7 @@ buildVehicleScenes cache spec placements wheels _ =
     , steeringRightKnuckle = rightKnuckle
     , wheelMeshes = wheelMeshes
     , steeringWheel = steeringWheel
-    , driver = Just driverScene
+    , driver = driver
     , debrisColors = debrisColors
     , carBoundsRadiusLdu = radiusLdu
     }

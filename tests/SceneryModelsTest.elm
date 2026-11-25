@@ -48,16 +48,22 @@ suite =
                         , \_ -> Expect.equal [ "3004.dat", "3062b.dat", "54200.dat" ] files
                         ]
                         ()
-            , test "CarMeshBundle contains driver and renderCarWithStyleAndSpins renders with dynamic lean" <|
+            , test "CarMeshBundle driver is only present when vehicle has cockpit and renders with dynamic lean" <|
                 \_ ->
                     case StarterBases.all of
                         starter :: _ ->
                             let
-                                doc =
+                                bareDoc =
                                     Document.parse starter.text
 
-                                analyzed =
-                                    Analyze.analyzeDocument starter.file doc Dict.empty Catalog.emptyPartIndex
+                                bareAnalyzed =
+                                    Analyze.analyzeDocument starter.file bareDoc Dict.empty Catalog.emptyPartIndex
+
+                                docWithSeat =
+                                    Document.parse (starter.text ++ "\n1 16 0 -16 0 1 0 0 0 1 0 0 0 1 4079.dat\n")
+
+                                seatAnalyzed =
+                                    Analyze.analyzeDocument starter.file docWithSeat Dict.empty Catalog.emptyPartIndex
 
                                 cam =
                                     Camera.init
@@ -69,12 +75,13 @@ suite =
                                         [ 0.0, 0.0, 0.0, 0.0 ]
                                         cam
                                         Style.defaultStyle
-                                        analyzed.meshes
+                                        seatAnalyzed.meshes
                                         800
                                         600
                             in
                             Expect.all
-                                [ \_ -> Expect.notEqual Nothing analyzed.meshes.driver
+                                [ \_ -> Expect.equal Nothing bareAnalyzed.meshes.driver
+                                , \_ -> Expect.notEqual Nothing seatAnalyzed.meshes.driver
                                 , \_ -> Expect.atLeast 1 (List.length entities)
                                 ]
                                 ()

@@ -468,6 +468,7 @@ type alias VehicleSpec =
     , hasSteeringWheelIndicator : Bool
     , steeringWheelPivotLdu : Maybe Vec3
     , steeringWheelIds : List Int
+    , driverPivotLdu : Maybe Vec3
     , loosePlacementIds : List Int
     , issues : List ValidationIssue
     , isDrivable : Bool
