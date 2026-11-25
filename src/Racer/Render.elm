@@ -1,7 +1,7 @@
 module Racer.Render exposing
     ( RenderCarSlot
     , buildCarWorldMatrix
-    , carStyleForTrack
+    , carStyleFor
     , renderCarWithStyleAndSpins
     , renderGarageViewport
     , renderRaceViewport
@@ -20,6 +20,7 @@ ground contact shadows.
 -}
 
 import Array
+import Game.MapParams exposing (MapParams)
 import Html exposing (Html)
 import Html.Attributes as Attr
 import Math.Matrix4 as Mat4 exposing (Mat4)
@@ -50,11 +51,11 @@ lduToMetersMatrix =
 
 {-| Match brick plastic lighting direction and vibrance to each course's sky palette.
 -}
-carStyleForTrack : TrackId -> Style.Style
-carStyleForTrack trackId =
+carStyleFor : MapParams -> Style.Style
+carStyleFor map =
     let
         pal =
-            TerrainShader.paletteForTrack trackId
+            TerrainShader.paletteFor map
 
         base =
             Style.defaultStyle
@@ -227,6 +228,9 @@ renderGarageViewport :
     -> Html msg
 renderGarageViewport trackId plinthMesh shadowMesh wheelPreviewSpin spec meshes camera w h attrs =
     let
+        map =
+            Track.mapForTrack trackId 1
+
         safeW =
             max 1 w
 
@@ -248,11 +252,11 @@ renderGarageViewport trackId plinthMesh shadowMesh wheelPreviewSpin spec meshes 
             sin (wheelPreviewSpin * 0.45) * 0.34
 
         style =
-            carStyleForTrack trackId
+            carStyleFor map
 
         entities =
-            [ TerrainShader.skyEntity camera trackId safeW safeH
-            , TerrainShader.terrainEntity Mat4.identity plinthMesh trackId camera safeW safeH
+            [ TerrainShader.skyEntity camera map safeW safeH
+            , TerrainShader.terrainEntity Mat4.identity plinthMesh map camera safeW safeH
             , TerrainShader.shadowEntity shadowMat shadowMesh camera safeW safeH 0.0
             ]
                 ++ renderVehicle
@@ -369,7 +373,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
             List.range (max 0 (currentChunk - 1)) (min (Array.length bundle.chunks - 1) (currentChunk + 4))
 
         propView =
-            TerrainShader.propView camera bundle.trackId safeW safeH
+            TerrainShader.propView camera bundle.map safeW safeH
 
         inView center radius =
             Instanced.sphereInFrustum frustum center radius
@@ -380,7 +384,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
                 |> List.filter (\c -> Instanced.sphereInFrustum frustum c.boundsCenter c.boundsRadius)
 
         groundEntities =
-            List.map (\c -> TerrainShader.groundEntity c.mesh bundle.trackId camera safeW safeH) visibleChunks
+            List.map (\c -> TerrainShader.groundEntity c.mesh bundle.map camera safeW safeH) visibleChunks
 
         propEntities =
             List.concatMap
@@ -391,7 +395,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
                 visibleChunks
 
         style =
-            carStyleForTrack bundle.trackId
+            carStyleFor bundle.map
 
         renderOneCar { spec, meshes, physics } =
             let
@@ -470,7 +474,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
             Scenery.debrisEntities propView props debris
 
         allEntities =
-            [ TerrainShader.skyEntity camera bundle.trackId safeW safeH ]
+            [ TerrainShader.skyEntity camera bundle.map safeW safeH ]
                 ++ groundEntities
                 ++ carsEntities
                 ++ propEntities

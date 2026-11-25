@@ -8,6 +8,7 @@ module Racer.Track exposing
     , groundHeightAt
     , loopFrame
     , loopLaneHalfWidth
+    , mapForTrack
     , obstaclesNear
     , recoveryBankGrade
     , recoveryCorridorM

@@ -3,7 +3,7 @@ module Racer.TerrainShader exposing
     , TerrainVertex
     , buildShadowQuadMesh
     , groundEntity
-    , paletteForTrack
+    , paletteFor
     , propView
     , shadowEntity
     , skyEntity
@@ -21,9 +21,10 @@ Distance fog fades everything smoothly into the horizon colour of the sky.
 
 import Game.BrickLook as BrickLook
 import Game.BrickProps as BrickProps
+import Game.MapParams as Map exposing (MapParams)
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
-import Racer.Types exposing (TrackId(..))
+import Racer.World as World
 import Render.Camera as Camera exposing (Camera)
 import WebGL
 import WebGL.Settings
@@ -73,12 +74,18 @@ type alias TrackPalette =
     }
 
 
-{-| Select sky, fog, and sun lighting palette for each countryside course.
+{-| The sky, fog and sun palette of a map: its biome, with the season's sun
+height and the weather's sky colour.
 -}
-paletteForTrack : TrackId -> TrackPalette
-paletteForTrack trackId =
-    case trackId of
-        FarmLane ->
+paletteFor : MapParams -> TrackPalette
+paletteFor map =
+    weatherTint map.weather (seasonTint map.season (biomePalette map.biome))
+
+
+biomePalette : Map.Biome -> TrackPalette
+biomePalette biome =
+    case biome of
+        Map.Farmland ->
             { zenithColor = vec3 0.26 0.55 0.9
             , horizonColor = vec3 0.83 0.9 0.94
             , fogColor = vec3 0.83 0.9 0.94
@@ -86,7 +93,7 @@ paletteForTrack trackId =
             , ambientGround = vec3 0.32 0.38 0.22
             }
 
-        ForestTrail ->
+        Map.Boreal ->
             { zenithColor = vec3 0.3 0.52 0.78
             , horizonColor = vec3 0.76 0.85 0.8
             , fogColor = vec3 0.72 0.82 0.76
@@ -94,7 +101,7 @@ paletteForTrack trackId =
             , ambientGround = vec3 0.24 0.32 0.2
             }
 
-        MeadowPath ->
+        Map.Fell ->
             { zenithColor = vec3 0.22 0.5 0.88
             , horizonColor = vec3 0.9 0.92 0.86
             , fogColor = vec3 0.9 0.92 0.86
@@ -102,15 +109,95 @@ paletteForTrack trackId =
             , ambientGround = vec3 0.38 0.42 0.24
             }
 
+        Map.Desert ->
+            { zenithColor = vec3 0.3 0.55 0.85
+            , horizonColor = vec3 0.93 0.86 0.7
+            , fogColor = vec3 0.93 0.86 0.7
+            , sunDir = Vec3.normalize (vec3 0.2 0.95 0.3)
+            , ambientGround = vec3 0.45 0.4 0.26
+            }
+
+
+{-| Autumn and winter suns sit lower in the sky.
+-}
+seasonTint : Map.Season -> TrackPalette -> TrackPalette
+seasonTint season pal =
+    let
+        lowerSun factor =
+            let
+                d =
+                    Vec3.toRecord pal.sunDir
+            in
+            { pal | sunDir = Vec3.normalize (vec3 d.x (d.y * factor) d.z) }
+    in
+    case season of
+        Map.Autumn ->
+            lowerSun 0.85
+
+        Map.Winter ->
+            lowerSun 0.7
+
+        _ ->
+            pal
+
+
+{-| Overcast, rain, storms, fog and snow grey the sky, and fog makes the
+horizon the fog colour.
+-}
+weatherTint : Map.WeatherKind -> TrackPalette -> TrackPalette
+weatherTint weather pal =
+    let
+        greyUp grey amount =
+            { pal
+                | zenithColor = mixColor pal.zenithColor grey amount
+                , horizonColor = mixColor pal.horizonColor grey (amount * 0.5)
+            }
+    in
+    case weather of
+        Map.Clear ->
+            pal
+
+        Map.Overcast ->
+            greyUp (vec3 0.55 0.58 0.62) 0.55
+
+        Map.Rain ->
+            greyUp (vec3 0.4 0.43 0.47) 0.6
+
+        Map.Storm ->
+            let
+                dark =
+                    greyUp (vec3 0.25 0.27 0.31) 0.75
+            in
+            { dark | horizonColor = mixColor dark.horizonColor (vec3 0.4 0.42 0.45) 0.5, fogColor = mixColor dark.fogColor (vec3 0.4 0.42 0.45) 0.5 }
+
+        Map.Fog ->
+            let
+                greyed =
+                    greyUp (vec3 0.7 0.72 0.74) 0.4
+            in
+            { greyed | horizonColor = greyed.fogColor, fogColor = mixColor greyed.fogColor (vec3 0.82 0.84 0.86) 0.5 }
+
+        Map.Snow ->
+            let
+                white =
+                    greyUp (vec3 0.8 0.84 0.9) 0.5
+            in
+            { white | horizonColor = mixColor white.horizonColor (vec3 0.92 0.94 0.96) 0.5, fogColor = mixColor white.fogColor (vec3 0.92 0.94 0.96) 0.5 }
+
+
+mixColor : Vec3 -> Vec3 -> Float -> Vec3
+mixColor a b t =
+    Vec3.add (Vec3.scale (1 - t) a) (Vec3.scale t b)
+
 
 {-| Render the sky: the shared brick sky (`Game.BrickLook.skyEntity`) in
 the course's colours, with a sun disc of yellow bricks and brick clouds.
 -}
-skyEntity : Camera -> TrackId -> Int -> Int -> WebGL.Entity
-skyEntity camera trackId width height =
+skyEntity : Camera -> MapParams -> Int -> Int -> WebGL.Entity
+skyEntity camera map width height =
     let
         pal =
-            paletteForTrack trackId
+            paletteFor map
     in
     BrickLook.skyEntity
         { viewProjection = viewProjection camera width height
@@ -136,22 +223,25 @@ viewProjection camera width height =
 {-| The camera, sun and fog of the course for the brick-built props
 (`Game.BrickProps`), matching the fog of the ground.
 -}
-propView : Camera -> TrackId -> Int -> Int -> BrickProps.View
-propView camera trackId width height =
+propView : Camera -> MapParams -> Int -> Int -> BrickProps.View
+propView camera map width height =
     let
         aspect =
             toFloat (max 1 width) / toFloat (max 1 height)
 
         pal =
-            paletteForTrack trackId
+            paletteFor map
+
+        fog =
+            World.fogRange map
     in
     { view = Camera.viewMatrix camera
     , projection = Camera.projectionMatrix aspect (Camera.nearPlane camera) (Camera.farPlane camera)
     , eye = Camera.position camera
     , sunDir = pal.sunDir
     , fogColor = pal.fogColor
-    , fogNear = 140
-    , fogFar = 620
+    , fogNear = fog.near
+    , fogFar = fog.far
     , fogMax = 0.92
     , width = max 1 width
     , height = max 1 height
@@ -161,25 +251,28 @@ propView camera trackId width height =
 {-| Render the garage plinth (or any terrain mesh) with a model matrix in the
 brick look of the ground.
 -}
-terrainEntity : Mat4 -> WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> WebGL.Entity
-terrainEntity modelMat mesh trackId camera width height =
-    surfaceEntity modelMat mesh trackId camera width height
+terrainEntity : Mat4 -> WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
+terrainEntity modelMat mesh map camera width height =
+    surfaceEntity modelMat mesh map camera width height
 
 
 {-| Render a chunk of countryside ground as LEGO plates: studded green
 baseplates for the fields and verges and smooth tiles for the unpaved road
 (`Game.BrickLook.surfaceFragmentShader`).
 -}
-groundEntity : WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> WebGL.Entity
-groundEntity mesh trackId camera width height =
-    surfaceEntity Mat4.identity mesh trackId camera width height
+groundEntity : WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
+groundEntity mesh map camera width height =
+    surfaceEntity Mat4.identity mesh map camera width height
 
 
-surfaceEntity : Mat4 -> WebGL.Mesh TerrainVertex -> TrackId -> Camera -> Int -> Int -> WebGL.Entity
-surfaceEntity modelMat mesh trackId camera width height =
+surfaceEntity : Mat4 -> WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
+surfaceEntity modelMat mesh map camera width height =
     let
         pal =
-            paletteForTrack trackId
+            paletteFor map
+
+        fog =
+            World.fogRange map
     in
     WebGL.entityWith
         [ DepthTest.default
@@ -193,8 +286,8 @@ surfaceEntity modelMat mesh trackId camera width height =
         , u_eyePos = Camera.position camera
         , u_sunDir = pal.sunDir
         , u_fogColor = pal.fogColor
-        , u_fogNear = 140
-        , u_fogFar = 620
+        , u_fogNear = fog.near
+        , u_fogFar = fog.far
         , u_fogMax = 0.92
         , u_skyAmbient = pal.horizonColor
         , u_groundAmbient = pal.ambientGround

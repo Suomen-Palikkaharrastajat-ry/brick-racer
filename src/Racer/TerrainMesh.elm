@@ -20,6 +20,7 @@ removing a smashed piece only filters a short list.
 
 import Array exposing (Array)
 import Game.BrickLook as BrickLook
+import Game.MapParams exposing (MapParams)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Scenery exposing (ArchKind(..), ArchSpot)
 import Racer.TerrainShader exposing (TerrainVertex)
@@ -60,6 +61,7 @@ type alias TrackChunk =
 -}
 type alias TrackRenderBundle =
     { trackId : TrackId
+    , map : MapParams
     , seed : Int
     , chunkSizeM : Float
     , chunks : Array TrackChunk
@@ -90,6 +92,7 @@ buildTrackRenderBundle track =
                 |> Array.fromList
     in
     { trackId = track.config.id
+    , map = track.config.map
     , seed = track.config.seed
     , chunkSizeM = chunkSizeM
     , chunks = chunks
