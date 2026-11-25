@@ -138,15 +138,17 @@ courseParams map =
 
 
 {-| The blueprint knots of a course, in order from the start to the finish.
+`attempt` picks one of several seeded versions of the same map, so that a
+course which fails validation can be replaced by the next attempt.
 -}
-generateKnots : MapParams -> CourseParams -> List BlueprintKnot
-generateKnots map cp =
+generateKnots : Int -> MapParams -> CourseParams -> List BlueprintKnot
+generateKnots attempt map cp =
     let
         n =
             max 6 cp.knotCount
 
         seed0 =
-            Random.initialSeed (Map.streamSeed "knots" map)
+            Random.initialSeed (Map.streamSeed ("knots/" ++ String.fromInt attempt) map)
 
         -- Forward progress: n - 1 random gaps, ending at 0.95 of the course.
         ( zGaps, seed1 ) =

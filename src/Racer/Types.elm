@@ -200,6 +200,7 @@ type alias TrackConfig =
     , lengthM : Float
     , dropM : Float
     , defaultHalfWidthM : Float
+    , knots : List BlueprintKnot
     }
 
 

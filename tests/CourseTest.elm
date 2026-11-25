@@ -7,7 +7,8 @@ every biome and a sweep of seeds.
 import Expect
 import Game.MapParams as Map exposing (Biome(..), MapParams, Season(..), WeatherKind(..))
 import Racer.Course as Course exposing (CourseParams)
-import Racer.Types exposing (BlueprintKnot, SegmentFeature(..))
+import Racer.Track as Track
+import Racer.Types exposing (BlueprintKnot, SegmentFeature(..), TrackId(..))
 import Test exposing (Test, describe, test)
 
 
@@ -33,7 +34,7 @@ violations check =
                 cp =
                     Course.courseParams map
             in
-            check map cp (Course.generateKnots map cp)
+            check map cp (Course.generateKnots 0 map cp)
                 |> List.map (\message -> Map.toCode map ++ ": " ++ message)
         )
         maps
@@ -204,6 +205,24 @@ suite =
                                 [ "halfWidth out of range" ]
                         )
                     )
+        , test "every seed of the three countryside courses passes validation" <|
+            \_ ->
+                Expect.equal []
+                    (List.concatMap
+                        (\id ->
+                            List.filterMap
+                                (\seed ->
+                                    case Track.validationIssues (Track.generate (Track.trackConfigFor id seed)) of
+                                        [] ->
+                                            Nothing
+
+                                        issues ->
+                                            Just (Debug.toString id ++ " seed " ++ String.fromInt seed ++ ": " ++ String.join ", " issues)
+                                )
+                                (List.range 1 40)
+                        )
+                        [ FarmLane, ForestTrail, MeadowPath ]
+                    )
         , test "the same map always gives the same course" <|
             \_ ->
                 Expect.equal []
@@ -213,7 +232,7 @@ suite =
                                 cp =
                                     Course.courseParams map
                             in
-                            Course.generateKnots map cp /= Course.generateKnots map cp
+                            Course.generateKnots 0 map cp /= Course.generateKnots 0 map cp
                         )
                         maps
                     )

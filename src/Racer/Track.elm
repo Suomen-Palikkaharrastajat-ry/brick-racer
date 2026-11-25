@@ -17,6 +17,7 @@ module Racer.Track exposing
     , sideRampLift
     , splineSampleAtS
     , trackConfigFor
+    , validationIssues
     , vergeWidthM
     )
 
@@ -44,7 +45,9 @@ normal queries and O(1) spatial-bucketed `obstaclesNear` collision lookups.
 -}
 
 import Array exposing (Array)
+import Game.MapParams as Map
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
+import Racer.Course as Course
 import Racer.Types
     exposing
         ( BlueprintKnot
@@ -68,37 +71,69 @@ import Racer.Types
 import Random
 
 
-{-| Return the canonical configuration preset for a given `TrackId` and seed.
-
-All courses are short (about 0.4–0.55 km) and steep (about 30–35 % average grade).
-
+{-| The course for a track id and seed. The id picks a map (its biome, with
+summer and clear weather), and the map's seeded course shape gives the length,
+drop and width. The first of eight seeded attempts that passes
+`validationIssues` is used; should none pass, the first attempt is kept.
 -}
 trackConfigFor : TrackId -> Int -> TrackConfig
 trackConfigFor id seed =
-    case id of
-        FarmLane ->
-            { id = FarmLane
+    let
+        map =
+            mapForTrack id seed
+
+        cp =
+            Course.courseParams map
+
+        configAt attempt =
+            { id = id
             , seed = seed
-            , lengthM = 960.0
-            , dropM = 300.0
-            , defaultHalfWidthM = 4.4
+            , lengthM = cp.lengthM
+            , dropM = cp.dropM
+            , defaultHalfWidthM = cp.halfWidthM
+            , knots = Course.generateKnots attempt map cp
             }
 
-        ForestTrail ->
-            { id = ForestTrail
-            , seed = seed
-            , lengthM = 1080.0
-            , dropM = 350.0
-            , defaultHalfWidthM = 3.9
-            }
+        firstValid attempt =
+            let
+                config =
+                    configAt attempt
+            in
+            if attempt >= maxAttempts - 1 || List.isEmpty (validationIssues (generate config)) then
+                config
 
-        MeadowPath ->
-            { id = MeadowPath
-            , seed = seed
-            , lengthM = 840.0
-            , dropM = 300.0
-            , defaultHalfWidthM = 3.3
-            }
+            else
+                firstValid (attempt + 1)
+    in
+    firstValid 0
+
+
+{-| Attempts tried for each course before the first one is kept anyway.
+-}
+maxAttempts : Int
+maxAttempts =
+    8
+
+
+{-| The map behind a track id: the three countryside courses are the
+farmland, boreal and fell maps.
+-}
+mapForTrack : TrackId -> Int -> Map.MapParams
+mapForTrack id seed =
+    { biome =
+        case id of
+            FarmLane ->
+                Map.Farmland
+
+            ForestTrail ->
+                Map.Boreal
+
+            MeadowPath ->
+                Map.Fell
+    , season = Map.Summer
+    , weather = Map.Clear
+    , seed = clamp 1 999999 seed
+    }
 
 
 {-| Generate a complete deterministic `GeneratedTrack` from a `TrackConfig`.
@@ -202,6 +237,159 @@ generate config =
         | obstacles = obstacles
         , obstacleBuckets = bucketObstacles bucketSizeM bucketCount obstacles
     }
+
+
+{-| Checks a generated course must pass before it is used: its length and
+grade, no steep 20 m stretch, no bend tighter than 18 m, legs far enough
+apart not to touch, one loop, at least one launch ramp, and at least four
+checkpoints in order. An empty list means the course passes.
+-}
+validationIssues : GeneratedTrack -> List String
+validationIssues track =
+    let
+        config =
+            track.config
+
+        samples =
+            track.samples
+
+        n =
+            Array.length samples
+
+        sampleAt i =
+            Array.get i samples
+
+        lengthIssue =
+            if abs (track.totalLengthM - config.lengthM) > 0.08 * config.lengthM then
+                Just "length is off the course's target"
+
+            else
+                Nothing
+
+        grade =
+            track.totalDropM / max 1.0 track.totalLengthM
+
+        gradeIssue =
+            if grade < 0.25 || grade > 0.48 then
+                Just "average grade is out of range"
+
+            else
+                Nothing
+
+        steep i =
+            case ( sampleAt i, sampleAt (i + 10) ) of
+                ( Just a, Just b ) ->
+                    let
+                        ds =
+                            b.s - a.s
+
+                        dy =
+                            Vec3.getY a.center - Vec3.getY b.center
+                    in
+                    ds > 0 && dy / ds > 0.65
+
+                _ ->
+                    False
+
+        steepIssue =
+            if List.any steep (List.range 0 (n - 11)) then
+                Just "a stretch is steeper than 65 %"
+
+            else
+                Nothing
+
+        -- Turn of the course over 4 m (two samples either side): the arc
+        -- length divided by the turn angle is the bend radius, which must be 18 m or more.
+        tight i =
+            case ( sampleAt (i - 1), sampleAt i, sampleAt (i + 1) ) of
+                ( Just a, _, Just b ) ->
+                    let
+                        cross =
+                            Vec3.getX a.tangent * Vec3.getZ b.tangent - Vec3.getZ a.tangent * Vec3.getX b.tangent
+
+                        dot =
+                            Vec3.getX a.tangent * Vec3.getX b.tangent + Vec3.getZ a.tangent * Vec3.getZ b.tangent
+
+                        turn =
+                            abs (atan2 cross dot)
+
+                        arc =
+                            b.s - a.s
+                    in
+                    turn * 18.0 > arc
+
+                _ ->
+                    False
+
+        curveIssue =
+            if List.any tight (List.range 1 (n - 2)) then
+                Just "a bend is tighter than 18 m"
+
+            else
+                Nothing
+
+        -- Legs more than 80 m apart along the course must keep clear of each other.
+        spaced =
+            List.range 0 (n - 1)
+                |> List.filter (\i -> modBy 4 i == 0)
+                |> List.filterMap (\i -> Maybe.map (\sample -> ( i, sample )) (sampleAt i))
+
+        touching ( i, a ) ( j, b ) =
+            i
+                < j
+                && b.s
+                - a.s
+                > 80.0
+                && sqrt ((Vec3.getX a.center - Vec3.getX b.center) ^ 2 + (Vec3.getZ a.center - Vec3.getZ b.center) ^ 2)
+                < 2.0
+                * (a.halfWidth + recoveryCorridorM)
+
+        clearanceIssue =
+            if List.any (\p -> List.any (\q -> touching p q) spaced) spaced then
+                Just "two legs of the course touch"
+
+            else
+                Nothing
+
+        loopIssue =
+            if List.length track.loops == 1 then
+                Nothing
+
+            else
+                Just "the course does not have exactly one loop"
+
+        rampIssue =
+            if List.isEmpty track.brickRamps then
+                Just "the course has no launch ramp"
+
+            else
+                Nothing
+
+        checkpointsIssue =
+            let
+                ss =
+                    List.map .s track.checkpoints
+
+                increasing =
+                    List.map2 Tuple.pair ss (List.drop 1 ss)
+                        |> List.all (\( a, b ) -> b > a)
+            in
+            if List.length track.checkpoints >= 4 && increasing then
+                Nothing
+
+            else
+                Just "checkpoints are missing or out of order"
+    in
+    List.filterMap identity
+        [ lengthIssue
+        , gradeIssue
+        , steepIssue
+        , curveIssue
+        , clearanceIssue
+        , loopIssue
+        , rampIssue
+        , checkpointsIssue
+        ]
 
 
 {-| Remove smashed scenery pieces (by obstacle id) from collision lists and buckets.
@@ -444,15 +632,7 @@ buildControlPoints : TrackConfig -> List ControlPoint
 buildControlPoints config =
     let
         rawKnots =
-            case config.id of
-                FarmLane ->
-                    farmLaneKnots
-
-                ForestTrail ->
-                    forestTrailKnots
-
-                MeadowPath ->
-                    meadowPathKnots
+            config.knots
 
         lenScale =
             config.lengthM
@@ -501,55 +681,6 @@ buildControlPoints config =
                 rawKnots
     in
     List.reverse finalKnots
-
-
-{-| Farm lane: run-in, steep left-hand drop, gravel right-hand sweep with ruts,
-then the steepest pitch down into the farmyard. `xOffset` is in meters.
--}
-farmLaneKnots : List BlueprintKnot
-farmLaneKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.11, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.1, halfWidth = 4.5, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.27, xOffset = -42.0, yDropFrac = 0.24, zProgress = 0.25, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.43, xOffset = -56.0, yDropFrac = 0.38, zProgress = 0.4, halfWidth = 4.3, surface = GravelRoad, feature = Nothing }
-    , { sFrac = 0.59, xOffset = 7.0, yDropFrac = 0.55, zProgress = 0.55, halfWidth = 4.2, surface = GravelRoad, feature = Just (RoughWash { amplitudeM = 0.06, wavelengthM = 2.6 }) }
-    , { sFrac = 0.75, xOffset = 52.0, yDropFrac = 0.73, zProgress = 0.7, halfWidth = 4.3, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.9, xOffset = 35.0, yDropFrac = 0.93, zProgress = 0.85, halfWidth = 4.6, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 1.0, xOffset = 28.0, yDropFrac = 1.0, zProgress = 0.95, halfWidth = 5.0, surface = DirtRoad, feature = Nothing }
-    ]
-
-
-{-| Forest trail: packed-earth track with a right-hand bend over roots, a steep
-gravel chute through a clearing, a left-hand bend and a log hump.
--}
-forestTrailKnots : List BlueprintKnot
-forestTrailKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 4.1, surface = ForestTrack, feature = Nothing }
-    , { sFrac = 0.1, xOffset = 0.0, yDropFrac = 0.05, zProgress = 0.09, halfWidth = 4.0, surface = ForestTrack, feature = Nothing }
-    , { sFrac = 0.24, xOffset = 26.0, yDropFrac = 0.2, zProgress = 0.22, halfWidth = 3.8, surface = ForestTrack, feature = Nothing }
-    , { sFrac = 0.38, xOffset = 34.0, yDropFrac = 0.33, zProgress = 0.35, halfWidth = 3.8, surface = ForestTrack, feature = Just (RoughWash { amplitudeM = 0.08, wavelengthM = 2.2 }) }
-    , { sFrac = 0.53, xOffset = 6.0, yDropFrac = 0.52, zProgress = 0.49, halfWidth = 4.0, surface = GravelRoad, feature = Nothing }
-    , { sFrac = 0.67, xOffset = -26.0, yDropFrac = 0.67, zProgress = 0.62, halfWidth = 3.8, surface = ForestTrack, feature = Nothing }
-    , { sFrac = 0.8, xOffset = -20.0, yDropFrac = 0.81, zProgress = 0.75, halfWidth = 3.9, surface = ForestTrack, feature = Just (LaunchRamp { lengthM = 9.0, lipHeightM = 0.55 }) }
-    , { sFrac = 0.92, xOffset = 0.0, yDropFrac = 0.94, zProgress = 0.87, halfWidth = 4.2, surface = GravelRoad, feature = Nothing }
-    , { sFrac = 1.0, xOffset = 4.0, yDropFrac = 1.0, zProgress = 0.94, halfWidth = 4.6, surface = GravelRoad, feature = Nothing }
-    ]
-
-
-{-| Meadow footpath: narrowest and steepest, a field hump on the first bend,
-tussocky grass on the last drop.
--}
-meadowPathKnots : List BlueprintKnot
-meadowPathKnots =
-    [ { sFrac = 0.0, xOffset = 0.0, yDropFrac = 0.0, zProgress = 0.0, halfWidth = 3.6, surface = GrassPath, feature = Nothing }
-    , { sFrac = 0.12, xOffset = 0.0, yDropFrac = 0.06, zProgress = 0.11, halfWidth = 3.4, surface = GrassPath, feature = Nothing }
-    , { sFrac = 0.27, xOffset = -18.0, yDropFrac = 0.25, zProgress = 0.26, halfWidth = 3.2, surface = GrassPath, feature = Nothing }
-    , { sFrac = 0.42, xOffset = 10.0, yDropFrac = 0.43, zProgress = 0.41, halfWidth = 3.2, surface = GrassPath, feature = Just (LaunchRamp { lengthM = 8.0, lipHeightM = 0.5 }) }
-    , { sFrac = 0.58, xOffset = 26.0, yDropFrac = 0.6, zProgress = 0.56, halfWidth = 3.2, surface = DirtRoad, feature = Nothing }
-    , { sFrac = 0.74, xOffset = 6.0, yDropFrac = 0.79, zProgress = 0.71, halfWidth = 3.2, surface = GrassPath, feature = Just (RoughWash { amplitudeM = 0.07, wavelengthM = 3.0 }) }
-    , { sFrac = 0.89, xOffset = -12.0, yDropFrac = 0.94, zProgress = 0.86, halfWidth = 3.5, surface = GrassPath, feature = Nothing }
-    , { sFrac = 1.0, xOffset = -10.0, yDropFrac = 1.0, zProgress = 0.96, halfWidth = 4.0, surface = GrassPath, feature = Nothing }
-    ]
 
 
 evaluateCatmullRomSeries : Int -> List ControlPoint -> List RawSplinePt
