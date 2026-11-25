@@ -158,8 +158,12 @@ renderVehicle worldMat steerRad wheelSpins camera style meshes width height =
                                 False ->
                                     Mat4.identity
 
+                        -- Roll each wheel about its own axle. The mesh is centred on
+                        -- its hub in car space, so the spin is applied before the
+                        -- steering and hub transforms. A fixed X axis made wheels whose
+                        -- axle is not along X wobble and shake as they turned.
                         spinTransform =
-                            Mat4.makeRotate spinAngle (vec3 1 0 0)
+                            Mat4.makeRotate spinAngle wheel.spinAxis
 
                         wheelWorld =
                             case ( wheel.isSteerable, meshes.steeringBogie ) of
