@@ -69,4 +69,33 @@ suite =
             \_ ->
                 Expect.equal [ False, False, False, True, False, False ]
                     (List.map (\w -> World.lightning { neutral | weather = w }) Map.allWeathers)
+        , test "no lightning flash outside a storm" <|
+            \_ ->
+                Expect.equal []
+                    (List.filter
+                        (\m -> m.weather /= Storm && List.any (\p -> World.lightningFlash m p /= 0) runPoints)
+                        everyMap
+                    )
+        , test "a storm flashes now and then, between 0 and 1, the same every time" <|
+            \_ ->
+                let
+                    storm =
+                        { neutral | weather = Storm, seed = 4242 }
+
+                    flashes =
+                        List.map (World.lightningFlash storm) runPoints
+                in
+                Expect.equal [ True, True, True, True ]
+                    [ List.any (\f -> f > 0) flashes
+                    , List.any (\f -> f == 0) flashes
+                    , List.all (\f -> f >= 0 && f <= 1) flashes
+                    , flashes == List.map (World.lightningFlash storm) runPoints
+                    ]
         ]
+
+
+{-| Every half metre along the first 2 km of a run.
+-}
+runPoints : List Float
+runPoints =
+    List.map (\i -> toFloat i * 0.5) (List.range 0 4000)

@@ -17,6 +17,11 @@ with (`propView`).
 
 Distance fog fades everything smoothly into the horizon colour of the sky.
 
+In a storm, the sky, the ground's ambient light and the fog brighten for a
+moment when lightning flashes (`Racer.World.lightningFlash`). The entities
+take the flash amount, 0 when there is none, which leaves the colours as
+they are.
+
 -}
 
 import Game.BrickLook as BrickLook
@@ -185,19 +190,45 @@ weatherTint weather pal =
             { white | horizonColor = mixColor white.horizonColor (vec3 0.92 0.94 0.96) 0.5, fogColor = mixColor white.fogColor (vec3 0.92 0.94 0.96) 0.5 }
 
 
+{-| Brighten a palette for a lightning flash of the given amount (0 to 1):
+the sky and fog toward a cold white, the ground's ambient light toward a
+pale blue. No flash leaves the palette untouched.
+-}
+flashed : Float -> TrackPalette -> TrackPalette
+flashed amount pal =
+    if amount <= 0 then
+        pal
+
+    else
+        let
+            t =
+                min 1 amount
+
+            white =
+                vec3 0.92 0.94 1.0
+        in
+        { pal
+            | zenithColor = mixColor pal.zenithColor white (t * 0.7)
+            , horizonColor = mixColor pal.horizonColor white (t * 0.6)
+            , fogColor = mixColor pal.fogColor white (t * 0.45)
+            , ambientGround = mixColor pal.ambientGround (vec3 0.8 0.84 0.95) (t * 0.6)
+        }
+
+
 mixColor : Vec3 -> Vec3 -> Float -> Vec3
 mixColor a b t =
     Vec3.add (Vec3.scale (1 - t) a) (Vec3.scale t b)
 
 
 {-| Render the sky: the shared brick sky (`Game.BrickLook.skyEntity`) in
-the course's colours, with a sun disc of yellow bricks and brick clouds.
+the course's colours, with a sun disc of yellow bricks and brick clouds,
+brightened by a lightning flash (0 for none).
 -}
-skyEntity : Camera -> MapParams -> Int -> Int -> WebGL.Entity
-skyEntity camera map width height =
+skyEntity : Camera -> MapParams -> Float -> Int -> Int -> WebGL.Entity
+skyEntity camera map flash width height =
     let
         pal =
-            paletteFor map
+            flashed flash (paletteFor map)
     in
     BrickLook.skyEntity
         { viewProjection = viewProjection camera width height
@@ -221,16 +252,17 @@ viewProjection camera width height =
 
 
 {-| The camera, sun and fog of the course for the brick-built props
-(`Game.BrickProps`), matching the fog of the ground.
+(`Game.BrickProps`), matching the fog of the ground, with the same
+lightning flash (0 for none).
 -}
-propView : Camera -> MapParams -> Int -> Int -> BrickProps.View
-propView camera map width height =
+propView : Camera -> MapParams -> Float -> Int -> Int -> BrickProps.View
+propView camera map flash width height =
     let
         aspect =
             toFloat (max 1 width) / toFloat (max 1 height)
 
         pal =
-            paletteFor map
+            flashed flash (paletteFor map)
 
         fog =
             World.fogRange map
@@ -253,23 +285,24 @@ brick look of the ground.
 -}
 terrainEntity : Mat4 -> WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
 terrainEntity modelMat mesh map camera width height =
-    surfaceEntity modelMat mesh map camera width height
+    surfaceEntity modelMat mesh map 0 camera width height
 
 
 {-| Render a chunk of countryside ground as LEGO plates: studded green
 baseplates for the fields and verges and smooth tiles for the unpaved road
-(`Game.BrickLook.surfaceFragmentShader`).
+(`Game.BrickLook.surfaceFragmentShader`), lit up by a lightning flash (0 for
+none).
 -}
-groundEntity : WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
-groundEntity mesh map camera width height =
-    surfaceEntity Mat4.identity mesh map camera width height
+groundEntity : WebGL.Mesh TerrainVertex -> MapParams -> Float -> Camera -> Int -> Int -> WebGL.Entity
+groundEntity mesh map flash camera width height =
+    surfaceEntity Mat4.identity mesh map flash camera width height
 
 
-surfaceEntity : Mat4 -> WebGL.Mesh TerrainVertex -> MapParams -> Camera -> Int -> Int -> WebGL.Entity
-surfaceEntity modelMat mesh map camera width height =
+surfaceEntity : Mat4 -> WebGL.Mesh TerrainVertex -> MapParams -> Float -> Camera -> Int -> Int -> WebGL.Entity
+surfaceEntity modelMat mesh map flash camera width height =
     let
         pal =
-            paletteFor map
+            flashed flash (paletteFor map)
 
         fog =
             World.fogRange map

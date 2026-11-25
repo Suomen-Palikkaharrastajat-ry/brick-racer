@@ -32,6 +32,7 @@ import Racer.TerrainMesh exposing (TrackChunk, TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
 import Racer.Types exposing (GeneratedTrack, PhysicsState, SteeringMechanism(..), TrackId(..), VehicleSpec, lduPerMeter, lduToMeters)
+import Racer.World as World
 import Render.Camera as Camera exposing (Camera)
 import Render.Instanced as Instanced
 import Render.Scene as Scene
@@ -256,7 +257,7 @@ renderGarageViewport trackId plinthMesh shadowMesh wheelPreviewSpin spec meshes 
             carStyleFor map
 
         entities =
-            [ TerrainShader.skyEntity camera map safeW safeH
+            [ TerrainShader.skyEntity camera map 0 safeW safeH
             , TerrainShader.terrainEntity Mat4.identity plinthMesh map camera safeW safeH
             , TerrainShader.shadowEntity shadowMat shadowMesh camera safeW safeH 0.0
             ]
@@ -373,8 +374,12 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
         chunkIndices =
             List.range (max 0 (currentChunk - 1)) (min (Array.length bundle.chunks - 1) (currentChunk + 4))
 
+        -- A storm's lightning, timed by how far the leading car has come.
+        flash =
+            World.lightningFlash bundle.map primaryProgress
+
         propView =
-            TerrainShader.propView camera bundle.map safeW safeH
+            TerrainShader.propView camera bundle.map flash safeW safeH
 
         inView center radius =
             Instanced.sphereInFrustum frustum center radius
@@ -385,7 +390,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
                 |> List.filter (\c -> Instanced.sphereInFrustum frustum c.boundsCenter c.boundsRadius)
 
         groundEntities =
-            List.map (\c -> TerrainShader.groundEntity c.mesh bundle.map camera safeW safeH) visibleChunks
+            List.map (\c -> TerrainShader.groundEntity c.mesh bundle.map flash camera safeW safeH) visibleChunks
 
         propEntities =
             List.concatMap
@@ -483,7 +488,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
                     []
 
         allEntities =
-            [ TerrainShader.skyEntity camera bundle.map safeW safeH ]
+            [ TerrainShader.skyEntity camera bundle.map flash safeW safeH ]
                 ++ groundEntities
                 ++ carsEntities
                 ++ propEntities

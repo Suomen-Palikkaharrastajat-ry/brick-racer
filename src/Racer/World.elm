@@ -3,6 +3,7 @@ module Racer.World exposing
     , fogRange
     , gripScale
     , lightning
+    , lightningFlash
     , precipitation
     , rollingResistScale
     )
@@ -12,14 +13,17 @@ module Racer.World exposing
 Grip and rolling resistance are multipliers on the road: a winter course
 grips less and rolls harder, a storm is slipperier than a clear day. Fog
 sets how close the view fades out. Precipitation and lightning are what the
-renderer draws on top of the course.
+renderer draws on top of the course. A storm's flashes are timed by how far
+the car has come (`lightningFlash`), not by the clock, so the same run always
+flashes at the same places.
 
 The neutral map (summer, clear) gives grip 1, rolling resistance 1 and the
 usual fog, so courses on it play exactly as before.
 
 -}
 
-import Game.MapParams exposing (MapParams, Season(..), WeatherKind(..))
+import Game.MapParams as Map exposing (MapParams, Season(..), WeatherKind(..))
+import Random
 
 
 {-| What falls from the sky.
@@ -166,3 +170,58 @@ precipitation map =
 lightning : MapParams -> Bool
 lightning map =
     map.weather == Storm
+
+
+{-| How bright the lightning is at a distance along the course, in metres,
+from 0 (no flash) to 1. Only storms flash.
+
+The course is cut into 45 m stretches. Each stretch has, from the map's
+"weather" seed, a one in three chance of a flash somewhere in it: a bright
+strike that fades over about 6 m, with a short dip in the middle so it
+flickers. The same map and the same progress always give the same flash.
+
+-}
+lightningFlash : MapParams -> Float -> Float
+lightningFlash map progressM =
+    if not (lightning map) then
+        0
+
+    else
+        let
+            stretchM =
+                45
+
+            flashM =
+                6
+
+            stretch =
+                floor (progressM / stretchM)
+
+            ( ( chance, offset ), strength ) =
+                Random.step
+                    (Random.map2 Tuple.pair
+                        (Random.map2 Tuple.pair (Random.float 0 1) (Random.float 0 (stretchM - flashM)))
+                        (Random.float 0.6 1.0)
+                    )
+                    (Random.initialSeed (Map.streamSeed "weather" map + stretch * 7919))
+                    |> Tuple.first
+
+            d =
+                progressM - (toFloat stretch * stretchM + offset)
+        in
+        if chance > 0.34 || d < 0 || d >= flashM then
+            0
+
+        else
+            let
+                fade =
+                    (1 - d / flashM) ^ 2
+
+                flicker =
+                    if d > 1.2 && d < 2.0 then
+                        0.35
+
+                    else
+                        1
+            in
+            strength * fade * flicker
