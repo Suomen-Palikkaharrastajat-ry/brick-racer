@@ -2,11 +2,16 @@ module TrackTest exposing (suite)
 
 {-| Unit tests for `Racer.Track` procedural spline generation, heightmap continuity,
 deterministic seeding, course length/steepness, and roadside scenery clearance.
+
+The courses are generated from maps (`Racer.Course`), so these tests check
+invariants every generated course must keep rather than the values of one
+hand-written layout.
+
 -}
 
 import Array
 import Expect
-import Game.MapParams exposing (Season(..))
+import Game.MapParams as Map exposing (Season(..))
 import Math.Vector3 as Vec3
 import Racer.TerrainMesh as TerrainMesh
 import Racer.Track as Track
@@ -90,6 +95,23 @@ suite =
                     , \_ -> Expect.equal (Just MeadowPath) (trackIdFromString "alpine-glacier")
                     ]
                     ()
+        , test "Each track id is its biome's summer, clear map with the same seed" <|
+            \_ ->
+                Expect.equal
+                    [ ( Map.Farmland, Map.Summer, ( Map.Clear, 42 ) )
+                    , ( Map.Boreal, Map.Summer, ( Map.Clear, 42 ) )
+                    , ( Map.Fell, Map.Summer, ( Map.Clear, 42 ) )
+                    ]
+                    (List.map
+                        (\id ->
+                            let
+                                m =
+                                    (Track.trackConfigFor id 42).map
+                            in
+                            ( m.biome, m.season, ( m.weather, m.seed ) )
+                        )
+                        [ FarmLane, ForestTrail, MeadowPath ]
+                    )
         , test "Deterministic generation produces identical samples and obstacles for same seed" <|
             \_ ->
                 let
@@ -364,7 +386,9 @@ verifyBrickRamps id seed =
                         track.brickRamps
             in
             Expect.all
-                [ \_ -> Expect.atLeast 5 (List.length track.brickRamps)
+                [ -- Validation asks for at least one; how many more fit depends on
+                  -- how much of the generated course is straight and not too steep.
+                  \_ -> Expect.atLeast 1 (List.length track.brickRamps)
                 , \_ -> Expect.atMost 8 (List.length track.brickRamps)
                 , \_ -> Expect.equal True spacedApart
                 , \_ -> Expect.equal [] badRamps
