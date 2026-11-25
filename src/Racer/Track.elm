@@ -2172,18 +2172,11 @@ findClosestSplineProjection hintS track x z =
 
             localBest =
                 scanRange track.samples maxSegIdx lo hi x z
-
-            distFromCenterSq =
-                let
-                    dx =
-                        x - Vec3.getX localBest.center
-
-                    dz =
-                        z - Vec3.getZ localBest.center
-                in
-                dx * dx + dz * dz
         in
-        if (localBest.idx == lo || localBest.idx == hi) && distFromCenterSq > 900.0 then
+        -- A nearest point on the edge of the window may not be the nearest
+        -- point of the course (the inside of a bend reaches past it), so then
+        -- the whole course is scanned. The ends of the course are real ends.
+        if (localBest.idx == lo && lo > 0) || (localBest.idx == hi && hi < maxSegIdx) then
             scanRange track.samples maxSegIdx 0 maxSegIdx x z
 
         else
