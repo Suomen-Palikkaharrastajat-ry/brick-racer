@@ -1,6 +1,12 @@
 # Brick Racer (Mäkiautoleikki)
 
-Brick Racer is a 3D soapbox downhill racer by Suomen Palikkaharrastajat ry: steer your Brick Play or Brick Studio car down mountain tracks under gravity.
+Brick Racer is a 3D soapbox downhill racer by Suomen Palikkaharrastajat ry: steer your Brick Play or Brick Studio car down generated downhill courses under gravity.
+
+Every course comes from a map code such as `boreal-winter-snow-48213`: a
+landscape (farmland, forest, fell or desert), a season, a weather and a seed.
+Pick each one on the main screen or leave it on Random, roll a new seed, or
+paste a map code into the seed field. Share links carry the map
+(`#map=<code>&b/<car>`), and best times are kept per map code.
 
 It runs on the shared Brick Frame game layer of `brick-studio` (git submodule
 `vendor/brick-studio`), which also brings in the family branding from

@@ -11,6 +11,11 @@
 - **UI & Audio (`src/Main.elm`, `src/Racer/HUD.elm`, `src/Racer/Camera.elm`, `audio.js`, `main.js`):** TEA page state machine (`Menu`, `Garage`, `Race`, `Results`), Chase/Hood/Orbit cameras, keyboard/touch/tilt controls, and Web Audio procedural wind/rumble/impact synthesis.
 - **Shared layer (`vendor/packages/brick-frame-game`, `vendor/packages/brick-frame-ui`):** shared with Brick Sails through the `vendor/brick-studio` submodule. `main.js` only calls `bootGame` (`runtime/game-boot.js`) with the racer's storage prefix (`racer`) and synth; `src/Ports.elm` keeps only the racer's audio ports and every other port is in `Game.Ports`. Part fetching (`Game.PartLoading`), leaderboard helpers (`Game.Leaderboard`), multiplayer (`Game.Multiplayer`, `Game.MultiplayerUI`), the base synth (`runtime/audio-engine.js`), the game shell CSS (`game.css`) and the make targets (`Makefile.game`) live there too. Gameplay (physics, tracks, terrain, analysis, scoring) stays in `src/Racer/`.
 
+## Maps
+
+- Map code `biome-season-weather-seed` (`Game.MapParams.toCode` / `fromCode`), for example `fell-autumn-fog-1234`. The garage shows `Game.MapPicker` (`Pages.Garage.viewCourseSelection`, styled by `.racer-map-picker` in `main.css`): biome, season and weather each have Random, resolved from the seed by `Game.MapParams.resolve`; the first start is all Random with seed 1. `Main` keeps `selection`, `seedText`, the resolved `map` and `lastMap` (the "Previous map" button); Results has "New map".
+- URL hash `#map=<code>&b/<car>` (`#garage&map=...` in the editor); old `#track=`/`seed=` parts are ignored. Leaderboards: one board per `Game.MapParams.leaderboardKey`; entries of other formats are dropped on load. Bump `Game.MapParams.generatorVersion` when generated courses change. Multiplayer rooms carry the map code as `courseId`, and joiners switch to it.
+
 ## Commands
 
 Run within `devenv shell --`:
