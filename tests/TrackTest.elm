@@ -74,7 +74,7 @@ suite =
             \_ ->
                 let
                     field season =
-                        TerrainMesh.bandColor ForestTrail season DirtRoad 3 1
+                        TerrainMesh.bandColor ForestTrail season DirtRoad 5 1
 
                     snowy c =
                         Vec3.getX c > 0.85 && Vec3.getY c > 0.85 && Vec3.getZ c > 0.85

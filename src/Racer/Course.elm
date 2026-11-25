@@ -150,12 +150,13 @@ generateKnots attempt map cp =
         seed0 =
             Random.initialSeed (Map.streamSeed ("knots/" ++ String.fromInt attempt) map)
 
-        -- Forward progress: n - 1 random gaps, ending at 0.95 of the course.
+        -- Forward progress: n - 1 random gaps. The total is scaled below so
+        -- that the course, with its drop and sideways swing, has its length.
         ( zGaps, seed1 ) =
             randomsIn (n - 1) ( 0.7, 1.3 ) seed0
 
-        zArr =
-            Array.fromList (List.map (\c -> 0.95 * c) (shareCumulative zGaps))
+        zShares =
+            shareCumulative zGaps
 
         -- Drop: gaps of random size, the first capped and one middle gap steeper.
         ( dropGaps, seed2 ) =
@@ -253,33 +254,51 @@ generateKnots attempt map cp =
             else
                 -1.0
 
-        walked =
-            List.foldl
-                (\i acc ->
-                    let
-                        dir =
-                            if at flipArr (i - 1) < 0.75 then
-                                -acc.dir
+        walkSideways zA =
+            let
+                walked =
+                    List.foldl
+                        (\i acc ->
+                            let
+                                dir =
+                                    if at flipArr (i - 1) < 0.75 then
+                                        -acc.dir
 
-                            else
-                                acc.dir
+                                    else
+                                        acc.dir
 
-                        target =
-                            dir * at ampArr (i - 1) * cp.swingM
+                                target =
+                                    dir * at ampArr (i - 1) * cp.swingM
 
-                        x =
-                            stepSideways cp.lengthM (at zArr (i - 1)) (at zArr i) acc.x target
-                    in
-                    { x = x, dir = dir, xs = acc.xs ++ [ x ] }
-                )
-                { x = 0, dir = startDir, xs = [ 0 ] }
-                (List.range 1 (n - 2))
+                                x =
+                                    stepSideways cp.lengthM (at zA (i - 1)) (at zA i) acc.x target
+                            in
+                            { x = x, dir = dir, xs = acc.xs ++ [ x ] }
+                        )
+                        { x = 0, dir = startDir, xs = [ 0 ] }
+                        (List.range 1 (n - 2))
 
-        lastX =
-            stepSideways cp.lengthM (at zArr (n - 2)) (at zArr (n - 1)) walked.x (0.4 * walked.x)
+                lastX =
+                    stepSideways cp.lengthM (at zA (n - 2)) (at zA (n - 1)) walked.x (0.4 * walked.x)
+            in
+            Array.fromList (walked.xs ++ [ lastX ])
+
+        zFor scale =
+            Array.fromList (List.map (\c -> scale * c) zShares)
+
+        -- Two rounds: walk sideways, then scale the forward progress so the
+        -- polyline through the knots is 0.99 of the course length.
+        scale1 =
+            forwardScale cp (zFor 0.95) yArr (walkSideways (zFor 0.95))
+
+        scale2 =
+            forwardScale cp (zFor scale1) yArr (walkSideways (zFor scale1))
+
+        zArr =
+            zFor scale2
 
         xArr =
-            Array.fromList (walked.xs ++ [ lastX ])
+            walkSideways zArr
 
         -- Features on middle knots, at least one knot apart.
         candidates =
@@ -335,6 +354,54 @@ generateKnots attempt map cp =
             }
         )
         (List.range 0 (n - 1))
+
+
+{-| The share of the course length that the forward progress should reach
+so that the polyline through the knots (forward, drop and sideways) is 0.99
+of the course length, found by bisection between 0.5 and 1.0.
+-}
+forwardScale : CourseParams -> Array Float -> Array Float -> Array Float -> Float
+forwardScale cp zA yA xA =
+    let
+        count =
+            Array.length zA
+
+        lengthAt scale =
+            List.range 1 (count - 1)
+                |> List.map
+                    (\i ->
+                        let
+                            dz =
+                                (at zA i - at zA (i - 1)) / max 1.0e-6 (at zA (count - 1)) * scale * cp.lengthM
+
+                            dy =
+                                (at yA i - at yA (i - 1)) * cp.dropM
+
+                            dx =
+                                at xA i - at xA (i - 1)
+                        in
+                        sqrt (dz * dz + dy * dy + dx * dx)
+                    )
+                |> List.sum
+
+        target =
+            0.99 * cp.lengthM
+
+        bisect lo hi steps =
+            let
+                mid =
+                    (lo + hi) / 2
+            in
+            if steps <= 0 then
+                mid
+
+            else if lengthAt mid > target then
+                bisect lo mid (steps - 1)
+
+            else
+                bisect mid hi (steps - 1)
+    in
+    bisect 0.5 1.0 24
 
 
 {-| Move sideways from `prev` towards `target`, never more than 0.55 m per
