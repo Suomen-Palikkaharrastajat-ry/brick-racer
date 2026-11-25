@@ -338,7 +338,7 @@ verifyBrickRamps id seed =
                     List.map .startS track.brickRamps
 
                 spacedApart =
-                    List.map2 (\a b -> b - a >= 70.0) starts (List.drop 1 starts)
+                    List.map2 (\a b -> b - a >= 50.0) starts (List.drop 1 starts)
                         |> List.all identity
 
                 lipLift =
@@ -347,8 +347,8 @@ verifyBrickRamps id seed =
                         track.brickRamps
             in
             Expect.all
-                [ \_ -> Expect.atLeast 1 (List.length track.brickRamps)
-                , \_ -> Expect.atMost 4 (List.length track.brickRamps)
+                [ \_ -> Expect.atLeast 5 (List.length track.brickRamps)
+                , \_ -> Expect.atMost 8 (List.length track.brickRamps)
                 , \_ -> Expect.equal True spacedApart
                 , \_ -> Expect.equal [] badRamps
                 , \_ -> Expect.equal track.brickRamps again.brickRamps
@@ -667,7 +667,7 @@ verifySideRamps id seed =
             in
             Expect.all
                 [ \_ -> Expect.atLeast 1 (List.length track.sideRamps)
-                , \_ -> Expect.atMost 3 (List.length track.sideRamps)
+                , \_ -> Expect.atMost 5 (List.length track.sideRamps)
                 , \_ -> Expect.equal [] badPlacement
                 , \_ -> Expect.equal [] badShape
                 , \_ -> Expect.equal [] (List.map .id sceneryBehind)

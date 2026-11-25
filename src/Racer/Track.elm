@@ -1380,9 +1380,10 @@ Each one stands on straight, unbanked road away from the start, the checkpoint
 arches, the finish, the humps, the rough patches and the loop (a car must reach
 the loop on its wheels), with a clear landing after it. It covers one lane only
 (about 40 % of the road width), on a seeded side, so there is always a free
-lane beside it. Up to four per course, at least 70 m apart, rising 0.9 m
-over 7 m; none on the steepest (over 40 %) pitches, where a flying car would
-land hard.
+lane beside it. They are tried every 10 m down the course (seeded shift and
+side), at least 50 m apart, up to eight per course: rising 0.9 m over 8 m, or
+only 0.7 m on pitches steeper than 38 %, where the road falls away under a
+flying car faster; none on pitches over 46 %.
 
 -}
 placeBrickRamps : GeneratedTrack -> List BrickRamp
@@ -1391,11 +1392,20 @@ placeBrickRamps track =
         rng0 =
             Random.initialSeed (track.config.seed * 7919 + 413)
 
+        slotM =
+            10.0
+
+        slotCount =
+            max 1 (floor (track.finishS / slotM))
+
         ( rolls, _ ) =
-            Random.step (Random.list 18 (Random.float 0.0 1.0)) rng0
+            Random.step (Random.list (slotCount + 1) (Random.float 0.0 1.0)) rng0
+
+        rollArr =
+            Array.fromList rolls
 
         roll i =
-            List.drop i rolls |> List.head |> Maybe.withDefault 0.5
+            Array.get i rollArr |> Maybe.withDefault 0.5
 
         lengthM =
             8.0
@@ -1403,26 +1413,35 @@ placeBrickRamps track =
         lipHeightM =
             0.9
 
+        steepLipHeightM =
+            0.7
+
         landingM =
             22.0
 
         -- Ramps start at least this far apart, so each has its own run-up.
         spacingM =
-            70.0
+            50.0
 
         candidates =
-            [ 0.12, 0.2, 0.29, 0.38, 0.47, 0.56, 0.66, 0.76, 0.86 ]
-                |> List.indexedMap
-                    (\i frac ->
-                        { startS = track.finishS * frac + (roll (2 * i) - 0.5) * 8.0
+            List.range 0 (slotCount - 1)
+                |> List.map
+                    (\i ->
+                        { startS = roll slotCount * slotM + toFloat i * slotM
                         , side =
-                            if roll (2 * i + 1) < 0.5 then
+                            if roll i < 0.5 then
                                 -1.0
 
                             else
                                 1.0
                         }
                     )
+
+        steepestTangentY c =
+            List.range 0 (round ((lengthM + landingM) / 3.0))
+                |> List.map (\k -> Vec3.getY (splineSampleAtS track (c.startS + toFloat k * 3.0)).tangent)
+                |> List.minimum
+                |> Maybe.withDefault 0.0
 
         clearOf zoneStart zoneEnd c =
             c.startS + lengthM + landingM < zoneStart - 6.0 || c.startS > zoneEnd + 6.0
@@ -1437,7 +1456,7 @@ placeBrickRamps track =
                             smp =
                                 splineSampleAtS track (c.startS + toFloat k * 3.0)
                         in
-                        abs smp.bankingRad < 0.06 && Vec3.getY smp.tangent > -0.4
+                        abs smp.bankingRad < 0.06 && Vec3.getY smp.tangent > -0.46
                     )
 
         usable c =
@@ -1456,7 +1475,12 @@ placeBrickRamps track =
             in
             { startS = c.startS
             , endS = c.startS + lengthM
-            , lipHeightM = lipHeightM
+            , lipHeightM =
+                if steepestTangentY c < -0.38 then
+                    steepLipHeightM
+
+                else
+                    lipHeightM
             , centerOffsetM = c.side * hw * 0.42
             , halfWidthM = hw * 0.4
             }
@@ -1472,7 +1496,7 @@ placeBrickRamps track =
         |> List.filter usable
         |> List.foldl spaced []
         |> List.reverse
-        |> List.take 4
+        |> List.take 8
         |> List.map toRamp
 
 
@@ -1597,7 +1621,7 @@ Each is 16 m long and 1.2 m high, on a seeded side, covering only the outer
 metre of the road (so the road stays free) and the verge beside it, on road
 that is not banked hard, away from the start, the finish, the checkpoint arches
 and their gantries, the humps, the rough patches, the brick ramps and their
-landings, and the loop. Up to three per course, at least 60 m apart.
+landings, and the loop. Up to five per course, at least 45 m apart.
 
 -}
 placeSideRamps : GeneratedTrack -> List SideRamp
@@ -1674,7 +1698,7 @@ placeSideRamps track =
             }
 
         spaced c picked =
-            if List.all (\p -> abs (p.startS - c.startS) >= 60.0) picked then
+            if List.all (\p -> abs (p.startS - c.startS) >= 45.0) picked then
                 c :: picked
 
             else
@@ -1684,7 +1708,7 @@ placeSideRamps track =
         |> List.filter usable
         |> List.foldl spaced []
         |> List.reverse
-        |> List.take 3
+        |> List.take 5
         |> List.map toSideRamp
 
 
