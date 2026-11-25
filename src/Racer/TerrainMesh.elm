@@ -709,6 +709,12 @@ sceneryDebrisStyle kind =
         CountdownBoard ->
             { colors = [ ldrawColor 15, ldrawColor 4, ldrawColor 71 ], count = 6, scale = 0.7 }
 
+        Chalet ->
+            { colors = [ ldrawColor 70, ldrawColor 320, ldrawColor 72 ], count = 12, scale = 0.9 }
+
+        PitGarage ->
+            { colors = [ ldrawColor 71, ldrawColor 1, ldrawColor 0 ], count = 10, scale = 0.85 }
+
 
 
 -- ── Brick launch ramps ───────────────────────────────────────────────────────

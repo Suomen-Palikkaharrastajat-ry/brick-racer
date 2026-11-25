@@ -939,21 +939,21 @@ sceneryTheme trackId =
             { fenceChance = 0.06
             , density = 0.2
             , weights =
-                [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ), ( BrickPallet, 4 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ) ]
+                [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ), ( BrickPallet, 4 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ), ( Chalet, 2 ), ( PitGarage, 2 ) ]
             }
 
         ForestTrail ->
             { fenceChance = 0.015
             , density = 0.34
             , weights =
-                [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 2 ), ( SlopeBlock, 2 ), ( CountdownBoard, 2 ) ]
+                [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 2 ), ( SlopeBlock, 2 ), ( CountdownBoard, 2 ), ( Chalet, 3 ), ( PitGarage, 1 ) ]
             }
 
         MeadowPath ->
             { fenceChance = 0.04
             , density = 0.17
             , weights =
-                [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ) ]
+                [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ), ( Chalet, 2 ), ( PitGarage, 2 ) ]
             }
 
 
@@ -1060,6 +1060,12 @@ scenerySpec kind offRoll sizeRoll =
         CountdownBoard ->
             { offsetM = 1.4 + offRoll * 0.4, radiusM = 0.4, heightM = 1.2 }
 
+        Chalet ->
+            { offsetM = 3.2 + offRoll * 1.5, radiusM = 1.6, heightM = 3.6 }
+
+        PitGarage ->
+            { offsetM = 2.4 + offRoll * 1.0, radiusM = 1.4, heightM = 2.4 }
+
 
 {-| The brick-built crashables of `Racer.SceneryModels` made only of the car
 editor's dock parts. They also stay 6 m clear of the launch ramps, so a car
@@ -1067,7 +1073,7 @@ coming off a ramp does not land in one.
 -}
 dockBuiltScenery : List ObstacleKind
 dockBuiltScenery =
-    [ BrickPallet, TileStack, BrickGate, SlopeBlock, CountdownBoard ]
+    [ BrickPallet, TileStack, BrickGate, SlopeBlock, CountdownBoard, Chalet, PitGarage ]
 
 
 type alias SceneryCursor =
@@ -1161,6 +1167,12 @@ generateScenery track =
 
                         CountdownBoard ->
                             heading + (yawRoll - 0.5) * 0.1
+
+                        Chalet ->
+                            heading + (yawRoll - 0.5) * 0.3
+
+                        PitGarage ->
+                            heading
 
                         GardenGnome ->
                             -- Gnomes face the road, give or take.

@@ -1,4 +1,4 @@
-module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, countdownBoard, crate, crateStack, gnome, slopeBlock, tileStack)
+module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, chalet, countdownBoard, crate, crateStack, gnome, pitGarage, slopeBlock, tileStack)
 
 {-| The racer's own crashable roadside props, as LDraw models of catalog
 parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
@@ -31,6 +31,8 @@ all =
     , ( "brickGate", brickGate )
     , ( "slopeBlock", slopeBlock )
     , ( "countdownBoard", countdownBoard )
+    , ( "chalet", chalet )
+    , ( "pitGarage", pitGarage )
     ]
 
 
@@ -351,3 +353,85 @@ countdownBoard =
         , part red ( 0, -80, 0 ) Straight "3024.dat"
         , part red ( 20, -80, 0 ) Straight "3024.dat"
         ]
+
+
+
+-- CHALET
+
+
+{-| An alpine timber chalet: a stone foundation, reddish-brown timber walls,
+windows, a dark red 45° slope roof, and a chimney.
+-}
+chalet : String
+chalet =
+    let
+        layerY k =
+            -24 * toFloat (k + 1)
+
+        foundation =
+            [ part darkBluishGrey ( 0, layerY 0, -20 ) Straight "3001.dat"
+            , part darkBluishGrey ( 0, layerY 0, 20 ) Straight "3001.dat"
+            ]
+
+        walls =
+            List.range 1 2
+                |> List.concatMap
+                    (\k ->
+                        [ part reddishBrown ( 0, layerY k, -20 ) Straight "3001.dat"
+                        , part reddishBrown ( 0, layerY k, 20 ) Straight "3001.dat"
+                        ]
+                    )
+
+        front =
+            [ part white ( -20, layerY 1, -50 ) Straight "3005.dat"
+            , part white ( 20, layerY 1, -50 ) Straight "3005.dat"
+            ]
+
+        roof =
+            [ part darkRed ( -20, layerY 3, -20 ) Straight "3039.dat"
+            , part darkRed ( 20, layerY 3, -20 ) Straight "3039.dat"
+            , part darkRed ( -20, layerY 3, 20 ) Half "3039.dat"
+            , part darkRed ( 20, layerY 3, 20 ) Half "3039.dat"
+            , part lightBluishGrey ( 20, layerY 3, 20 ) Straight "3005.dat"
+            , part lightBluishGrey ( 20, layerY 3 - 24, 20 ) Straight "3005.dat"
+            ]
+    in
+    model "Alpine chalet" (foundation ++ walls ++ front ++ roof)
+
+
+
+-- PIT GARAGE
+
+
+{-| A roadside pit garage bay: a dark grey base plate, four light grey corner
+pillars, a blue canopy roof, and stacked tires and oil drums inside.
+-}
+pitGarage : String
+pitGarage =
+    let
+        layerY k =
+            -24 * toFloat (k + 1)
+
+        floorPlate =
+            [ part darkBluishGrey ( 0, -8, 0 ) Straight "3034.dat" ]
+
+        pillars =
+            List.concatMap
+                (\( x, z ) ->
+                    [ part lightBluishGrey ( x, layerY 0, z ) Straight "3005.dat"
+                    , part lightBluishGrey ( x, layerY 1, z ) Straight "3005.dat"
+                    ]
+                )
+                [ ( -60, -20 ), ( 60, -20 ), ( -60, 20 ), ( 60, 20 ) ]
+
+        canopy =
+            [ part blue ( 0, layerY 2, 0 ) Straight "3034.dat" ]
+
+        inside =
+            [ part 0 ( -20, layerY 0, 0 ) Straight "3003.dat"
+            , part 0 ( -20, layerY 1, 0 ) Straight "3003.dat"
+            , part yellow ( 20, layerY 0, 0 ) Straight "3003.dat"
+            , part lightBluishGrey ( 20, layerY 1 - 8, 0 ) Straight "3024.dat"
+            ]
+    in
+    model "Pit garage" (floorPlate ++ pillars ++ canopy ++ inside)

@@ -1198,6 +1198,12 @@ breakSpeedFor kind =
         CountdownBoard ->
             1.5
 
+        Chalet ->
+            7.0
+
+        PitGarage ->
+            6.0
+
 
 {-| Fraction of the racer's speed soaked up when ploughing through a piece.
 -}
@@ -1257,6 +1263,12 @@ sceneryMassFactor kind =
 
         CountdownBoard ->
             0.08
+
+        Chalet ->
+            0.45
+
+        PitGarage ->
+            0.4
 
 
 {-| Full health (structural integrity) of a fresh or rebuilt car. At 0 the car
@@ -1328,6 +1340,12 @@ smashChipDamage kind =
 
         CountdownBoard ->
             3.0
+
+        Chalet ->
+            16.0
+
+        PitGarage ->
+            14.0
 
         _ ->
             0.0

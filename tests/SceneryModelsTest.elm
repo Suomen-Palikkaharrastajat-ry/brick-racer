@@ -29,7 +29,7 @@ suite =
 
 newKinds : List ObstacleKind
 newKinds =
-    [ BrickPallet, TileStack, BrickGate, SlopeBlock, CountdownBoard ]
+    [ BrickPallet, TileStack, BrickGate, SlopeBlock, CountdownBoard, Chalet, PitGarage ]
 
 
 newModels : List ( String, String )
@@ -39,6 +39,8 @@ newModels =
     , ( "brickGate", SceneryModels.brickGate )
     , ( "slopeBlock", SceneryModels.slopeBlock )
     , ( "countdownBoard", SceneryModels.countdownBoard )
+    , ( "chalet", SceneryModels.chalet )
+    , ( "pitGarage", SceneryModels.pitGarage )
     ]
 
 

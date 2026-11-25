@@ -163,6 +163,12 @@ modelFor obs =
         CountdownBoard ->
             ( "countdownBoard", BrickProps.fitHeight obs.heightM )
 
+        Chalet ->
+            ( "chalet", BrickProps.fitWidth 4.5 )
+
+        PitGarage ->
+            ( "pitGarage", BrickProps.fitWidth 4.2 )
+
 
 noTint : Vec4
 noTint =
