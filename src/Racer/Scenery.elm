@@ -29,6 +29,7 @@ import Dict exposing (Dict)
 import Game.BrickLook as BrickLook
 import Game.BrickModels as BrickModels
 import Game.BrickProps as BrickProps exposing (PropModel)
+import Game.MapParams exposing (Season(..))
 import LDraw.Resolve exposing (PartCache)
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
@@ -59,7 +60,9 @@ arches and the debris.
 sources : List ( String, String )
 sources =
     [ ( "leafyTree", BrickModels.leafyTree )
+    , ( "autumnLeafyTree", BrickModels.leafyTreeIn { leaves = 484 } )
     , ( "pineTree", BrickModels.pineTree )
+    , ( "snowyPineTree", BrickModels.pineTreeIn { needles = 288, cap = Just 15 } )
     , ( "palmTree", BrickModels.palmTree )
     , ( "bush", BrickModels.bush )
     , ( "fence", BrickModels.fence )
@@ -97,16 +100,29 @@ refresh =
 
 
 {-| Which model a scenery piece is drawn with, and how it is fitted to the
-piece's size (base on the ground, in metres).
+piece's size (base on the ground, in metres). Leafy trees turn dark orange
+in autumn and pines wear snow caps in winter.
 -}
-modelFor : TrackObstacle -> ( String, PropModel -> Mat4 )
-modelFor obs =
+modelFor : Season -> TrackObstacle -> ( String, PropModel -> Mat4 )
+modelFor season obs =
     case obs.kind of
         LeafyTree ->
-            ( "leafyTree", BrickProps.fitHeight obs.heightM )
+            ( if season == Autumn then
+                "autumnLeafyTree"
+
+              else
+                "leafyTree"
+            , BrickProps.fitHeight obs.heightM
+            )
 
         PineTree ->
-            ( "pineTree", BrickProps.fitHeight obs.heightM )
+            ( if season == Winter then
+                "snowyPineTree"
+
+              else
+                "pineTree"
+            , BrickProps.fitHeight obs.heightM
+            )
 
         PalmTree ->
             ( "palmTree", BrickProps.fitHeight obs.heightM )
@@ -188,14 +204,15 @@ edgeWidthAt dist =
 
 {-| Draw the scenery pieces that are on screen and near enough to matter:
 small pieces drop out sooner than trees and buildings, well inside the fog.
+The map's season picks the tree variants (see `modelFor`).
 -}
-obstacleEntities : BrickProps.View -> (Vec3 -> Float -> Bool) -> Props -> List TrackObstacle -> List WebGL.Entity
-obstacleEntities v inView props obstacles =
+obstacleEntities : Season -> BrickProps.View -> (Vec3 -> Float -> Bool) -> Props -> List TrackObstacle -> List WebGL.Entity
+obstacleEntities season v inView props obstacles =
     List.concatMap
         (\obs ->
             let
                 ( name, fit ) =
-                    modelFor obs
+                    modelFor season obs
 
                 dist =
                     Vec3.distance v.eye obs.position

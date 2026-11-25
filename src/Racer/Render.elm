@@ -398,7 +398,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris raceTimeS came
             List.concatMap
                 (\c ->
                     Scenery.archEntities propView inView props c.arches
-                        ++ Scenery.obstacleEntities propView inView props c.scenery
+                        ++ Scenery.obstacleEntities bundle.map.season propView inView props c.scenery
                 )
                 visibleChunks
 
