@@ -564,6 +564,18 @@ bandColor trackId surface segIdx bandIdx =
             (segIdx == -1 && bandIdx >= 5 && bandIdx <= 7)
                 || (segIdx == -2 && bandIdx >= 5 && bandIdx <= 7)
 
+        isRockCut =
+            (bandIdx <= 1 || bandIdx >= 11)
+                && (trackId == ForestTrail)
+                && (modBy 7 (segIdx + 1000) < 3)
+
+        rockCutColor =
+            if modBy 2 (segIdx + bandIdx) == 0 then
+                ldrawColor 72
+
+            else
+                ldrawColor 71
+
         base =
             if isCurb then
                 if modBy 4 (segIdx // 2) == 0 then
@@ -571,6 +583,9 @@ bandColor trackId surface segIdx bandIdx =
 
                 else
                     ldrawColor 15
+
+            else if isRockCut then
+                rockCutColor
 
             else if segIdx == -1 && bandIdx >= 5 && bandIdx <= 7 then
                 ldrawColor 15
