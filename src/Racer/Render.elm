@@ -295,7 +295,8 @@ type alias RenderCarSlot =
     }
 
 
-{-| Render the full-viewport WebGL racing scene for one vehicle.
+{-| Render the full-viewport WebGL racing scene for one vehicle. The `Float`
+after the debris is the race clock in seconds, which times the rain and snow.
 -}
 renderRaceViewport :
     TrackRenderBundle
@@ -306,12 +307,13 @@ renderRaceViewport :
     -> WebGL.Mesh TerrainVertex
     -> PhysicsState
     -> List DebrisPiece
+    -> Float
     -> Camera
     -> Int
     -> Int
     -> List (Html.Attribute msg)
     -> Html msg
-renderRaceViewport bundle track spec meshes props shadowMesh physics debris camera w h attrs =
+renderRaceViewport bundle track spec meshes props shadowMesh physics debris raceTimeS camera w h attrs =
     renderRaceViewportMulti
         bundle
         track
@@ -319,6 +321,7 @@ renderRaceViewport bundle track spec meshes props shadowMesh physics debris came
         props
         shadowMesh
         debris
+        raceTimeS
         camera
         w
         h
@@ -326,7 +329,8 @@ renderRaceViewport bundle track spec meshes props shadowMesh physics debris came
 
 
 {-| Render the 3D racing viewport with support for multiple simultaneous vehicles
-(e.g. Player 1 + Player 2 in split-screen racing).
+(e.g. Player 1 + Player 2 in split-screen racing). The `Float` after the
+debris is the race clock in seconds, which times the rain and snow.
 -}
 renderRaceViewportMulti :
     TrackRenderBundle
@@ -335,12 +339,13 @@ renderRaceViewportMulti :
     -> Props
     -> WebGL.Mesh TerrainVertex
     -> List DebrisPiece
+    -> Float
     -> Camera
     -> Int
     -> Int
     -> List (Html.Attribute msg)
     -> Html msg
-renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h attrs =
+renderRaceViewportMulti bundle track cars props shadowMesh debris raceTimeS camera w h attrs =
     let
         safeW =
             max 1 w
@@ -479,7 +484,7 @@ renderRaceViewportMulti bundle track cars props shadowMesh debris camera w h att
         precipitationEntities =
             case cars of
                 first :: _ ->
-                    Rain.entities camera safeW safeH bundle.map { progressM = first.physics.progressS, velocity = first.physics.velocity }
+                    Rain.entities camera safeW safeH bundle.map { timeS = raceTimeS, velocity = first.physics.velocity }
 
                 [] ->
                     []

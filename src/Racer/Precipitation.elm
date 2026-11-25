@@ -7,8 +7,8 @@ Sails), and what falls and how hard from `Racer.World`. Here the streaks
 are drawn: a box of thin vertical quads, scattered at fixed places, moved
 down and slanted by the wind of the car's speed.
 
-The falling phase follows the car's distance travelled, so the streaks
-move while the car drives and hang still when it stops.
+The streaks fall on the race clock (seconds since the start), so they keep
+falling when the car stops and a replay of the same run looks the same.
 
 -}
 
@@ -123,10 +123,10 @@ fragmentShader =
     |]
 
 
-{-| The streaks falling around the camera for a map and a car's motion, or no
-entities when nothing falls.
+{-| The streaks falling around the camera for a map, the race clock in
+seconds (`timeS`) and the car's velocity, or no entities when nothing falls.
 -}
-entities : Camera -> Int -> Int -> MapParams -> { progressM : Float, velocity : Vec3 } -> List WebGL.Entity
+entities : Camera -> Int -> Int -> MapParams -> { timeS : Float, velocity : Vec3 } -> List WebGL.Entity
 entities camera width height map car =
     case World.precipitation map of
         Nothing ->
@@ -136,7 +136,7 @@ entities camera width height map car =
             let
                 field =
                     { eye = Camera.position camera
-                    , time = car.progressM
+                    , time = car.timeS
                     , windSpeed = Vec3.length car.velocity
                     , windDirection = windDegrees car.velocity
                     }

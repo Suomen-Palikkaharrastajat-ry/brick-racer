@@ -202,7 +202,7 @@ viewRoomRace bundle track spec meshes props shadowMesh physics debris camera wid
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" Brand.legoBlack
         ]
-        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris camera width height canvasAttrs
+        [ Render.renderRaceViewportMulti bundle track allCars props shadowMesh debris hudData.elapsedTime camera width height canvasAttrs
         , if portrait then
             -- Portrait is too narrow for floating badges beside the timer and
             -- the health bar: stack them into the HUD column instead.
@@ -410,7 +410,7 @@ viewSinglePlayer bundle track spec meshes props shadowMesh physics debris camera
         [ Tw.classes [ Tw.relative, Tw.w_screen, Tw.h_screen, Tw.overflow_hidden ]
         , Attr.style "background" Brand.legoBlack
         ]
-        [ Render.renderRaceViewport bundle track spec meshes props shadowMesh physics debris camera width height canvasAttrs
+        [ Render.renderRaceViewport bundle track spec meshes props shadowMesh physics debris hudData.elapsedTime camera width height canvasAttrs
         , HUD.viewHudOverlay hudData hudActions
         ]
 
@@ -530,7 +530,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                 )
             , Attr.style "border-color" Brand.legoYellow
             ]
-            (Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1Camera p1W p1H []
+            (Render.renderRaceViewportMulti bundle track bothCars props shadowMesh debris p1HudData.elapsedTime p1Camera p1W p1H []
                 :: viewHalf p1HudData "PLAYER 1" "#38bdf8" "WASD"
             )
 
@@ -546,7 +546,7 @@ viewTwoPlayerSplitScreen bundle track p1Spec p1Meshes props shadowMesh p1Physics
                        )
                 )
             ]
-            (Render.renderRaceViewportMulti bundle track p2FirstCars props shadowMesh debris p2.p2Camera p2W p2H []
+            (Render.renderRaceViewportMulti bundle track p2FirstCars props shadowMesh debris p1HudData.elapsedTime p2.p2Camera p2W p2H []
                 :: viewHalf p2.p2HudData "PLAYER 2" "#f43f5e" "ARROWS"
             )
         ]
