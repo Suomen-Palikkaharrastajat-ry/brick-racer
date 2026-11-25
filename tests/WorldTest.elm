@@ -30,11 +30,9 @@ suite =
         [ test "the summer clear map is neutral" <|
             \_ ->
                 Expect.equal
-                    ( 1.0, 1.0, { near = 140, far = 620 }, Nothing )
-                    ( World.gripScale neutral
-                    , World.rollingResistScale neutral
-                    , World.fogRange neutral
-                    , World.precipitation neutral |> Maybe.map .fall
+                    ( ( 1.0, 1.0 ), ( { near = 140, far = 620 }, Nothing ) )
+                    ( ( World.gripScale neutral, World.rollingResistScale neutral )
+                    , ( World.fogRange neutral, World.precipitation neutral |> Maybe.map .fall )
                     )
         , test "grip stays between 0.6 and 1.0 for every season and weather" <|
             \_ ->

@@ -1,5 +1,6 @@
 module Racer.Types exposing
-    ( BrickRamp
+    ( BlueprintKnot
+    , BrickRamp
     , CameraMode(..)
     , Checkpoint
     , ControlPoint
