@@ -1195,6 +1195,9 @@ breakSpeedFor kind =
         SlopeBlock ->
             3.5
 
+        CountdownBoard ->
+            1.5
+
 
 {-| Fraction of the racer's speed soaked up when ploughing through a piece.
 -}
@@ -1251,6 +1254,9 @@ sceneryMassFactor kind =
 
         SlopeBlock ->
             0.28
+
+        CountdownBoard ->
+            0.08
 
 
 {-| Full health (structural integrity) of a fresh or rebuilt car. At 0 the car
@@ -1319,6 +1325,9 @@ smashChipDamage kind =
 
         SlopeBlock ->
             10.0
+
+        CountdownBoard ->
+            3.0
 
         _ ->
             0.0

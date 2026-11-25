@@ -240,8 +240,23 @@ buildChunk track chunkSizeM numChunks chunkIdx =
                                         CheckpointArch
                                     )
                             )
+
+                gantryArches =
+                    track.checkpoints
+                        |> List.filterMap
+                            (\cp ->
+                                let
+                                    gantryS =
+                                        cp.s - 55.0
+                                in
+                                if gantryS >= minS && gantryS < maxS && gantryS > 40.0 then
+                                    Just (archSpot (Track.splineSampleAtS track gantryS) SponsorGantry)
+
+                                else
+                                    Nothing
+                            )
             in
-            startArch ++ cpArches
+            startArch ++ cpArches ++ gantryArches
 
         rampTris =
             track.brickRamps
@@ -690,6 +705,9 @@ sceneryDebrisStyle kind =
 
         SlopeBlock ->
             { colors = [ ldrawColor 14, ldrawColor 0, ldrawColor 14, ldrawColor 72 ], count = 10, scale = 0.85 }
+
+        CountdownBoard ->
+            { colors = [ ldrawColor 15, ldrawColor 4, ldrawColor 71 ], count = 6, scale = 0.7 }
 
 
 

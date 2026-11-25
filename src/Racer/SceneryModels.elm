@@ -1,4 +1,4 @@
-module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, crate, crateStack, gnome, slopeBlock, tileStack)
+module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, countdownBoard, crate, crateStack, gnome, slopeBlock, tileStack)
 
 {-| The racer's own crashable roadside props, as LDraw models of catalog
 parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
@@ -30,6 +30,7 @@ all =
     , ( "tileStack", tileStack )
     , ( "brickGate", brickGate )
     , ( "slopeBlock", slopeBlock )
+    , ( "countdownBoard", countdownBoard )
     ]
 
 
@@ -330,3 +331,23 @@ slopeBlock =
             )
             [ -20, 20 ]
         )
+
+
+
+-- COUNTDOWN BOARD
+
+
+{-| A trackside distance countdown marker board: a white 2 x 4 plate face on a
+grey post with red diagonal hash plates.
+-}
+countdownBoard : String
+countdownBoard =
+    model "Countdown board"
+        [ part darkBluishGrey ( 0, -8, 0 ) Straight "3022.dat"
+        , part lightBluishGrey ( 0, -32, 0 ) Straight "3004.dat"
+        , part lightBluishGrey ( 0, -56, 0 ) Straight "3004.dat"
+        , part white ( 0, -80, 0 ) Straight "3020.dat"
+        , part red ( -20, -80, 0 ) Straight "3024.dat"
+        , part red ( 0, -80, 0 ) Straight "3024.dat"
+        , part red ( 20, -80, 0 ) Straight "3024.dat"
+        ]

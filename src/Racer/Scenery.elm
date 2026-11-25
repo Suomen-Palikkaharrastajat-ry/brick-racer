@@ -160,6 +160,9 @@ modelFor obs =
         SlopeBlock ->
             ( "slopeBlock", BrickProps.fitHeight obs.heightM )
 
+        CountdownBoard ->
+            ( "countdownBoard", BrickProps.fitHeight obs.heightM )
+
 
 noTint : Vec4
 noTint =
@@ -223,6 +226,7 @@ type ArchKind
     = StartArch
     | CheckpointArch
     | FinishArch
+    | SponsorGantry
 
 
 {-| Where an arch stands: the road centre, the road's right and forward
@@ -255,6 +259,9 @@ archEntities v inView props spots =
 
                         FinishArch ->
                             ( 0, [ 15, 0 ] )
+
+                        SponsorGantry ->
+                            ( 71, [ 4, 15, 2 ] )
 
                 frame =
                     Mat4.mul (Mat4.makeTranslate spot.center) (Mat4.makeBasis spot.right (vec3 0 1 0) spot.forward)

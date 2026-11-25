@@ -252,6 +252,7 @@ type ObstacleKind
     | TileStack
     | BrickGate
     | SlopeBlock
+    | CountdownBoard
 
 
 {-| Cylinder-approximated roadside scenery piece. `yaw` orients fences, signs and
