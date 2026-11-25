@@ -153,7 +153,7 @@ generateKnots attempt map cp =
         -- Forward progress: n - 1 random gaps. The total is scaled below so
         -- that the course, with its drop and sideways swing, has its length.
         ( zGaps, seed1 ) =
-            randomsIn (n - 1) ( 0.7, 1.3 ) seed0
+            randomsIn (n - 1) ( 0.85, 1.15 ) seed0
 
         zShares =
             shareCumulative zGaps
@@ -166,14 +166,27 @@ generateKnots attempt map cp =
         ( steepU, seed3 ) =
             draw ( 0, 1 ) seed2
 
+        -- The steeper gap is never on the straight.
         steepIndex =
-            1 + floor (steepU * toFloat (n - 4))
+            let
+                drawn =
+                    1 + floor (steepU * toFloat (n - 4))
+            in
+            if drawn >= straightFrom - 1 && drawn <= straightFrom + 1 then
+                straightFrom + 2
+
+            else
+                drawn
 
         adjustedDrop =
             List.indexedMap
                 (\i ( zGap, g ) ->
                     if i == 0 then
                         zGap * g * 0.6
+
+                    else if i >= straightFrom - 1 && i <= straightFrom + 1 then
+                        -- The straight is a little gentler than the course.
+                        zGap * 0.85
 
                     else if i == steepIndex then
                         zGap * g * 1.3
