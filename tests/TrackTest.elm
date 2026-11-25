@@ -6,6 +6,7 @@ deterministic seeding, course length/steepness, and roadside scenery clearance.
 
 import Array
 import Expect
+import Game.MapParams exposing (Season(..))
 import Math.Vector3 as Vec3
 import Racer.TerrainMesh as TerrainMesh
 import Racer.Track as Track
@@ -28,13 +29,13 @@ suite =
                 \_ ->
                     let
                         c5 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -1 5
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 5
 
                         c6 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -1 6
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 6
 
                         c7 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -1 7
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 7
                     in
                     Expect.all
                         [ \_ -> Expect.equal c5 c6
@@ -45,16 +46,16 @@ suite =
                 \_ ->
                     let
                         c5 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -2 5
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 5
 
                         c6 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -2 6
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 6
 
                         c7 =
-                            TerrainMesh.bandColor FarmLane DirtRoad -2 7
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 7
 
                         whiteStartLine =
-                            TerrainMesh.bandColor FarmLane DirtRoad -1 5
+                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 5
                     in
                     Expect.all
                         [ \_ -> Expect.equal c7 whiteStartLine
@@ -64,6 +65,22 @@ suite =
                         ]
                         ()
             ]
+        , test "The ground takes the season's colours: snow in winter, a new green in spring, tan in autumn" <|
+            \_ ->
+                let
+                    field season =
+                        TerrainMesh.bandColor ForestTrail season DirtRoad 3 1
+
+                    snowy c =
+                        Vec3.getX c > 0.85 && Vec3.getY c > 0.85 && Vec3.getZ c > 0.85
+                in
+                Expect.all
+                    [ \_ -> Expect.equal ( True, False ) ( snowy (field Winter), snowy (field Summer) )
+                    , \_ -> Expect.notEqual (field Spring) (field Summer)
+                    , \_ -> Expect.notEqual (field Autumn) (field Summer)
+                    , \_ -> Expect.notEqual (field Autumn) (field Spring)
+                    ]
+                    ()
         , test "Track ids round-trip and retired mountain ids map to countryside courses" <|
             \_ ->
                 Expect.all

@@ -20,7 +20,7 @@ removing a smashed piece only filters a short list.
 
 import Array exposing (Array)
 import Game.BrickLook as BrickLook
-import Game.MapParams exposing (MapParams)
+import Game.MapParams exposing (MapParams, Season(..))
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Scenery exposing (ArchKind(..), ArchSpot)
 import Racer.TerrainShader exposing (TerrainVertex)
@@ -346,8 +346,8 @@ buildStartApronTris track =
                 rowZero =
                     sampleCrossSectionVertices track s0
             in
-            stitchCrossSections track.config.id s0.surface -2 rowBack2 rowBack1
-                ++ stitchCrossSections track.config.id s0.surface -1 rowBack1 rowZero
+            stitchCrossSections track.config.id track.config.map.season s0.surface -2 rowBack2 rowBack1
+                ++ stitchCrossSections track.config.id track.config.map.season s0.surface -1 rowBack1 rowZero
 
 
 buildStripBetweenSamples : GeneratedTrack -> Int -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -361,7 +361,7 @@ buildStripBetweenSamples track idx =
                 row1 =
                     sampleCrossSectionVertices track s1
             in
-            stitchCrossSections track.config.id s0.surface idx row0 row1
+            stitchCrossSections track.config.id track.config.map.season s0.surface idx row0 row1
 
         _ ->
             []
@@ -426,12 +426,13 @@ sampleCrossSectionVertices track smp =
 
 stitchCrossSections :
     TrackId
+    -> Season
     -> SurfaceType
     -> Int
     -> List CrossVertex
     -> List CrossVertex
     -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-stitchCrossSections trackId surface segIdx r0 r1 =
+stitchCrossSections trackId season surface segIdx r0 r1 =
     let
         pairs0 =
             adjacentPairs r0
@@ -442,7 +443,7 @@ stitchCrossSections trackId surface segIdx r0 r1 =
         stepBand bandIdx ( ( a0, b0 ), ( a1, b1 ) ) =
             let
                 col =
-                    bandColor trackId surface segIdx bandIdx
+                    bandColor trackId season surface segIdx bandIdx
 
                 studs =
                     bandStuds surface bandIdx
@@ -528,6 +529,8 @@ bandStuds surface bandIdx =
                 1
 
 
+{-| The field and verge colours of a course in summer.
+-}
 fieldColors : TrackId -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
 fieldColors trackId segIdx =
     case trackId of
@@ -556,18 +559,94 @@ fieldColors trackId segIdx =
             }
 
 
-{-| Color of a ground band at station index `bandIdx` (0 to 12) along cross-section segment `segIdx`.
-Segment -1 holds the crisp white starting line leading up to the start arch at `s = 0`,
-while segment -2 provides alternating yellow hazard and white grid staging stalls.
+{-| The field and verge colours of a course in a season. Summer keeps the
+course's own colours. Spring is bright green, with light-green strips on the
+farm; autumn is tan with dark orange strips and a dark tan verge; winter is
+white snow with a light bluish grey verge.
 -}
-bandColor : TrackId -> SurfaceType -> Int -> Int -> Vec3
-bandColor trackId surface segIdx bandIdx =
+seasonFieldColors : TrackId -> Season -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
+seasonFieldColors trackId season segIdx =
+    let
+        strip =
+            modBy 10 (segIdx + 1000) < 5
+    in
+    case season of
+        Summer ->
+            fieldColors trackId segIdx
+
+        Spring ->
+            { verge = ldrawColor 10
+            , near = ldrawColor 10
+            , far =
+                if trackId == FarmLane && strip then
+                    ldrawColor 326
+
+                else
+                    ldrawColor 2
+            }
+
+        Autumn ->
+            { verge = ldrawColor 28
+            , near = ldrawColor 19
+            , far =
+                if strip then
+                    ldrawColor 484
+
+                else
+                    ldrawColor 19
+            }
+
+        Winter ->
+            { verge = ldrawColor 71
+            , near = ldrawColor 15
+            , far = ldrawColor 15
+            }
+
+
+{-| Road colours in a season: in winter the road edges and the grassy
+surfaces are under snow (white).
+-}
+seasonRoadColors : Season -> SurfaceType -> { road : Vec3, edge : Vec3, center : Vec3 }
+seasonRoadColors season surface =
     let
         road =
             roadColors surface
+    in
+    case season of
+        Winter ->
+            case surface of
+                RoughVerge ->
+                    { road = ldrawColor 15, edge = ldrawColor 15, center = ldrawColor 15 }
+
+                MeadowGrass ->
+                    { road = ldrawColor 15, edge = ldrawColor 15, center = ldrawColor 15 }
+
+                DirtRoad ->
+                    { road | edge = ldrawColor 15, center = ldrawColor 15 }
+
+                GrassPath ->
+                    { road | edge = ldrawColor 15, center = ldrawColor 15 }
+
+                _ ->
+                    { road | edge = ldrawColor 15 }
+
+        _ ->
+            road
+
+
+{-| Color of a ground band at station index `bandIdx` (0 to 12) along cross-section segment `segIdx`,
+in the map's season.
+Segment -1 holds the crisp white starting line leading up to the start arch at `s = 0`,
+while segment -2 provides alternating yellow hazard and white grid staging stalls.
+-}
+bandColor : TrackId -> Season -> SurfaceType -> Int -> Int -> Vec3
+bandColor trackId season surface segIdx bandIdx =
+    let
+        road =
+            seasonRoadColors season surface
 
         field =
-            fieldColors trackId segIdx
+            seasonFieldColors trackId season segIdx
 
         -- Alternating red and white curb rumble strips along road edge bands (4 and 8)
         isCurb =
