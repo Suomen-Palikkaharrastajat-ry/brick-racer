@@ -46,6 +46,7 @@ import Racer.Ingest as Ingest
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
 import Racer.Physics as Physics
 import Racer.Render as Render
+import Racer.Room as RacerRoom
 import Racer.Scenery as Scenery
 import Racer.TerrainMesh as TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
@@ -953,8 +954,17 @@ update msg model =
             ( { model | shareCopiedNotice = True }, GamePorts.copyShareUrl roomUrl )
 
         MultiplayerRoomChanged rawJson ->
-            case Decode.decodeValue Multiplayer.decodeRoomState rawJson of
-                Ok room ->
+            case RacerRoom.fromPort rawJson of
+                RacerRoom.NoRoom ->
+                    -- Left the room (or never in one): the menu and race hold none.
+                    case model.page of
+                        RacePage race ->
+                            ( { model | page = RacePage { race | multiplayer = Nothing }, multiplayer = Nothing }, Cmd.none )
+
+                        _ ->
+                            ( { model | multiplayer = Nothing }, Cmd.none )
+
+                RacerRoom.InRoom room ->
                     case model.page of
                         RacePage race ->
                             let
@@ -999,7 +1009,7 @@ update msg model =
                         _ ->
                             ( { model | multiplayer = Just room }, Cmd.none )
 
-                Err _ ->
+                RacerRoom.Unreadable ->
                     ( model, Cmd.none )
 
         MultiplayerError err ->
