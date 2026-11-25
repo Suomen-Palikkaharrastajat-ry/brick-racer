@@ -1195,9 +1195,6 @@ breakSpeedFor kind =
         SlopeBlock ->
             3.5
 
-        Bleachers ->
-            3.0
-
 
 {-| Fraction of the racer's speed soaked up when ploughing through a piece.
 -}
@@ -1254,9 +1251,6 @@ sceneryMassFactor kind =
 
         SlopeBlock ->
             0.28
-
-        Bleachers ->
-            0.25
 
 
 {-| Full health (structural integrity) of a fresh or rebuilt car. At 0 the car
@@ -1325,9 +1319,6 @@ smashChipDamage kind =
 
         SlopeBlock ->
             10.0
-
-        Bleachers ->
-            8.0
 
         _ ->
             0.0

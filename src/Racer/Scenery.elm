@@ -160,9 +160,6 @@ modelFor obs =
         SlopeBlock ->
             ( "slopeBlock", BrickProps.fitHeight obs.heightM )
 
-        Bleachers ->
-            ( "bleachers", BrickProps.fitHeight obs.heightM )
-
 
 noTint : Vec4
 noTint =

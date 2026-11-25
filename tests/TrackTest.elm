@@ -9,7 +9,7 @@ import Expect
 import Math.Vector3 as Vec3
 import Racer.TerrainMesh as TerrainMesh
 import Racer.Track as Track
-import Racer.Types exposing (ObstacleKind(..), SurfaceType(..), TrackId(..), allTrackIds, trackIdFromString, trackIdToString)
+import Racer.Types exposing (SurfaceType(..), TrackId(..), allTrackIds, trackIdFromString, trackIdToString)
 import Test exposing (Test, describe, test)
 
 
@@ -175,29 +175,6 @@ suite =
                     , \_ -> Expect.equal (List.length after.obstacles) (List.length bucketIds)
                     ]
                     ()
-        , describe "Spectator bleachers"
-            [ test "Start and finish line have spectator bleachers on both sides" <|
-                \_ ->
-                    let
-                        track =
-                            Track.generate (Track.trackConfigFor FarmLane 42)
-
-                        bleachers =
-                            List.filter (\o -> o.kind == Bleachers) track.obstacles
-
-                        startBleachers =
-                            List.filter (\o -> o.s < 20.0) bleachers
-
-                        finishBleachers =
-                            List.filter (\o -> o.s > track.finishS - 10.0) bleachers
-                    in
-                    Expect.all
-                        [ \_ -> Expect.equal 4 (List.length bleachers)
-                        , \_ -> Expect.equal 2 (List.length startBleachers)
-                        , \_ -> Expect.equal 2 (List.length finishBleachers)
-                        ]
-                        ()
-            ]
         ]
 
 
@@ -226,7 +203,7 @@ verifySceneryClearance id =
                     Track.generate (Track.trackConfigFor id 99)
 
                 badStart =
-                    List.filter (\o -> o.s < 20.0 && o.kind /= Bleachers) track.obstacles
+                    List.filter (\o -> o.s < 20.0) track.obstacles
 
                 badRoadbed =
                     List.filter

@@ -1,4 +1,4 @@
-module Racer.SceneryModels exposing (all, barrels, bleachers, brickGate, brickPallet, brickWall, crate, crateStack, gnome, slopeBlock, tileStack)
+module Racer.SceneryModels exposing (all, barrels, brickGate, brickPallet, brickWall, crate, crateStack, gnome, slopeBlock, tileStack)
 
 {-| The racer's own crashable roadside props, as LDraw models of catalog
 parts, in the same conventions as `Game.BrickModels` (-Y up, 1 stud = 20 LDU,
@@ -30,7 +30,6 @@ all =
     , ( "tileStack", tileStack )
     , ( "brickGate", brickGate )
     , ( "slopeBlock", slopeBlock )
-    , ( "bleachers", bleachers )
     ]
 
 
@@ -110,11 +109,6 @@ yellow =
 black : Int
 black =
     0
-
-
-green : Int
-green =
-    2
 
 
 
@@ -336,43 +330,3 @@ slopeBlock =
             )
             [ -20, 20 ]
         )
-
-
-
--- BLEACHERS
-
-
-{-| A 2-tier spectator grandstand with cheering micro-minifigs holding flags:
-a lower step riser capped with a plate, two spectators (red and blue torsos)
-cheering with flags, and an upper step riser capped with a plate and a green
-spectator.
--}
-bleachers : String
-bleachers =
-    model "Bleachers"
-        [ -- Tier 1: lower step riser
-          part darkBluishGrey ( 0, -24, 0 ) Straight "3001.dat"
-        , part lightBluishGrey ( 0, -32, 0 ) Straight "3020.dat"
-
-        -- Tier 1 spectators (red and blue torsos, yellow heads, caps, flags)
-        , part red ( -20, -56, 0 ) Straight "3004.dat"
-        , part yellow ( -20, -80, 0 ) Straight "3062b.dat"
-        , part red ( -20, -88, 0 ) Straight "3024.dat"
-        , part white ( -30, -70, -10 ) Straight "30374.dat"
-        , part yellow ( -30, -70, -10 ) Quarter "2335.dat"
-        , part blue ( 20, -56, 0 ) Straight "3004.dat"
-        , part yellow ( 20, -80, 0 ) Straight "3062b.dat"
-        , part blue ( 20, -88, 0 ) Straight "3024.dat"
-        , part white ( 30, -70, -10 ) Straight "30374.dat"
-        , part red ( 30, -70, -10 ) Quarter "2335.dat"
-
-        -- Tier 2: upper step riser (placed at z = 40 LDU, height y = -48 LDU)
-        , part darkBluishGrey ( 0, -24, 40 ) Straight "3001.dat"
-        , part darkBluishGrey ( 0, -48, 40 ) Straight "3001.dat"
-        , part lightBluishGrey ( 0, -56, 40 ) Straight "3020.dat"
-
-        -- Tier 2 green spectator
-        , part green ( 0, -80, 40 ) Straight "3004.dat"
-        , part yellow ( 0, -104, 40 ) Straight "3062b.dat"
-        , part green ( 0, -112, 40 ) Straight "3024.dat"
-        ]

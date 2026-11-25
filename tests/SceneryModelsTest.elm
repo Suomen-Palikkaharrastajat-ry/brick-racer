@@ -24,29 +24,6 @@ suite =
             (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) allTrackIds)
         , describe "Every course has some of them"
             (List.map verifyPresence allTrackIds)
-        , describe "Bleachers model"
-            [ test "Bleachers model is listed in SceneryModels.all and uses curated parts" <|
-                \_ ->
-                    let
-                        files =
-                            partFiles SceneryModels.bleachers
-
-                        listed =
-                            List.map Tuple.first SceneryModels.all
-
-                        curated =
-                            [ "3001.dat", "3020.dat", "3004.dat", "3062b.dat", "3024.dat", "2335.dat", "30374.dat" ]
-
-                        notCurated =
-                            List.filter (\f -> not (List.member f curated)) files
-                    in
-                    Expect.all
-                        [ \_ -> Expect.equal True (List.member "bleachers" listed)
-                        , \_ -> Expect.equal [] notCurated
-                        , \_ -> Expect.atLeast 7 (List.length files)
-                        ]
-                        ()
-            ]
         ]
 
 

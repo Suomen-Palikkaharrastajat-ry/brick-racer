@@ -252,7 +252,6 @@ type ObstacleKind
     | TileStack
     | BrickGate
     | SlopeBlock
-    | Bleachers
 
 
 {-| Cylinder-approximated roadside scenery piece. `yaw` orients fences, signs and
