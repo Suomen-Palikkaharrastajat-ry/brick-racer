@@ -50,6 +50,7 @@ import Racer.Room as RacerRoom
 import Racer.Scenery as Scenery
 import Racer.TerrainMesh as TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
+import Racer.TiltPitch as TiltPitch
 import Racer.Track as Track
 import Racer.Types
     exposing
@@ -262,6 +263,7 @@ type alias Model =
     , pressedKeys : Set String
     , touch : TouchState
     , tilt : TiltState
+    , tiltPitch : TiltPitch.Pitch
     , shareCopiedNotice : Bool
     , raceMode : RaceMode
     , playerModeTab : Garage.PlayerModeTab
@@ -360,6 +362,7 @@ type Msg
     | RespawnCheckpoint
     | TiltStatusChanged { available : Bool, enabled : Bool }
     | TiltSteerChanged Float
+    | TiltOrientation { available : Bool, gamma : Float, beta : Float }
     | TouchSteerLeft Bool
     | TouchSteerRight Bool
     | TouchBrake Bool
@@ -514,6 +517,7 @@ init flags =
                     , available = False
                     , steer = 0.0
                     }
+                , tiltPitch = TiltPitch.init
                 , shareCopiedNotice = False
                 , raceMode = SinglePlayer
                 , playerModeTab = Garage.HotSeatTab
@@ -1571,6 +1575,13 @@ update msg model =
                     model.tilt
             in
             ( { model | tilt = { oldTilt | steer = clamp -1.0 1.0 value } }, Cmd.none )
+
+        TiltOrientation orientation ->
+            if orientation.available then
+                ( { model | tiltPitch = TiltPitch.receive orientation.beta model.tiltPitch }, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         TouchSteerLeft held ->
             let
@@ -3037,7 +3048,7 @@ startRaceFromDoc title doc vehicle meshes model =
                 , shareCopiedNotice = False
             }
     in
-    ( nextModel
+    ( { nextModel | tiltPitch = TiltPitch.calibrate nextModel.tiltPitch }
     , Cmd.batch
         [ Ports.playSfx { kind = "countdown", intensity = 0.7 }
         , silenceAudioCmd
@@ -3297,8 +3308,11 @@ sampleP1Input model =
             else
                 tiltSteer
 
+        tiltBraking =
+            model.tilt.enabled && model.tilt.available && model.tiltPitch.zone == TiltPitch.Backward
+
         brake =
-            if held "s" || (not isSplit && held "ArrowDown") || model.touch.brake then
+            if held "s" || (not isSplit && held "ArrowDown") || model.touch.brake || tiltBraking then
                 1.0
 
             else
@@ -4131,6 +4145,7 @@ subscriptions model =
         , GamePorts.hashChanged HashChanged
         , GamePorts.tiltStatus TiltStatusChanged
         , GamePorts.tiltSteer TiltSteerChanged
+        , GamePorts.tiltOrientationReceived TiltOrientation
         , GamePorts.multiplayerRoomStateChanged MultiplayerRoomChanged
         , GamePorts.multiplayerError MultiplayerError
         , GamePorts.multiplayerVehicleLoaded MultiplayerVehicleLoaded
