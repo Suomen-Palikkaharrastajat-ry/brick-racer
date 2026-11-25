@@ -47,7 +47,8 @@ import Array exposing (Array)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Types
     exposing
-        ( BrickRamp
+        ( BlueprintKnot
+        , BrickRamp
         , Checkpoint
         , ControlPoint
         , GeneratedTrack
@@ -437,17 +438,6 @@ recoveryBankCurve =
 
 
 -- ── Spline & Control Point Construction ───────────────────────────────────────
-
-
-type alias BlueprintKnot =
-    { sFrac : Float
-    , xOffset : Float
-    , yDropFrac : Float
-    , zProgress : Float
-    , halfWidth : Float
-    , surface : SurfaceType
-    , feature : Maybe SegmentFeature
-    }
 
 
 buildControlPoints : TrackConfig -> List ControlPoint

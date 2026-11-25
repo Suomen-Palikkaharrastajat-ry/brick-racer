@@ -641,3 +641,20 @@ type alias LeaderboardEntry =
     , steeringLabel : String
     , seed : Int
     }
+
+
+{-| One control knot of a course blueprint, in course-relative terms: `sFrac`
+is the share of the course's length, `zProgress` the share of its forward
+travel, `yDropFrac` the share of its drop, `xOffset` a sideways offset in
+metres. The course generator fills these in and `Racer.Track` turns them into
+control points.
+-}
+type alias BlueprintKnot =
+    { sFrac : Float
+    , xOffset : Float
+    , yDropFrac : Float
+    , zProgress : Float
+    , halfWidth : Float
+    , surface : SurfaceType
+    , feature : Maybe SegmentFeature
+    }
