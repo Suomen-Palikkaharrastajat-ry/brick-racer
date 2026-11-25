@@ -42,7 +42,6 @@ support force would have to pull, falls off and flies like any airborne car.
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Track as Track
 import Racer.Types
-import Racer.World as World
     exposing
         ( CrashReason(..)
         , GeneratedTrack
@@ -59,6 +58,7 @@ import Racer.World as World
         , WheelSpec
         , fixedDt
         )
+import Racer.World as World
 
 
 gravityAccel : Float
