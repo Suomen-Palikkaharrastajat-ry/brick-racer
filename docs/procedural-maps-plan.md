@@ -12,6 +12,17 @@ working.
 
 ---
 
+## Amendments (user answers, override the sections below)
+
+These answers take precedence wherever the rest of this document says otherwise.
+
+- **brick-studio may change first (Q1).** Shared modules (`Game.MapParams`, `Game.MapPicker`, `Game.Precipitation`, `RoomState.courseId`, the palm tree and parameterised island models) land in brick-studio before the games bump the submodule. The local-copy fallback is not needed.
+- **Desert replaces Tropical (Q2, overrides D1 and §2.1, §2.4, §3.4, §4.4, §4.3 and the biome tables).** The biome set is **Farmland, Boreal, Fell, Desert**. Desert is new content in both games: sand and dune ground, a `CactusTree` (or similar) obstacle, mesa and rock-arch props, dust and heat-haze weather, and sand-coloured sea or sand palettes for sails. Desert keeps the current pirate-coast content only where it fits, such as the fort and wreck. Desert has no compatible winter snow (see the table in §2.4). Every Tropical row, value and sample map code in the document is read as Desert until a full pass is made during P0.
+- **Shared map codes (Q3, D4).** One map code means the same biome, season, weather and seed in both games. The UI advertises this.
+- **Leaderboards per exact map code (Q4, D9).** No change.
+- **Racer weather changes in spells (Q5, overrides D12).** Racer gets sails-style changing weather: spells start and end during a run, for example rain starting halfway down. Racer's `Weather` is a new module shared with sails through brick-studio, not sails' `Sails.Weather`. The physics effect (grip and visibility) follows the active spell. §3.5 needs a rewrite during P1.
+- **First-time players get Random (Q6, overrides D-default).** The first start resolves all picks from the seed. No fixed friendly start.
+
 ## 1. Goals, non-goals, assumptions
 
 ### Goals
@@ -826,7 +837,7 @@ on P1, and P4 on P3.
 
 ---
 
-## 10. Open questions for the user
+## 10. Open questions (all answered, see Amendments at the top)
 
 1. **brick-studio ownership**: may the shared changes (`Game.MapParams`, `Game.MapPicker`,
    `Game.Precipitation`, `RoomState.courseId`, `BrickModels.palmTree`, and parameterised
