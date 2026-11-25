@@ -1212,12 +1212,12 @@ update msg model =
                 title =
                     presetTitle model.language preset
             in
-            loadDocumentIntoGarage title doc Nothing Nothing True { model | selectedPresetId = Just preset.id }
+            loadDocumentIntoGarage title doc Nothing True { model | selectedPresetId = Just preset.id }
 
         SelectCustomCar ->
             case model.customCar of
                 Just custom ->
-                    loadDocumentIntoGarage custom.title custom.document Nothing Nothing True { model | selectedPresetId = Nothing }
+                    loadDocumentIntoGarage custom.title custom.document Nothing True { model | selectedPresetId = Nothing }
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -1297,7 +1297,7 @@ update msg model =
                                         title =
                                             presetTitle model.language defaultPreset
                                     in
-                                    loadDocumentIntoGarage title doc Nothing Nothing True { model | selectedPresetId = Just defaultPreset.id }
+                                    loadDocumentIntoGarage title doc Nothing True { model | selectedPresetId = Just defaultPreset.id }
 
                         Build.Finished doc ->
                             let
@@ -1323,7 +1323,7 @@ update msg model =
                                             , savedGarage = Nothing
                                         }
                                 in
-                                loadDocumentIntoGarage title doc Nothing Nothing True updatedModel
+                                loadDocumentIntoGarage title doc Nothing True updatedModel
 
                             else
                                 let
@@ -1331,7 +1331,7 @@ update msg model =
                                         Just { title = title, document = doc }
 
                                     ( nextModel, enterCmd ) =
-                                        loadDocumentIntoGarage title doc Nothing Nothing True { model | customCar = custom, selectedPresetId = Nothing, savedGarage = Nothing }
+                                        loadDocumentIntoGarage title doc Nothing True { model | customCar = custom, selectedPresetId = Nothing, savedGarage = Nothing }
 
                                     shareCmd =
                                         case model.multiplayer of
