@@ -1775,9 +1775,17 @@ placeSideRamps track =
         clearOf zoneStart zoneEnd c =
             c.startS + lengthM < zoneStart - 6.0 || c.startS > zoneEnd + 6.0
 
+        -- Little banking, and the road turns less than 0.25 rad along the
+        -- ramp (a bend of 64 m or wider), so the ground behind the lip keeps
+        -- rising away from the road.
         gentle c =
-            List.range 0 (round (lengthM / 2.0))
+            (List.range 0 (round (lengthM / 2.0))
                 |> List.all (\k -> abs (splineSampleAtS track (c.startS + toFloat k * 2.0)).bankingRad < 0.15)
+            )
+                && Vec3.dot
+                    (normalizeXZ (splineSampleAtS track c.startS).tangent)
+                    (normalizeXZ (splineSampleAtS track (c.startS + lengthM)).tangent)
+                > cos 0.25
 
         usable c =
             (c.startS > 50.0)
