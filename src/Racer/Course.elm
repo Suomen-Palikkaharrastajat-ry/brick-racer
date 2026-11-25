@@ -315,16 +315,34 @@ generateKnots attempt map cp =
                                 target =
                                     dir * at ampArr (i - 1) * cp.swingM
 
+                                forwardM =
+                                    max 1.0e-6 ((at zA i - at zA (i - 1)) * cp.lengthM)
+
+                                -- The two legs after the first leg of the
+                                -- straight keep its slope, so its four knots
+                                -- are on one line.
+                                slope =
+                                    if i == straightFrom + 1 || i == straightFrom + 2 then
+                                        acc.slope
+
+                                    else
+                                        turnLimited acc.slope ((stepSideways cp.lengthM (at zA (i - 1)) (at zA i) acc.x target - acc.x) / forwardM)
+
                                 x =
-                                    stepSideways cp.lengthM (at zA (i - 1)) (at zA i) acc.x target
+                                    acc.x + slope * forwardM
                             in
-                            { x = x, dir = dir, xs = acc.xs ++ [ x ] }
+                            { x = x, dir = dir, slope = slope, xs = acc.xs ++ [ x ] }
                         )
-                        { x = 0, dir = startDir, xs = [ 0 ] }
+                        { x = 0, dir = startDir, slope = 0, xs = [ 0 ] }
                         (List.range 1 (n - 2))
 
+                lastForwardM =
+                    max 1.0e-6 ((at zA (n - 1) - at zA (n - 2)) * cp.lengthM)
+
                 lastX =
-                    stepSideways cp.lengthM (at zA (n - 2)) (at zA (n - 1)) walked.x (0.4 * walked.x)
+                    walked.x
+                        + lastForwardM
+                        * turnLimited walked.slope ((stepSideways cp.lengthM (at zA (n - 2)) (at zA (n - 1)) walked.x (0.4 * walked.x) - walked.x) / lastForwardM)
             in
             Array.fromList (walked.xs ++ [ lastX ])
 
@@ -343,7 +361,7 @@ generateKnots attempt map cp =
             zFor scale2
 
         xArr =
-            straighten (walkSideways zArr)
+            walkSideways zArr
 
         -- Features on middle knots, at least one knot apart.
         candidates =
@@ -447,6 +465,14 @@ forwardScale cp zA yA xA =
                 bisect mid hi (steps - 1)
     in
     bisect 0.5 1.0 24
+
+
+{-| A leg's sideways slope (metres sideways per metre forward), kept within
+0.4 of the previous leg's, so the course never turns sharply at a knot.
+-}
+turnLimited : Float -> Float -> Float
+turnLimited previous wanted =
+    clamp (previous - 0.4) (previous + 0.4) wanted
 
 
 {-| Move sideways from `prev` towards `target`, never more than 0.55 m per

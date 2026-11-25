@@ -242,8 +242,9 @@ generate config =
 
 
 {-| Checks a generated course must pass before it is used: its length and
-grade, no steep 20 m stretch, no bend tighter than 18 m, legs far enough
-apart not to touch, one loop, at least one launch ramp, and at least four
+grade, no steep 20 m stretch, no bend tighter than 30 m (the off-road
+ground beside the road reaches about 26 m out), legs far enough apart not to
+touch, one loop, at least one launch ramp, and at least four
 checkpoints in order. An empty list means the course passes.
 -}
 validationIssues : GeneratedTrack -> List String
@@ -301,7 +302,9 @@ validationIssues track =
                 Nothing
 
         -- Turn of the course over 4 m (two samples either side): the arc
-        -- length divided by the turn angle is the bend radius, which must be 18 m or more.
+        -- length divided by the turn angle is the bend radius, which must be
+        -- 30 m or more: more than the off-road reach, so the ground beside
+        -- the road never folds over on the inside of a bend.
         tight i =
             case ( sampleNo (i - 1), sampleNo i, sampleNo (i + 1) ) of
                 ( Just a, _, Just b ) ->
@@ -318,14 +321,14 @@ validationIssues track =
                         arc =
                             b.s - a.s
                     in
-                    turn * 18.0 > arc
+                    turn * 30.0 > arc
 
                 _ ->
                     False
 
         curveIssue =
             if List.any tight (List.range 1 (n - 2)) then
-                Just "a bend is tighter than 18 m"
+                Just "a bend is tighter than 30 m"
 
             else
                 Nothing
