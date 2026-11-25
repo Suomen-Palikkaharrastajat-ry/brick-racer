@@ -22,14 +22,17 @@ import Game.Multiplayer exposing (Role(..), RoomState, SessionMode(..))
 import Html exposing (Html, button, div, h2, input, p, span, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
+import Html.Lazy
 import I18n exposing (Language(..))
 import Json.Decode as Decode
 import QRCode
 import Racer.Analyze exposing (CarMeshBundle)
+import Racer.CoursePreview as CoursePreview
 import Racer.I18n as RI18n
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
 import Racer.Render as Render
 import Racer.TerrainShader exposing (TerrainVertex)
+import Racer.Track as Track
 import Racer.Types
     exposing
         ( RaceMode(..)
@@ -567,6 +570,24 @@ viewCourseSelection data actions =
                         Nothing
                 }
             ]
+        , Html.Lazy.lazy2 viewCoursePreview lang data.map
+        ]
+
+
+{-| The plan view of the selected map's course. Lazy on the map, so the
+course is generated again only when the map changes.
+-}
+viewCoursePreview : Language -> MapParams -> Html msg
+viewCoursePreview lang map =
+    div
+        [ Tw.classes [ Tw.px Th.s2, Tw.py Th.s1_dot_5, Tw.rounded_xl ]
+        , Attr.style "background" "rgba(7, 25, 38, 0.75)"
+        , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
+        ]
+        [ Track.trackConfigFor map
+            |> Track.generate
+            |> CoursePreview.fromTrack
+            |> CoursePreview.view (RI18n.mapTitle lang map)
         ]
 
 

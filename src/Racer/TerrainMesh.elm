@@ -5,6 +5,7 @@ module Racer.TerrainMesh exposing
     , buildGaragePlinthMesh
     , buildTrackRenderBundle
     , rebuildChunkScenery
+    , roadColors
     , sceneryDebrisStyle
     )
 
