@@ -672,6 +672,19 @@ verifySideRamps id seed =
                                 noHollow =
                                     List.map2 (\a b -> b >= a - 0.03) behind (List.drop 1 behind) |> List.all identity
 
+                                nearestAt k =
+                                    let
+                                        smp =
+                                            Track.splineSampleAtS track mid
+
+                                        pointAt j =
+                                            Vec3.add smp.center (Vec3.scale (sr.side * (sr.outerOffsetM + toFloat j * 0.5)) (normalizeFlat smp.right))
+
+                                        q j =
+                                            Track.sampleAtHinted mid track (Vec3.getX (pointAt j)) (Vec3.getZ (pointAt j))
+                                    in
+                                    List.map (\j -> ( (q j).nearestS, (q j).roadOffsetM, (q j).height )) [ k, k + 1 ]
+
                                 hollows =
                                     List.map2 (\a b -> b - a) behind (List.drop 1 behind)
                                         |> List.indexedMap Tuple.pair
@@ -688,7 +701,7 @@ verifySideRamps id seed =
                                             Nothing
 
                                           else
-                                            Just ("hollow behind the lip at (0.5 m step, rise) " ++ Debug.toString hollows)
+                                            Just ("hollow behind the lip at (0.5 m step, rise) " ++ Debug.toString hollows ++ " nearest road (s, offset, height) " ++ Debug.toString (List.map (\( k, _ ) -> nearestAt k) hollows))
                                         , if nearInner > 0.2 then
                                             Just "steep at the inner edge"
 
