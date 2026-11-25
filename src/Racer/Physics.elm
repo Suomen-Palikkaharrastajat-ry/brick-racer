@@ -42,6 +42,7 @@ support force would have to pull, falls off and flies like any airborne car.
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Track as Track
 import Racer.Types
+import Racer.World as World
     exposing
         ( CrashReason(..)
         , GeneratedTrack
@@ -442,10 +443,10 @@ stepOnGround dt track spec input state =
                 0.62
 
         surfaceGrip =
-            surfaceGripMultiplier centerTerrain.surface
+            surfaceGripMultiplier centerTerrain.surface * World.gripScale track.config.map
 
         surfaceRoll =
-            surfaceRollingResist centerTerrain.surface
+            surfaceRollingResist centerTerrain.surface * World.rollingResistScale track.config.map
 
         bellyScrape =
             spec.groundClearanceLdu < -0.5 || maxCompression > 0.22
@@ -1480,6 +1481,9 @@ breakSpeedFor kind =
         PineTree ->
             4.0
 
+        PalmTree ->
+            4.0
+
         Rock ->
             5.5
 
@@ -1544,6 +1548,9 @@ sceneryMassFactor kind =
             0.3
 
         PineTree ->
+            0.3
+
+        PalmTree ->
             0.3
 
         Rock ->

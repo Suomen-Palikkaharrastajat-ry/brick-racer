@@ -92,6 +92,7 @@ trackConfigFor id seed =
             , dropM = cp.dropM
             , defaultHalfWidthM = cp.halfWidthM
             , knots = Course.generateKnots attempt map cp
+            , map = map
             }
 
         firstValid attempt =
@@ -1070,28 +1071,35 @@ type alias SceneryTheme =
     }
 
 
-sceneryTheme : TrackId -> SceneryTheme
-sceneryTheme trackId =
-    case trackId of
-        FarmLane ->
+sceneryTheme : Map.Biome -> SceneryTheme
+sceneryTheme biome =
+    case biome of
+        Map.Farmland ->
             { fenceChance = 0.06
             , density = 0.2
             , weights =
                 [ ( LeafyTree, 20 ), ( Bush, 15 ), ( HayBale, 15 ), ( Rock, 6 ), ( Signpost, 6 ), ( PineTree, 4 ), ( Cottage, 4 ), ( Barn, 5 ), ( Crate, 7 ), ( Barrel, 6 ), ( GardenGnome, 3 ), ( BrickWall, 4 ), ( BrickPallet, 4 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ), ( Chalet, 2 ), ( PitGarage, 2 ) ]
             }
 
-        ForestTrail ->
+        Map.Boreal ->
             { fenceChance = 0.015
             , density = 0.34
             , weights =
                 [ ( PineTree, 38 ), ( LeafyTree, 16 ), ( Bush, 12 ), ( Rock, 12 ), ( Signpost, 5 ), ( HayBale, 2 ), ( Cottage, 3 ), ( Crate, 4 ), ( Barrel, 3 ), ( GardenGnome, 4 ), ( BrickWall, 1 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 2 ), ( SlopeBlock, 2 ), ( CountdownBoard, 2 ), ( Chalet, 3 ), ( PitGarage, 1 ) ]
             }
 
-        MeadowPath ->
+        Map.Fell ->
             { fenceChance = 0.04
             , density = 0.17
             , weights =
                 [ ( Bush, 21 ), ( LeafyTree, 14 ), ( Rock, 13 ), ( HayBale, 12 ), ( Signpost, 6 ), ( PineTree, 3 ), ( Cottage, 4 ), ( Barn, 3 ), ( Crate, 3 ), ( Barrel, 2 ), ( GardenGnome, 6 ), ( BrickWall, 4 ), ( BrickPallet, 3 ), ( TileStack, 3 ), ( BrickGate, 3 ), ( SlopeBlock, 3 ), ( CountdownBoard, 3 ), ( Chalet, 2 ), ( PitGarage, 2 ) ]
+            }
+
+        Map.Desert ->
+            { fenceChance = 0.02
+            , density = 0.22
+            , weights =
+                [ ( PalmTree, 18 ), ( Rock, 12 ), ( Bush, 6 ), ( Crate, 10 ), ( Barrel, 10 ), ( Cottage, 4 ), ( Signpost, 4 ), ( CountdownBoard, 2 ), ( BrickWall, 2 ), ( GardenGnome, 2 ), ( BrickPallet, 2 ), ( TileStack, 2 ), ( BrickGate, 2 ), ( SlopeBlock, 2 ), ( Chalet, 2 ), ( PitGarage, 2 ) ]
             }
 
 
@@ -1132,6 +1140,9 @@ scenerySpec kind offRoll sizeRoll =
             { offsetM = 2.6 + offRoll * 7.0, radiusM = 0.7, heightM = 4.0 + 1.6 * sizeRoll }
 
         PineTree ->
+            { offsetM = 2.4 + offRoll * 8.0, radiusM = 0.65, heightM = 5.0 + 2.0 * sizeRoll }
+
+        PalmTree ->
             { offsetM = 2.4 + offRoll * 8.0, radiusM = 0.65, heightM = 5.0 + 2.0 * sizeRoll }
 
         Bush ->
@@ -1236,7 +1247,7 @@ generateScenery : GeneratedTrack -> List TrackObstacle
 generateScenery track =
     let
         theme =
-            sceneryTheme track.config.id
+            sceneryTheme track.config.map.biome
 
         stepM =
             3.0

@@ -60,6 +60,7 @@ sources : List ( String, String )
 sources =
     [ ( "leafyTree", BrickModels.leafyTree )
     , ( "pineTree", BrickModels.pineTree )
+    , ( "palmTree", BrickModels.palmTree )
     , ( "bush", BrickModels.bush )
     , ( "fence", BrickModels.fence )
     , ( "rock", BrickModels.rock )
@@ -106,6 +107,9 @@ modelFor obs =
 
         PineTree ->
             ( "pineTree", BrickProps.fitHeight obs.heightM )
+
+        PalmTree ->
+            ( "palmTree", BrickProps.fitHeight obs.heightM )
 
         Bush ->
             ( "bush", BrickProps.fitHeight obs.heightM )

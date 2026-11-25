@@ -688,6 +688,9 @@ sceneryDebrisStyle kind =
         PineTree ->
             { colors = [ ldrawColor 288, ldrawColor 288, ldrawColor 70 ], count = 9, scale = 1.0 }
 
+        PalmTree ->
+            { colors = [ ldrawColor 70, ldrawColor 2, ldrawColor 19 ], count = 9, scale = 1.0 }
+
         Bush ->
             { colors = [ ldrawColor 2, ldrawColor 10, ldrawColor 14 ], count = 6, scale = 0.75 }
 

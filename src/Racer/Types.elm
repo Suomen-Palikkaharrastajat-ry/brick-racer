@@ -51,6 +51,7 @@ right-handed `+Y` up, `+Z` forward).
 -}
 
 import Array exposing (Array)
+import Game.MapParams exposing (MapParams)
 import Math.Matrix4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3)
 
@@ -201,6 +202,7 @@ type alias TrackConfig =
     , dropM : Float
     , defaultHalfWidthM : Float
     , knots : List BlueprintKnot
+    , map : MapParams
     }
 
 
@@ -241,6 +243,7 @@ some structural integrity.
 type ObstacleKind
     = LeafyTree
     | PineTree
+    | PalmTree
     | Bush
     | FenceSection
     | Rock
