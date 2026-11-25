@@ -9,12 +9,13 @@ module Pages.Results exposing
 
 import DesignTokens.Colors as Brand
 import FeatherIcons
+import Game.MapParams exposing (MapParams)
 import Html exposing (Html, div, h1, h2, span, text)
 import Html.Attributes as Attr
 import I18n exposing (Language)
 import Racer.I18n as RI18n
 import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
-import Racer.Types exposing (TrackId, VehicleSpec)
+import Racer.Types exposing (VehicleSpec)
 import Tailwind as Tw
 import Tailwind.Theme as Th
 import UI.Button as Button
@@ -24,8 +25,7 @@ import UI.Button as Button
 -}
 type alias ResultsViewData =
     { language : Language
-    , trackId : TrackId
-    , seed : Int
+    , map : MapParams
     , vehicle : VehicleSpec
     , finishTimeS : Float
     , topSpeedKmh : Float
@@ -41,6 +41,7 @@ type alias ResultsViewData =
 -}
 type alias ResultsActions msg =
     { onRaceAgain : msg
+    , onNewMap : msg
     , onCopyShareLink : msg
     , onInspectGarage : msg
     , onBackToMenu : msg
@@ -56,7 +57,7 @@ view data actions =
             data.language
 
         entries =
-            Leaderboard.entriesForTrack data.trackId data.leaderboard
+            Leaderboard.entriesForMap data.map data.leaderboard
     in
     div
         [ Tw.classes [ Tw.min_h_screen, Tw.w_full, Tw.flex, Tw.items_center, Tw.justify_center, Tw.p Th.s4, Tw.overflow_y_auto ]
@@ -73,7 +74,7 @@ view data actions =
               div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_between, Tw.gap Th.s3 ] ]
                 [ div []
                     [ div [ Tw.classes [ Tw.text_xs, Tw.font_semibold ], Attr.style "color" "#38bdf8" ]
-                        [ text (RI18n.trackTitle lang data.trackId ++ " • #" ++ String.fromInt data.seed) ]
+                        [ text (RI18n.mapTitle lang data.map) ]
                     , h1 [ Tw.classes [ Tw.text_n3xl, Tw.font_extrabold ] ] [ text (RI18n.finishedHeadline lang) ]
                     , div [ Tw.classes [ Tw.text_sm ], Attr.style "color" "#cbd5e1" ]
                         [ text (data.vehicle.name ++ " (" ++ String.fromInt (List.length data.vehicle.wheels) ++ " wheels)") ]
@@ -155,6 +156,7 @@ view data actions =
             -- Action Buttons
             , div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.gap Th.s3, Tw.pt Th.s2 ] ]
                 [ Button.primaryOnDark actions.onRaceAgain (RI18n.raceAgainButton lang)
+                , Button.secondary actions.onNewMap (RI18n.newMapButton lang)
                 , Button.secondary actions.onCopyShareLink (RI18n.shareRaceUrlButton lang)
                 , Button.secondary actions.onInspectGarage (RI18n.inspectCarButton lang)
                 , Button.secondary actions.onBackToMenu (RI18n.changeCarLabel lang)

@@ -7,6 +7,7 @@ road, and the car's health wears down fairly until it breaks into bricks.
 
 import Dict
 import Expect
+import Game.MapParams as Map
 import LDraw.Catalog as Catalog
 import LDraw.Document as Document
 import Math.Matrix4 as Mat4
@@ -18,7 +19,7 @@ import Racer.Ingest as Ingest
 import Racer.Physics as Physics
 import Racer.Render as Render
 import Racer.Track as Track
-import Racer.Types exposing (CameraMode(..), CrashReason(..), GeneratedTrack, PhysicsEvent(..), PhysicsState, TrackId(..), VehicleSpec, lduToMeters)
+import Racer.Types exposing (CameraMode(..), CrashReason(..), GeneratedTrack, PhysicsEvent(..), PhysicsState, VehicleSpec, lduToMeters)
 import Render.Camera as Camera
 import Test exposing (Test, describe, test)
 
@@ -37,7 +38,7 @@ presetSpec presetId =
 
 farmLane : GeneratedTrack
 farmLane =
-    Track.generate (Track.trackConfigFor FarmLane 1)
+    Track.generate (Track.trackConfigFor { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 1 })
 
 
 {-| Let the chase camera settle behind a car moving at `speed` on a slope of
@@ -245,14 +246,14 @@ suite =
         , describe "Getting back onto the road"
             [ describe "the ground beside the road slopes back toward it"
                 (List.map
-                    (\( name, trackId ) ->
+                    (\( name, biome ) ->
                         test name <|
                             \_ ->
                                 List.range 1 3
-                                    |> List.concatMap (\seed -> pointsSlopingAway (Track.generate (Track.trackConfigFor trackId seed)))
+                                    |> List.concatMap (\seed -> pointsSlopingAway (Track.generate (Track.trackConfigFor { biome = biome, season = Map.Summer, weather = Map.Clear, seed = seed })))
                                     |> Expect.equal []
                     )
-                    [ ( "Farm lane", FarmLane ), ( "Forest trail", ForestTrail ), ( "Meadow path", MeadowPath ) ]
+                    [ ( "Farmland", Map.Farmland ), ( "Boreal", Map.Boreal ), ( "Fell", Map.Fell ) ]
                 )
             , test "no tow on the road or its verge" <|
                 \_ ->

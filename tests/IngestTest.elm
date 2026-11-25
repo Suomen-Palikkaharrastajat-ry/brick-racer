@@ -6,6 +6,7 @@ module IngestTest exposing (suite)
 import Dict
 import EmbeddedParts
 import Expect
+import Game.MapParams as Map exposing (MapParams)
 import LDraw.Catalog as Catalog
 import LDraw.Connectivity as Connectivity exposing (ConnectionType(..))
 import LDraw.Document as Document
@@ -13,7 +14,7 @@ import Math.Matrix4 as Mat4
 import Math.Vector3 as Vec3
 import Racer.Analyze as Analyze exposing (FallbackCacheMode(..))
 import Racer.Ingest as Ingest exposing (IngestError(..))
-import Racer.Types as Types exposing (SteeringMechanism(..), TrackId(..), ValidationCode(..), ValidationSeverity(..))
+import Racer.Types as Types exposing (SteeringMechanism(..), ValidationCode(..), ValidationSeverity(..))
 import Render.Camera as Camera
 import Set
 import Studio.Health as Health
@@ -28,10 +29,20 @@ suite =
         ]
 
 
+borealWinter : MapParams
+borealWinter =
+    { biome = Map.Boreal, season = Map.Winter, weather = Map.Snow, seed = 4242 }
+
+
+fellSummer : MapParams
+fellSummer =
+    { biome = Map.Fell, season = Map.Summer, weather = Map.Clear, seed = 99 }
+
+
 ingestSuite : Test
 ingestSuite =
     describe "Racer.Ingest URL & hash codecs"
-        [ test "roundtrips document, track, and seed through encodeRaceHash -> decodeRaceInput" <|
+        [ test "roundtrips document and map through encodeRaceHash -> decodeRaceInput" <|
             \_ ->
                 let
                     doc =
@@ -43,13 +54,13 @@ ingestSuite =
                                 Document.empty
 
                     encoded =
-                        Ingest.encodeRaceHash ForestTrail 4242 doc
+                        Ingest.encodeRaceHash borealWinter doc
                 in
                 case Ingest.decodeRaceInput Nothing encoded of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just ForestTrail) decoded.trackId
-                            , \_ -> Expect.equal (Just 4242) decoded.seed
+                            [ \_ -> Expect.equal (Just borealWinter) decoded.map
+                            , \_ -> Expect.equal True (String.startsWith "#map=boreal-winter-snow-4242&b/" encoded)
                             , \_ -> Expect.equal (List.length (Document.mainPlacements doc)) (List.length (Document.mainPlacements decoded.document))
                             ]
                             ()
@@ -68,13 +79,12 @@ ingestSuite =
                                 Document.empty
 
                     encoded =
-                        Ingest.encodeGarageHash ForestTrail 555 doc
+                        Ingest.encodeGarageHash { borealWinter | seed = 555 } doc
                 in
                 case Ingest.decodeRaceInput Nothing encoded of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just ForestTrail) decoded.trackId
-                            , \_ -> Expect.equal (Just 555) decoded.seed
+                            [ \_ -> Expect.equal (Just { borealWinter | seed = 555 }) decoded.map
                             , \_ -> Expect.equal True decoded.isGarage
                             , \_ -> Expect.equal (List.length (Document.mainPlacements doc)) (List.length (Document.mainPlacements decoded.document))
                             ]
@@ -101,7 +111,7 @@ ingestSuite =
                         Document.parse "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat"
 
                     raceHash =
-                        Ingest.encodeRaceHash MeadowPath 99 doc
+                        Ingest.encodeRaceHash fellSummer doc
 
                     fullUrl =
                         "https://catalog.palikkaharrastajat.fi/racer/" ++ raceHash
@@ -109,15 +119,14 @@ ingestSuite =
                 case Ingest.decodeRaceInput Nothing fullUrl of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just MeadowPath) decoded.trackId
-                            , \_ -> Expect.equal (Just 99) decoded.seed
+                            [ \_ -> Expect.equal (Just fellSummer) decoded.map
                             , \_ -> Expect.equal 1 (List.length (Document.mainPlacements decoded.document))
                             ]
                             ()
 
                     Err err ->
                         Expect.fail ("Failed to decode full URL: " ++ Debug.toString err)
-        , test "decodes viewer #model=...&parts=...&free=1 hash alongside a legacy track= id" <|
+        , test "decodes viewer #model=...&parts=...&free=1 hash and ignores an old track= id" <|
             \_ ->
                 let
                     url =
@@ -126,14 +135,32 @@ ingestSuite =
                 case Ingest.decodeRaceInput Nothing url of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just FarmLane) decoded.trackId
-                            , \_ -> Expect.equal (Just 7) decoded.seed
+                            [ \_ -> Expect.equal Nothing decoded.map
                             , \_ -> Expect.equal 1 (List.length (Document.mainPlacements decoded.document))
                             ]
                             ()
 
                     Err err ->
                         Expect.fail ("Failed to decode #model= hash: " ++ Debug.toString err)
+        , test "decodes a #model= hash with a map= part and keeps the map" <|
+            \_ ->
+                let
+                    url =
+                        "#map=fell-summer-clear-99&model=1%204%200%200%200%201%200%200%200%201%200%200%200%201%203001.dat&free=1"
+                in
+                case Ingest.decodeRaceInput Nothing url of
+                    Ok decoded ->
+                        Expect.all
+                            [ \_ -> Expect.equal (Just fellSummer) decoded.map
+                            , \_ -> Expect.equal 1 (List.length (Document.mainPlacements decoded.document))
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("Failed to decode #map=...&model= hash: " ++ Debug.toString err)
+        , test "a #room= hash carries no map" <|
+            \_ ->
+                Expect.equal Nothing (Ingest.parseHash "#room=ABCD").map
         , test "rejects empty input cleanly" <|
             \_ ->
                 Expect.equal (Err EmptyInput) (Ingest.decodeRaceInput Nothing "   ")
@@ -212,7 +239,7 @@ ingestSuite =
 
                     Err err ->
                         Expect.fail ("Failed: " ++ Debug.toString err)
-        , test "decodes user bug report URL with meadow-path, seed 5212, and b/ payload" <|
+        , test "decodes the car of an old #track= link and ignores its track" <|
             \_ ->
                 let
                     url =
@@ -221,8 +248,7 @@ ingestSuite =
                 case Ingest.decodeRaceInput Nothing url of
                     Ok decoded ->
                         Expect.all
-                            [ \_ -> Expect.equal (Just MeadowPath) decoded.trackId
-                            , \_ -> Expect.equal (Just 5212) decoded.seed
+                            [ \_ -> Expect.equal Nothing decoded.map
                             , \_ -> Expect.equal False (List.isEmpty (Document.mainPlacements decoded.document))
                             ]
                             ()

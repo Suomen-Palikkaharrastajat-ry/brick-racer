@@ -69,8 +69,8 @@ brick-racer/
 │   ├── Ports.elm               # Elm <-> JS ports (hash, audio, tilt sensor, storage, clipboard)
 │   ├── I18n.elm                # Bilingual fi / en strings extending Brick Frame I18n pattern
 │   ├── Racer/
-│   │   ├── Types.elm           # Shared VehicleSpec, WheelSpec, ValidationReport, TrackId
-│   │   ├── Ingest.elm          # Hash parser (#b/, #model=, #track=), preset & file loader
+│   │   ├── Types.elm           # Shared VehicleSpec, WheelSpec, ValidationReport, TrackConfig
+│   │   ├── Ingest.elm          # Hash parser (#b/, #model=, #map=), preset & file loader
 │   │   ├── Analyze.elm         # Wheel/axle/steering detection, mass/CoM, mesh partitioning
 │   │   ├── Physics.elm         # Fixed-timestep rigid-body + 4-wheel suspension integrator
 │   │   ├── Track.elm           # Seeded 3D Catmull-Rom spline, heightmap blend, obstacles
@@ -132,7 +132,7 @@ Players can bring a build into `brick-racer` in four ways:
 1. **Direct URL Paste or Address Bar Navigation:**
    - **High-density binary hash (`brick-play` / `brick-studio`):** `#b/<base64url>` or full URL `https://.../play/#b/...` (decoded by `url-hash-codec.js` + `Studio.HashPayload.decodeBytes` — magic bytes `0x42 0x46` `"BF"`, compressed raw deflate level 9). Note: both `freePayload` (`FreeBuilding`) and `fixedModelPayload` (`Puzzle` with empty kit) decode cleanly to a `Document`.
    - **Text deep-link hash (`brick-studio` viewer):** `#model=<percent-encoded-ldr>&parts=...` (decoded via `Studio.UrlPayload.decodeHash` + `LDraw.Document.parse`).
-   - **Combined Racer Deep-Link:** `#track=<trackId>&seed=<int>&b/<base64url>` or `#track=<trackId>&model=<ldr>`. `Racer.Ingest` strips `track=` and `seed=` query-like hash segments before forwarding `#b/...` or `#model=...` to `url-hash-codec.js` / `Studio.HashPayload` / `Studio.UrlPayload`.
+   - **Combined Racer Deep-Link:** `#map=<biome-season-weather-seed>&b/<base64url>` or `#map=<code>&model=<ldr>`. `Racer.Ingest` strips `map=` (and the old, ignored `track=` and `seed=`) query-like hash segments before forwarding `#b/...` or `#model=...` to `url-hash-codec.js` / `Studio.HashPayload` / `Studio.UrlPayload`.
    - **Viewport Camera Preservation (`Viewport.Hash`):** Optional `&az=...&el=...&d=...` flags are tolerated without breaking model decoding.
 2. **Paste Box in Menu / Garage:** Accepts any full URL containing `#b/...` or `#model=...`, bare `b/...` fragments, or raw LDraw `.ldr`/`.mpd` text pasted directly.
 3. **File Drop / Upload:** `.ldr`, `.mpd`, `.dat`, and `.io` (handled through `initBricksRuntime` file drop and `.io` zip/crypto extraction, reusing the existing `fileContentReceived` JS runtime bridge).
@@ -365,17 +365,26 @@ The ground is drawn smooth and matte (`TerrainShader.groundEntity`): no studs, p
 - **Breaking:** see §4.2 (6). A smashed piece is removed from `race.track` (`Track.removeObstacles`), only the scenery mesh of its chunk is rebuilt (`TerrainMesh.rebuildChunkScenery`), and it bursts into 4–14 studded debris bricks in its own colors (`TerrainMesh.sceneryDebrisStyle`), thrown along the racer's heading with some spread and lift. Debris lands and bounces on the terrain, lies there for 3.2–4.4 s, then shrinks away over the last 0.5 s. At most 72 debris bricks (racer and scenery together) are alive at once; the oldest go first, and all of them are drawn with one shared brick mesh. Feedback: a short decaying camera shake, a "Smash!" banner and a shattering sound (`playSfx "smash"`).
 - **Checkpoints & Finish Line:** placed every ~25 % of track length (3 checkpoints + finish arch). Crossing a checkpoint records the split time, flashes the split delta, updates the respawn anchor and plays a chime.
 
-### 5.4 Course Presets & Chunked WebGL Rendering
+### 5.4 Maps & Chunked WebGL Rendering
 
-Three courses ship out of the box (plus custom `seed` variations):
+Every course is generated from a map (`Game.MapParams`, shared with Brick
+Sails): a biome (Farmland, Boreal, Fell, Desert), a season, a weather and a
+seed from 1 to 999999. The map code is `biome-season-weather-seed`, for example
+`boreal-winter-snow-48213`. The garage's map picker (`Game.MapPicker`) picks
+each part or leaves it at Any, which `Game.MapParams.resolve` decides from the
+seed; the first start is all Any with seed 1. Pasting a map code into the seed
+field sets all four parts, and "Previous map" reuses the last map raced in the
+same game. `Racer.Track.trackConfigFor map` draws the course shape from the
+map (`Racer.Course`) and keeps the first of eight seeded attempts that passes
+`Track.validationIssues`.
 
-| Preset ID | Track Name | Length / Drop | Character |
-|---|---|---|---|
-| `farm-lane` | **Farm Lane Drop** | ~0.5 km / -150 m | Dirt and gravel farm road, a left and a right bend, rutted gravel sweep, steepest pitch into the farmyard. Fences, hay bales, barns. |
-| `forest-trail` | **Forest Trail** | ~0.56 km / -175 m | Packed-earth forest track over roots, steep gravel chute through a clearing, log hump. Dense pines, rocks. |
-| `meadow-path` | **Meadow Footpath** | ~0.45 km / -150 m | Narrowest and steepest: grass footpath with a field hump and tussocks. Bushes, rocks, hay. |
-
-The retired long mountain courses' ids (`pine-ridge`, `quarry-switchbacks`, `alpine-glacier`) still parse and map to `farm-lane`, `forest-trail` and `meadow-path`, so old share links keep working. Best times stored for those courses are dropped once on load (`leaderboard-migration.js`, guarded by the `palikkakehys.racer.migrations.retiredTracks` flag) so they do not appear as records on the short courses.
+The map travels in the URL hash as `#map=<code>&b/...` (garage:
+`#garage&map=<code>&b/...`). Old `#track=` links still load the car; their
+track part is ignored. Leaderboards are kept per exact map code
+(`Game.MapParams.leaderboardKey`, prefixed with the generator version); old
+per-track entries are dropped when the board is read, and the board keeps six
+runs per map for at most 60 maps. In a network room the host sends the map
+code as the course id, and joiners switch to it.
 
 #### Chunked WebGL Architecture (`Racer.TerrainMesh`, `Racer.TerrainShader`)
 - Ground and arches are divided into `100 m` track-length chunks (5–6 chunks), built once when entering a track. Each chunk has a static ground mesh and a separate scenery mesh that is rebuilt only when a piece in it is smashed.
@@ -571,8 +580,8 @@ type Msg
 | Port | Direction | Payload | Purpose |
 |---|---|---|---|
 | `decodeBinaryHash` / `binaryHashDecoded` | Elm <-> JS | `String` <-> `Maybe (List Int)` (or decode in JS on init & hashchange via `url-hash-codec.js`) | Inflate `#b/<base64url>` payloads pasted in-app without page reload |
-| `setUrlHash` | Elm -> JS | `String` | Update `#track=<id>&b/...` share link without full navigation |
-| `copyShareUrl` | Elm -> JS | `String` | Copy shareable race URL (`#track=...&b/...`) to clipboard |
+| `setUrlHash` | Elm -> JS | `String` | Update `#map=<code>&b/...` share link without full navigation |
+| `copyShareUrl` | Elm -> JS | `String` | Copy shareable race URL (`#map=...&b/...`) to clipboard |
 | `updateAudioState` | Elm -> JS | `{ active : Bool, windGain : Float, windHz : Float, rumbleGain : Float, rumbleHz : Float, clatterGain : Float, scrapeGain : Float }` | Drive smooth continuous Web Audio synthesis |
 | `playSfx` | Elm -> JS | `{ kind : String, intensity : Float }` | Trigger impact, landing, brick-pop, countdown, checkpoint, finish sounds |
 | `setAudioMuted` | Elm -> JS | `Bool` | Mute/unmute and persist in `localStorage` |
@@ -597,12 +606,12 @@ type Msg
 ### 9.1 Linking from `brick-studio` and `brick-play`
 
 Add an optional `"Race in Brick Racer"` action alongside `"Simulate"` / `"Share"` in `brick-play` (`src/Link.elm` / share modal) and `brick-studio`:
-- When `VITE_RACER_URL` (or relative sibling `../racer/`) is configured, emit `<racerBase>#track=farm-lane&b/<base64url>` from `Link.freeHash` or `Link.fixedModelHash` (using `encodeHash`), letting builders test their soapbox creations down the hill in one click.
+- When `VITE_RACER_URL` (or relative sibling `../racer/`) is configured, emit `<racerBase>#b/<base64url>` from `Link.freeHash` or `Link.fixedModelHash` (using `encodeHash`), letting builders test their soapbox creations down the hill in one click.
 
 ### 9.2 Verification Strategy (`elm-test`, `elm-review`, Browser Tests)
 
 1. **`elm-test` Unit Suites (`make test`):**
-   - `IngestTest`: verifies `#b/<base64url>`, `#model=...`, `#track=...&b/...`, and bare pasted URLs decode into valid `Document` + `TrackId`.
+   - `IngestTest`: verifies `#b/<base64url>`, `#model=...`, `#map=...&b/...`, old `#track=` links (track ignored), and bare pasted URLs decode into a valid `Document` and an optional map.
    - `AnalyzeTest`: tests fixture builds (4-wheel fixed holder `4600.dat`, turntable steering bogie `3679.dat`/`3680.dat`, bare-rim vs rubber-tire selection, zero-clearance warning, 2-wheel blocker, disconnected brick detection, heading normalization).
    - `PhysicsTest`: conservation & invariants (zero slope + zero speed stays stationary; steeper slope increases terminal speed; belly-scrape applies extra drag; braking decelerates smoothly; airborne flag clears ground rumble; checkpoint recovery resets upright).
    - `TrackTest`: spline monotonicity (every track monotonically drops overall and stays finite/smooth), short-and-steep bounds (0.35–0.65 km, at least 25 % average grade), roadbed-to-verge terrain continuity, deterministic replay from equal `seed`, scenery clearance from the roadbed and start pad, legacy track id mapping, and `removeObstacles`.

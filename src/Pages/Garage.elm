@@ -8,7 +8,7 @@ module Pages.Garage exposing
 
 {-| Unified setup screen for Brick Racer (`SetupPage`).
 
-Combines the 3D turntable vehicle inspector, course selector with square preview cards,
+Combines the 3D turntable vehicle inspector, the map picker,
 builder entry CTA, hot seat & network multiplayer options, and host waiting room.
 
 -}
@@ -16,6 +16,8 @@ builder entry CTA, hot seat & network multiplayer options, and host waiting room
 import Component.Navbar as Navbar
 import DesignTokens.Colors as Brand
 import FeatherIcons
+import Game.MapParams exposing (Biome, MapParams, Pick, Season, Selection, WeatherKind)
+import Game.MapPicker as MapPicker
 import Game.Multiplayer exposing (Role(..), RoomState, SessionMode(..))
 import Html exposing (Html, button, div, h2, input, p, span, text)
 import Html.Attributes as Attr
@@ -31,12 +33,9 @@ import Racer.TerrainShader exposing (TerrainVertex)
 import Racer.Types
     exposing
         ( RaceMode(..)
-        , TrackId(..)
         , VehicleSpec
-        , allTrackIds
         )
 import Render.Camera exposing (Camera)
-import Svg
 import Svg.Attributes as SvgAttr
 import Tailwind as Tw
 import Tailwind.Breakpoints as Bp
@@ -70,8 +69,10 @@ type alias GarageViewData =
     , wheelPreviewSpin : Float
     , partsLoaded : Int
     , partsTotal : Int
-    , selectedTrack : TrackId
-    , seed : Int
+    , selection : Selection
+    , map : MapParams
+    , seedText : String
+    , hasPreviousMap : Bool
     , leaderboard : Leaderboard
     , viewportWidth : Int
     , viewportHeight : Int
@@ -93,9 +94,12 @@ type alias GarageViewData =
 type alias GarageActions msg =
     { onOpenBuilder : msg
     , onStartRace : msg
-    , onSelectTrack : TrackId -> msg
+    , onPickBiome : Pick Biome -> msg
+    , onPickSeason : Pick Season -> msg
+    , onPickWeather : Pick WeatherKind -> msg
     , onChangeSeed : String -> msg
     , onRandomSeed : msg
+    , onUsePreviousMap : msg
     , onSetPlayerModeTab : PlayerModeTab -> msg
     , onSetRaceMode : RaceMode -> msg
     , onSelectPlayerSlot : PlayerSlot -> msg
@@ -185,7 +189,7 @@ view data actions =
                   viewTurntableHero data canvasWidth canvasHeight canvasEvents
                 , -- Action Buttons: prominent builder entry + start race CTA
                   viewActionButtons data actions
-                , -- Square Track Selection with Previews
+                , -- Map picker
                   viewCourseSelection data actions
                 , -- Unified Player Mode & Multiplayer (Hot seat vs Network, Host Waiting Room)
                   viewPlayerOptions data actions
@@ -339,7 +343,7 @@ viewTurntableHero data canvasWidth canvasHeight canvasEvents =
         , Attr.style "border-color" "rgba(255, 255, 255, 0.12)"
         ]
         [ Render.renderGarageViewport
-            data.selectedTrack
+            data.map
             data.plinthMesh
             data.shadowMesh
             data.wheelPreviewSpin
@@ -508,7 +512,8 @@ viewActionButtons data actions =
         ]
 
 
-{-| Square track selection tiles with SVG course previews, PB badge, and seed controls.
+{-| The map picker (biome, season, weather, seed and the previous map), the
+map code it resolves to and the personal best on that map.
 -}
 viewCourseSelection : GarageViewData -> GarageActions msg -> Html msg
 viewCourseSelection data actions =
@@ -516,239 +521,52 @@ viewCourseSelection data actions =
         lang =
             data.language
 
-        viewTrackCard trackId =
-            let
-                isSelected =
-                    data.selectedTrack == trackId
-
-                title =
-                    RI18n.trackTitle lang trackId
-
-                desc =
-                    RI18n.trackDescription lang trackId
-
-                personalBest =
-                    Leaderboard.bestForTrack trackId data.leaderboard
-                        |> Maybe.map (\entry -> String.fromFloat (roundFloat 2 entry.timeSeconds) ++ " s")
-                        |> Maybe.withDefault "—"
-            in
-            button
-                [ Attr.type_ "button"
-                , onClick (actions.onSelectTrack trackId)
-                , Attr.title desc
-                , Tw.classes
-                    [ Tw.flex
-                    , Tw.flex_col
-                    , Tw.justify_between
-                    , Tw.p Th.s3
-                    , Tw.rounded_xl
-                    , Tw.text_left
-                    , Tw.transition_all
-                    , Tw.cursor_pointer
-                    , Tw.aspect_square
-                    , Tw.relative
-                    , Tw.overflow_hidden
-                    ]
-                , Attr.style "background"
-                    (if isSelected then
-                        "rgba(13, 34, 53, 0.95)"
-
-                     else
-                        "rgba(7, 25, 38, 0.75)"
-                    )
-                , Attr.style "border"
-                    (if isSelected then
-                        "2px solid " ++ Brand.legoYellow
-
-                     else
-                        "1px solid rgba(255, 255, 255, 0.12)"
-                    )
-                , Attr.style "box-shadow"
-                    (if isSelected then
-                        "0 0 0 2px rgba(250, 200, 10, 0.3)"
-
-                     else
-                        "none"
-                    )
-                ]
-                [ -- Card Top: Title & PB
-                  div [ Tw.classes [ Tw.flex, Tw.items_start, Tw.justify_between, Tw.w_full, Tw.gap Th.s1 ] ]
-                    [ div
-                        [ Tw.classes [ Tw.font_bold, Tw.text_sm ]
-                        , Attr.style "color"
-                            (if isSelected then
-                                Brand.legoYellow
-
-                             else
-                                Brand.legoWhite
-                            )
-                        ]
-                        [ text title ]
-                    , span
-                        [ Tw.classes [ Tw.text_xs, Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.font_mono ]
-                        , Attr.style "background" "rgba(255, 255, 255, 0.08)"
-                        , Attr.style "color"
-                            (if personalBest == "—" then
-                                "#94a3b8"
-
-                             else
-                                Brand.legoYellow
-                            )
-                        ]
-                        [ text ("⏱ " ++ personalBest) ]
-                    ]
-
-                -- Card Middle: SVG Minimap Preview
-                , div [ Tw.classes [ Tw.w_full, Tw.flex_1, Tw.my Th.s1, Tw.flex, Tw.items_center, Tw.justify_center ] ]
-                    [ viewTrackPreviewSvg trackId ]
-                ]
+        personalBest =
+            Leaderboard.bestForMap data.map data.leaderboard
+                |> Maybe.map (\entry -> String.fromFloat (roundFloat 2 entry.timeSeconds) ++ " s")
+                |> Maybe.withDefault "—"
     in
     div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s3 ] ]
-        [ div [ Tw.classes [ Tw.flex, Tw.items_baseline, Tw.justify_between ] ]
+        [ div [ Tw.classes [ Tw.flex, Tw.items_baseline, Tw.justify_between, Tw.gap Th.s2 ] ]
             [ h2 [ Tw.classes [ Tw.text_sm, Tw.font_bold, Tw.uppercase, Tw.tracking_wider ], Attr.style "color" Brand.legoYellow ]
                 [ text (RI18n.coursesHeading lang) ]
-            , div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
-                [ span [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ]
-                    [ text (RI18n.seedLabel lang ++ ":") ]
-                , input
-                    [ Attr.type_ "number"
-                    , Attr.value (String.fromInt data.seed)
-                    , onInput actions.onChangeSeed
-                    , Tw.classes [ Tw.w Th.s20, Tw.px Th.s2, Tw.py Th.s1, Tw.text_xs, Tw.rounded_lg, Tw.font_mono, Tw.text_center ]
-                    , Attr.style "background" "rgba(15, 23, 42, 0.8)"
-                    , Attr.style "border" "1px solid rgba(148, 163, 184, 0.3)"
-                    , Attr.style "color" Brand.legoWhite
-                    ]
-                    []
-                , button
-                    [ Attr.type_ "button"
-                    , onClick actions.onRandomSeed
-                    , Tw.classes [ Tw.px Th.s2, Tw.py Th.s1, Tw.text_xs, Tw.rounded_lg, Tw.cursor_pointer ]
-                    , Attr.style "background" "rgba(255, 255, 255, 0.1)"
-                    , Attr.style "color" Brand.legoWhite
-                    , Attr.title "Arvo uusi siemen"
-                    ]
-                    [ text "🎲" ]
+            , span
+                [ Tw.classes [ Tw.text_xs, Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.font_mono ]
+                , Attr.style "background" "rgba(255, 255, 255, 0.08)"
+                , Attr.style "color"
+                    (if personalBest == "—" then
+                        "#94a3b8"
+
+                     else
+                        Brand.legoYellow
+                    )
                 ]
+                [ text (RI18n.mapTitle lang data.map ++ " ⏱ " ++ personalBest) ]
             ]
-        , div [ Tw.classes [ Tw.grid, Tw.grid_cols_1, Bp.sm [ Tw.grid_cols_3 ], Tw.gap Th.s3 ] ]
-            (List.map viewTrackCard allTrackIds)
+        , div
+            [ Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.text_xs ]
+            , Attr.style "background" "rgba(7, 25, 38, 0.75)"
+            , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
+            , Attr.style "color" Brand.legoWhite
+            ]
+            [ MapPicker.view
+                { labels = RI18n.mapPickerLabels lang
+                , selection = data.selection
+                , seedText = data.seedText
+                , onBiome = actions.onPickBiome
+                , onSeason = actions.onPickSeason
+                , onWeather = actions.onPickWeather
+                , onSeedInput = actions.onChangeSeed
+                , onRandomSeed = actions.onRandomSeed
+                , onPrevious =
+                    if data.hasPreviousMap then
+                        Just actions.onUsePreviousMap
+
+                    else
+                        Nothing
+                }
+            ]
         ]
-
-
-{-| Visual SVG course minimap / path / contour preview for a track.
--}
-viewTrackPreviewSvg : TrackId -> Html msg
-viewTrackPreviewSvg id =
-    case id of
-        FarmLane ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 120 75"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                , Attr.style "display" "block"
-                ]
-                [ -- subtle ground contour
-                  Svg.path
-                    [ SvgAttr.d "M 0 50 Q 60 70 120 40 L 120 75 L 0 75 Z"
-                    , SvgAttr.fill "#091c2b"
-                    ]
-                    []
-
-                -- winding dirt road with S-bends
-                , Svg.path
-                    [ SvgAttr.d "M 18 14 C 40 14, 52 28, 52 42 C 52 56, 78 56, 78 40 C 78 24, 98 24, 102 62"
-                    , SvgAttr.fill "none"
-                    , SvgAttr.stroke "#D97706"
-                    , SvgAttr.strokeWidth "7"
-                    , SvgAttr.strokeLinecap "round"
-                    ]
-                    []
-                , Svg.path
-                    [ SvgAttr.d "M 18 14 C 40 14, 52 28, 52 42 C 52 56, 78 56, 78 40 C 78 24, 98 24, 102 62"
-                    , SvgAttr.fill "none"
-                    , SvgAttr.stroke "#FDE68A"
-                    , SvgAttr.strokeWidth "1.2"
-                    , SvgAttr.strokeDasharray "3 3"
-                    , SvgAttr.strokeLinecap "round"
-                    ]
-                    []
-
-                -- Start green dot
-                , Svg.circle [ SvgAttr.cx "18", SvgAttr.cy "14", SvgAttr.r "3.5", SvgAttr.fill "#22C55E" ] []
-
-                -- Finish marker
-                , Svg.circle [ SvgAttr.cx "102", SvgAttr.cy "62", SvgAttr.r "3.5", SvgAttr.fill "#FAC80A" ] []
-                ]
-
-        ForestTrail ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 120 75"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                , Attr.style "display" "block"
-                ]
-                [ -- subtle pine tree silhouettes
-                  Svg.polygon [ SvgAttr.points "12,42 16,30 20,42", SvgAttr.fill "#0e3a24" ] []
-                , Svg.polygon [ SvgAttr.points "105,32 109,20 113,32", SvgAttr.fill "#0e3a24" ] []
-                , Svg.polygon [ SvgAttr.points "58,22 62,10 66,22", SvgAttr.fill "#0e3a24" ] []
-
-                -- rooty trail curve
-                , Svg.path
-                    [ SvgAttr.d "M 15 20 C 45 10, 65 30, 48 50 C 35 64, 75 68, 105 54"
-                    , SvgAttr.fill "none"
-                    , SvgAttr.stroke "#15803D"
-                    , SvgAttr.strokeWidth "6"
-                    , SvgAttr.strokeLinecap "round"
-                    ]
-                    []
-
-                -- log jump indicator
-                , Svg.line
-                    [ SvgAttr.x1 "46"
-                    , SvgAttr.y1 "47"
-                    , SvgAttr.x2 "54"
-                    , SvgAttr.y2 "53"
-                    , SvgAttr.stroke "#B45309"
-                    , SvgAttr.strokeWidth "3"
-                    , SvgAttr.strokeLinecap "round"
-                    ]
-                    []
-
-                -- Start green dot
-                , Svg.circle [ SvgAttr.cx "15", SvgAttr.cy "20", SvgAttr.r "3.5", SvgAttr.fill "#22C55E" ] []
-
-                -- Finish marker
-                , Svg.circle [ SvgAttr.cx "105", SvgAttr.cy "54", SvgAttr.r "3.5", SvgAttr.fill "#FAC80A" ] []
-                ]
-
-        MeadowPath ->
-            Svg.svg
-                [ SvgAttr.viewBox "0 0 120 75"
-                , SvgAttr.width "100%"
-                , SvgAttr.height "100%"
-                , Attr.style "display" "block"
-                ]
-                [ -- elevation contour lines
-                  Svg.path [ SvgAttr.d "M 0 25 Q 60 10 120 25", SvgAttr.fill "none", SvgAttr.stroke "#163a24", SvgAttr.strokeWidth "1" ] []
-                , Svg.path [ SvgAttr.d "M 0 50 Q 60 35 120 50", SvgAttr.fill "none", SvgAttr.stroke "#163a24", SvgAttr.strokeWidth "1" ] []
-
-                -- switchback trail
-                , Svg.path
-                    [ SvgAttr.d "M 20 16 Q 95 18 88 32 Q 80 44 26 46 Q 18 58 98 64"
-                    , SvgAttr.fill "none"
-                    , SvgAttr.stroke "#84CC16"
-                    , SvgAttr.strokeWidth "4"
-                    , SvgAttr.strokeLinecap "round"
-                    ]
-                    []
-
-                -- Start green dot
-                , Svg.circle [ SvgAttr.cx "20", SvgAttr.cy "16", SvgAttr.r "3.5", SvgAttr.fill "#22C55E" ] []
-
-                -- Finish marker
-                , Svg.circle [ SvgAttr.cx "98", SvgAttr.cy "64", SvgAttr.r "3.5", SvgAttr.fill "#FAC80A" ] []
-                ]
 
 
 {-| Unified player mode & multiplayer: hot seat vs network play, and host waiting room.

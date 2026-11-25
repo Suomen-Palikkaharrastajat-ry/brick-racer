@@ -2,6 +2,7 @@ module Racer.I18n exposing
     ( audioMutedLabel
     , audioUnmutedLabel
     , basesTab
+    , biomeName
     , bothPlayersReady
     , buildCarHeading
     , buildCarHint
@@ -38,6 +39,8 @@ module Racer.I18n exposing
     , inspectCarButton
     , joinRoomButton
     , leaveRoomButton
+    , mapPickerLabels
+    , mapTitle
     , menuSubtitle
     , menuTitle
     , metersToNextCheckpointLabel
@@ -49,6 +52,7 @@ module Racer.I18n exposing
     , networkTabLabel
     , networkTwoPlayersDesc
     , networkTwoPlayersTitle
+    , newMapButton
     , newRecordBadge
     , openBuildTab
     , openBuilderButton
@@ -64,6 +68,7 @@ module Racer.I18n exposing
     , resetCheckpointLabel
     , reviewTab
     , scanQrButton
+    , seasonName
     , seedLabel
     , shareRaceUrlButton
     , shareUrlCopiedNotice
@@ -75,8 +80,6 @@ module Racer.I18n exposing
     , startRaceButton
     , steeringMechName
     , surfaceName
-    , trackDescription
-    , trackTitle
     , validationDetail
     , validationTitle
     , waitingForHostToStart
@@ -84,14 +87,17 @@ module Racer.I18n exposing
     , warningOffTrack
     , warningScraping
     , warningTipping
+    , weatherName
     , wreckedHint
     )
 
 {-| Bilingual (`En` / `Fi`) copy for Brick Racer menus, garage diagnostics, HUD, and overlays.
 -}
 
+import Game.MapParams exposing (Biome(..), MapParams, Season(..), WeatherKind(..))
+import Game.MapPicker as MapPicker
 import I18n exposing (Language(..))
-import Racer.Types exposing (CrashReason(..), SteeringMechanism(..), SurfaceType(..), TrackId(..), ValidationCode(..))
+import Racer.Types exposing (CrashReason(..), SteeringMechanism(..), SurfaceType(..), ValidationCode(..))
 
 
 {-| Main game title.
@@ -137,52 +143,161 @@ smashBanner lang =
             "Smash!"
 
 
-{-| Track title per course ID.
+{-| Name of a map biome.
 -}
-trackTitle : Language -> TrackId -> String
-trackTitle lang id =
-    case ( lang, id ) of
-        ( Fi, FarmLane ) ->
-            "Tilan Kujanne"
+biomeName : Language -> Biome -> String
+biomeName lang biome =
+    case ( lang, biome ) of
+        ( Fi, Farmland ) ->
+            "Maaseutu"
 
-        ( En, FarmLane ) ->
-            "Farm Lane Drop"
+        ( En, Farmland ) ->
+            "Farmland"
 
-        ( Fi, ForestTrail ) ->
-            "Metsäpolku"
+        ( Fi, Boreal ) ->
+            "Havumetsä"
 
-        ( En, ForestTrail ) ->
-            "Forest Trail"
+        ( En, Boreal ) ->
+            "Boreal"
 
-        ( Fi, MeadowPath ) ->
-            "Niittypolku"
+        ( Fi, Fell ) ->
+            "Tunturi"
 
-        ( En, MeadowPath ) ->
-            "Meadow Footpath"
+        ( En, Fell ) ->
+            "Fell"
+
+        ( Fi, Desert ) ->
+            "Aavikko"
+
+        ( En, Desert ) ->
+            "Desert"
 
 
-{-| Short course blurb shown on track selector cards.
+{-| Name of a map season.
 -}
-trackDescription : Language -> TrackId -> String
-trackDescription lang id =
-    case ( lang, id ) of
-        ( Fi, FarmLane ) ->
-            "1,0 km / −300 m • Hiekkatie ja sora, kaksi mutkaa, jyrkkä lasku pihaan"
+seasonName : Language -> Season -> String
+seasonName lang season =
+    case ( lang, season ) of
+        ( Fi, Spring ) ->
+            "Kevät"
 
-        ( En, FarmLane ) ->
-            "1.0 km / -300 m • Dirt and gravel lane, two bends, steep drop into the farmyard"
+        ( En, Spring ) ->
+            "Spring"
 
-        ( Fi, ForestTrail ) ->
-            "1,1 km / −350 m • Juurakkoinen metsätie, soraränni ja tukkihyppy"
+        ( Fi, Summer ) ->
+            "Kesä"
 
-        ( En, ForestTrail ) ->
-            "1.1 km / -350 m • Rooty forest track, gravel chute, log hump"
+        ( En, Summer ) ->
+            "Summer"
 
-        ( Fi, MeadowPath ) ->
-            "0,85 km / −300 m • Kapea ja jyrkin: ruohopolku, kumpu ja mättäät"
+        ( Fi, Autumn ) ->
+            "Syksy"
 
-        ( En, MeadowPath ) ->
-            "0.85 km / -300 m • Narrowest and steepest: grass footpath, hump, tussocks"
+        ( En, Autumn ) ->
+            "Autumn"
+
+        ( Fi, Winter ) ->
+            "Talvi"
+
+        ( En, Winter ) ->
+            "Winter"
+
+
+{-| Name of a map weather.
+-}
+weatherName : Language -> WeatherKind -> String
+weatherName lang weather =
+    case ( lang, weather ) of
+        ( Fi, Clear ) ->
+            "Selkeä"
+
+        ( En, Clear ) ->
+            "Clear"
+
+        ( Fi, Overcast ) ->
+            "Pilvinen"
+
+        ( En, Overcast ) ->
+            "Overcast"
+
+        ( Fi, Rain ) ->
+            "Sade"
+
+        ( En, Rain ) ->
+            "Rain"
+
+        ( Fi, Storm ) ->
+            "Ukkonen"
+
+        ( En, Storm ) ->
+            "Storm"
+
+        ( Fi, Fog ) ->
+            "Sumu"
+
+        ( En, Fog ) ->
+            "Fog"
+
+        ( Fi, Snow ) ->
+            "Lumi"
+
+        ( En, Snow ) ->
+            "Snow"
+
+
+{-| Course title for a map, such as "Boreal · Winter · Snow #48213".
+-}
+mapTitle : Language -> MapParams -> String
+mapTitle lang map =
+    String.join " · " [ biomeName lang map.biome, seasonName lang map.season, weatherName lang map.weather ]
+        ++ " #"
+        ++ String.fromInt map.seed
+
+
+{-| The words of the shared map picker.
+-}
+mapPickerLabels : Language -> MapPicker.Labels
+mapPickerLabels lang =
+    case lang of
+        Fi ->
+            { biome = "Maasto"
+            , season = "Vuodenaika"
+            , weather = "Sää"
+            , seed = "Siemen"
+            , random = "Arvo"
+            , previous = "Edellinen kartta"
+            , any = "Mikä vain"
+            , code = "Karttakoodi"
+            , biomeName = biomeName lang
+            , seasonName = seasonName lang
+            , weatherName = weatherName lang
+            }
+
+        En ->
+            { biome = "Biome"
+            , season = "Season"
+            , weather = "Weather"
+            , seed = "Seed"
+            , random = "Random"
+            , previous = "Previous map"
+            , any = "Any"
+            , code = "Map code"
+            , biomeName = biomeName lang
+            , seasonName = seasonName lang
+            , weatherName = weatherName lang
+            }
+
+
+{-| Results button that rolls a new seed with the same picks.
+-}
+newMapButton : Language -> String
+newMapButton lang =
+    case lang of
+        Fi ->
+            "Uusi kartta"
+
+        En ->
+            "New map"
 
 
 {-| Paste input placeholder text.

@@ -8,6 +8,7 @@ steering authority, and checkpoint recovery.
 import Array
 import EmbeddedParts
 import Expect
+import Game.MapParams as Map
 import LDraw.Catalog as Catalog
 import LDraw.Document as Document
 import Math.Vector3 as Vec3 exposing (vec3)
@@ -21,7 +22,6 @@ import Racer.Types
         , InputState
         , PhysicsState
         , SurfaceType(..)
-        , TrackId(..)
         , TrackSample
         , VehicleSpec
         , fixedDt
@@ -144,7 +144,7 @@ suite =
                         "#b/HYuxFYAwCETvIJUW1m4RTYzP0hSu5AC6WxxLAu9x8OGuXkQIucRosuaQSl5C2o9NiQnAaA3frD6SWodmQx4CRi_96igiZnJtFOk_I-05hZ7z_QM"
 
                     track =
-                        Track.generate (Track.trackConfigFor FarmLane 42)
+                        Track.generate (Track.trackConfigFor { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 42 })
                 in
                 case Ingest.decodeRaceInput Nothing bumpyHash of
                     Ok decoded ->
@@ -274,7 +274,7 @@ suite =
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor FarmLane 7)
+                        Track.generate (Track.trackConfigFor { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 7 })
 
                     spec =
                         loadSpec "turntable-kart"
@@ -1105,7 +1105,7 @@ buildFlatTestTrack dyDz totalLen =
                 |> Array.fromList
 
         cfg =
-            Track.trackConfigFor FarmLane 1
+            Track.trackConfigFor { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 1 }
     in
     { config = { cfg | lengthM = totalLen, dropM = abs (dyDz * totalLen) }
     , samples = samples

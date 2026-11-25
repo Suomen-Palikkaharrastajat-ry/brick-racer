@@ -31,7 +31,7 @@ import Racer.Scenery as Scenery exposing (Props)
 import Racer.TerrainMesh exposing (TrackChunk, TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.Track as Track
-import Racer.Types exposing (GeneratedTrack, PhysicsState, SteeringMechanism(..), TrackId(..), VehicleSpec, lduPerMeter, lduToMeters)
+import Racer.Types exposing (GeneratedTrack, PhysicsState, SteeringMechanism(..), VehicleSpec, lduPerMeter, lduToMeters)
 import Racer.World as World
 import Render.Camera as Camera exposing (Camera)
 import Render.Instanced as Instanced
@@ -217,7 +217,7 @@ renderCarWithStyleAndSpins =
 {-| Render the interactive Garage 3D plinth inspection viewport.
 -}
 renderGarageViewport :
-    TrackId
+    MapParams
     -> WebGL.Mesh TerrainVertex
     -> WebGL.Mesh TerrainVertex
     -> Float
@@ -228,11 +228,8 @@ renderGarageViewport :
     -> Int
     -> List (Html.Attribute msg)
     -> Html msg
-renderGarageViewport trackId plinthMesh shadowMesh wheelPreviewSpin spec meshes camera w h attrs =
+renderGarageViewport map plinthMesh shadowMesh wheelPreviewSpin spec meshes camera w h attrs =
     let
-        map =
-            Track.mapForTrack trackId 1
-
         safeW =
             max 1 w
 

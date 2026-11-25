@@ -8,7 +8,7 @@ import Expect
 import Game.MapParams as Map exposing (Biome(..), MapParams, Season(..), WeatherKind(..))
 import Racer.Course as Course exposing (CourseParams)
 import Racer.Track as Track
-import Racer.Types exposing (BlueprintKnot, SegmentFeature(..), TrackId(..))
+import Racer.Types exposing (BlueprintKnot, SegmentFeature(..))
 import Test exposing (Test, describe, test)
 
 
@@ -212,7 +212,7 @@ suite =
                         (\id ->
                             List.filterMap
                                 (\seed ->
-                                    case Track.validationIssues (Track.generate (Track.trackConfigFor id seed)) of
+                                    case Track.validationIssues (Track.generate (Track.trackConfigFor { biome = id, season = Summer, weather = Clear, seed = seed })) of
                                         [] ->
                                             Nothing
 
@@ -221,7 +221,7 @@ suite =
                                 )
                                 (List.range 1 40 ++ [ 42, 77, 99, 109, 1234 ])
                         )
-                        [ FarmLane, ForestTrail, MeadowPath ]
+                        [ Farmland, Boreal, Fell ]
                     )
         , test "the same map always gives the same course" <|
             \_ ->

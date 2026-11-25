@@ -11,36 +11,36 @@ hand-written layout.
 
 import Array
 import Expect
-import Game.MapParams as Map exposing (Season(..))
+import Game.MapParams as Map exposing (Biome(..), MapParams, Season(..))
 import Math.Vector3 as Vec3
 import Racer.TerrainMesh as TerrainMesh
 import Racer.Track as Track
-import Racer.Types exposing (SurfaceType(..), TrackId(..), allTrackIds, trackIdFromString, trackIdToString)
+import Racer.Types exposing (SurfaceType(..))
 import Test exposing (Test, describe, test)
 
 
 suite : Test
 suite =
     describe "Track generation and spatial queries"
-        [ describe "All three track presets"
-            [ verifyCourseMonotonicAndFinite "FarmLane" FarmLane 42
-            , verifyCourseMonotonicAndFinite "ForestTrail" ForestTrail 77
-            , verifyCourseMonotonicAndFinite "MeadowPath" MeadowPath 109
+        [ describe "Courses of three biomes"
+            [ verifyCourseMonotonicAndFinite "Farmland" Farmland 42
+            , verifyCourseMonotonicAndFinite "Boreal" Boreal 77
+            , verifyCourseMonotonicAndFinite "Fell" Fell 109
             ]
         , describe "Courses are short and steep"
-            (List.map verifyShortAndSteep allTrackIds)
+            (List.map verifyShortAndSteep courseBiomes)
         , describe "Start grid boxes and starting line detail"
             [ test "segIdx -1 paints bright white starting line across road bands (bands 5, 6, 7)" <|
                 \_ ->
                     let
                         c5 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 5
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -1 5
 
                         c6 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 6
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -1 6
 
                         c7 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 7
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -1 7
                     in
                     Expect.all
                         [ \_ -> Expect.equal c5 c6
@@ -51,16 +51,16 @@ suite =
                 \_ ->
                     let
                         c5 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 5
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -2 5
 
                         c6 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 6
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -2 6
 
                         c7 =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -2 7
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -2 7
 
                         whiteStartLine =
-                            TerrainMesh.bandColor FarmLane Summer DirtRoad -1 5
+                            TerrainMesh.bandColor (course Farmland 1) DirtRoad -1 5
                     in
                     Expect.all
                         [ \_ -> Expect.equal c7 whiteStartLine
@@ -74,7 +74,7 @@ suite =
             \_ ->
                 let
                     field season =
-                        TerrainMesh.bandColor ForestTrail season DirtRoad 5 1
+                        TerrainMesh.bandColor { biome = Boreal, season = season, weather = Map.Clear, seed = 1 } DirtRoad 5 1
 
                     snowy c =
                         Vec3.getX c > 0.85 && Vec3.getY c > 0.85 && Vec3.getZ c > 0.85
@@ -86,37 +86,21 @@ suite =
                     , \_ -> Expect.notEqual (field Autumn) (field Spring)
                     ]
                     ()
-        , test "Track ids round-trip and retired mountain ids map to countryside courses" <|
+        , test "A course keeps its map and takes the map's seed" <|
             \_ ->
-                Expect.all
-                    [ \_ -> Expect.equal (List.map Just allTrackIds) (List.map (trackIdToString >> trackIdFromString) allTrackIds)
-                    , \_ -> Expect.equal (Just FarmLane) (trackIdFromString "pine-ridge")
-                    , \_ -> Expect.equal (Just ForestTrail) (trackIdFromString "quarry-switchbacks")
-                    , \_ -> Expect.equal (Just MeadowPath) (trackIdFromString "alpine-glacier")
-                    ]
-                    ()
-        , test "Each track id is its biome's summer, clear map with the same seed" <|
-            \_ ->
-                Expect.equal
-                    [ ( Map.Farmland, Map.Summer, ( Map.Clear, 42 ) )
-                    , ( Map.Boreal, Map.Summer, ( Map.Clear, 42 ) )
-                    , ( Map.Fell, Map.Summer, ( Map.Clear, 42 ) )
-                    ]
-                    (List.map
-                        (\id ->
-                            let
-                                m =
-                                    (Track.trackConfigFor id 42).map
-                            in
-                            ( m.biome, m.season, ( m.weather, m.seed ) )
-                        )
-                        [ FarmLane, ForestTrail, MeadowPath ]
-                    )
+                let
+                    m =
+                        { biome = Boreal, season = Winter, weather = Map.Snow, seed = 4242 }
+
+                    cfg =
+                        Track.trackConfigFor m
+                in
+                Expect.equal ( m, 4242 ) ( cfg.map, cfg.seed )
         , test "Deterministic generation produces identical samples and obstacles for same seed" <|
             \_ ->
                 let
                     cfg =
-                        Track.trackConfigFor FarmLane 1234
+                        Track.trackConfigFor (course Farmland 1234)
 
                     t1 =
                         Track.generate cfg
@@ -135,7 +119,7 @@ suite =
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor FarmLane 7)
+                        Track.generate (Track.trackConfigFor (course Farmland 7))
 
                     midSample =
                         Track.splineSampleAtS track (track.totalLengthM * 0.45)
@@ -163,7 +147,7 @@ suite =
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor MeadowPath 5)
+                        Track.generate (Track.trackConfigFor (course Fell 5))
 
                     smp =
                         Track.splineSampleAtS track 220.0
@@ -190,20 +174,20 @@ suite =
                     ]
                     ()
         , describe "Roadside scenery stays off the roadbed and clear of the start"
-            (List.map verifySceneryClearance allTrackIds)
+            (List.map verifySceneryClearance courseBiomes)
         , describe "Brick launch ramps stand on one lane and leave a free lane"
-            (List.concatMap (\id -> List.map (verifyBrickRamps id) [ 1, 42, 99, 1234 ]) allTrackIds)
+            (List.concatMap (\id -> List.map (verifyBrickRamps id) [ 1, 42, 99, 1234 ]) courseBiomes)
         , describe "Rounded side ramps stand on the road edge, leave the road free and are clear of the other features"
-            (List.concatMap (\id -> List.map (verifySideRamps id) [ 1, 42, 99, 1234 ]) allTrackIds)
+            (List.concatMap (\id -> List.map (verifySideRamps id) [ 1, 42, 99, 1234 ]) courseBiomes)
         , describe "Each course has one brick loop, placed clear of the gates, ramps and scenery"
-            (List.concatMap (\id -> List.map (verifyLoopPlacement id) [ 1, 42, 99, 1234 ]) allTrackIds)
+            (List.concatMap (\id -> List.map (verifyLoopPlacement id) [ 1, 42, 99, 1234 ]) courseBiomes)
         , describe "The loop's lane is continuous, goes upside down and meets the road at both ends"
-            (List.concatMap (\id -> List.map (verifyLoopGeometry id) [ 1, 42, 99, 1234 ]) allTrackIds)
+            (List.concatMap (\id -> List.map (verifyLoopGeometry id) [ 1, 42, 99, 1234 ]) courseBiomes)
         , test "removeObstacles drops smashed pieces from the list and the collision buckets" <|
             \_ ->
                 let
                     track =
-                        Track.generate (Track.trackConfigFor FarmLane 3)
+                        Track.generate (Track.trackConfigFor (course Farmland 3))
 
                     victims =
                         List.take 3 track.obstacles |> List.map .id
@@ -223,13 +207,27 @@ suite =
         ]
 
 
-verifyShortAndSteep : TrackId -> Test
+{-| The biomes whose courses these tests sweep.
+-}
+courseBiomes : List Biome
+courseBiomes =
+    [ Farmland, Boreal, Fell ]
+
+
+{-| A summer, clear map of a biome with a seed.
+-}
+course : Biome -> Int -> MapParams
+course biome seed =
+    { biome = biome, season = Summer, weather = Map.Clear, seed = seed }
+
+
+verifyShortAndSteep : Biome -> Test
 verifyShortAndSteep id =
-    test (trackIdToString id ++ " is 0.7-1.3 km long with at least 25% average grade") <|
+    test (Map.biomeToString id ++ " is 0.7-1.3 km long with at least 25% average grade") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id 11)
+                    Track.generate (Track.trackConfigFor (course id 11))
             in
             Expect.all
                 [ \_ -> Expect.atLeast 700.0 track.totalLengthM
@@ -239,13 +237,13 @@ verifyShortAndSteep id =
                 ()
 
 
-verifySceneryClearance : TrackId -> Test
+verifySceneryClearance : Biome -> Test
 verifySceneryClearance id =
-    test (trackIdToString id ++ " scenery is varied, off the road and clear of the start pad") <|
+    test (Map.biomeToString id ++ " scenery is varied, off the road and clear of the start pad") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id 99)
+                    Track.generate (Track.trackConfigFor (course id 99))
 
                 badStart =
                     List.filter (\o -> o.s < 20.0) track.obstacles
@@ -282,13 +280,13 @@ verifySceneryClearance id =
                 ()
 
 
-verifyCourseMonotonicAndFinite : String -> TrackId -> Int -> Test
+verifyCourseMonotonicAndFinite : String -> Biome -> Int -> Test
 verifyCourseMonotonicAndFinite label id seed =
     test (label ++ " descends monotonically, stays finite, and has unit normals") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 sampleList =
                     Array.toList track.samples
@@ -337,16 +335,16 @@ pairwiseDecreasing ys =
             True
 
 
-verifyBrickRamps : TrackId -> Int -> Test
+verifyBrickRamps : Biome -> Int -> Test
 verifyBrickRamps id seed =
-    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " has ramps on the road with a free lane, clear of the gates") <|
+    test (Map.biomeToString id ++ " seed " ++ String.fromInt seed ++ " has ramps on the road with a free lane, clear of the gates") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 again =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 badRamps =
                     List.filter
@@ -399,16 +397,16 @@ verifyBrickRamps id seed =
                 ()
 
 
-verifyLoopPlacement : TrackId -> Int -> Test
+verifyLoopPlacement : Biome -> Int -> Test
 verifyLoopPlacement id seed =
-    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " has a loop on straight road, away from the arches, ramps and scenery") <|
+    test (Map.biomeToString id ++ " seed " ++ String.fromInt seed ++ " has a loop on straight road, away from the arches, ramps and scenery") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 again =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 badLoops =
                     List.filter
@@ -454,18 +452,18 @@ verifyLoopPlacement id seed =
                 ()
 
 
-verifyLoopGeometry : TrackId -> Int -> Test
+verifyLoopGeometry : Biome -> Int -> Test
 verifyLoopGeometry id seed =
-    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " loop lane is continuous, upside down at the top and lands on the road") <|
+    test (Map.biomeToString id ++ " seed " ++ String.fromInt seed ++ " loop lane is continuous, upside down at the top and lands on the road") <|
         \_ ->
-            case List.head (Track.generate (Track.trackConfigFor id seed)).loops of
+            case List.head (Track.generate (Track.trackConfigFor (course id seed))).loops of
                 Nothing ->
                     Expect.fail "no loop"
 
                 Just lp ->
                     let
                         track =
-                            Track.generate (Track.trackConfigFor id seed)
+                            Track.generate (Track.trackConfigFor (course id seed))
 
                         steps =
                             240
@@ -593,16 +591,16 @@ normalizeFlat v =
     Vec3.normalize (Vec3.vec3 (Vec3.getX v) 0 (Vec3.getZ v))
 
 
-verifySideRamps : TrackId -> Int -> Test
+verifySideRamps : Biome -> Int -> Test
 verifySideRamps id seed =
-    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " has rounded side ramps on the road edge, clear of the gates, ramps, loop and scenery") <|
+    test (Map.biomeToString id ++ " seed " ++ String.fromInt seed ++ " has rounded side ramps on the road edge, clear of the gates, ramps, loop and scenery") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 again =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor (course id seed))
 
                 overlaps a0 a1 b0 b1 =
                     a1 > b0 && a0 < b1

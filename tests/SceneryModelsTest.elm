@@ -7,11 +7,12 @@ start pad, clear of the checkpoint and finish arches and clear of the ramps.
 -}
 
 import Expect
+import Game.MapParams as Map
 import Math.Vector3 as Vec3
 import Racer.Editor as Editor
 import Racer.SceneryModels as SceneryModels
 import Racer.Track as Track
-import Racer.Types exposing (ObstacleKind(..), TrackId, allTrackIds, trackIdToString)
+import Racer.Types exposing (ObstacleKind(..))
 import Test exposing (Test, describe, test)
 
 
@@ -21,9 +22,9 @@ suite =
         [ describe "Models are made of catalog parts"
             (List.map verifyCatalogParts newModels)
         , describe "Placements stay off the road and clear of the start, arches and ramps"
-            (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) allTrackIds)
+            (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) courseBiomes)
         , describe "Every course has some of them"
-            (List.map verifyPresence allTrackIds)
+            (List.map verifyPresence courseBiomes)
         ]
 
 
@@ -85,13 +86,20 @@ verifyCatalogParts ( name, ldr ) =
                 ()
 
 
-verifyPlacement : TrackId -> Int -> Test
+{-| The biomes whose courses these tests sweep.
+-}
+courseBiomes : List Map.Biome
+courseBiomes =
+    [ Map.Farmland, Map.Boreal, Map.Fell ]
+
+
+verifyPlacement : Map.Biome -> Int -> Test
 verifyPlacement id seed =
-    test (trackIdToString id ++ " seed " ++ String.fromInt seed ++ " places the new pieces off the road and clear of the gates and ramps") <|
+    test (Map.biomeToString id ++ " seed " ++ String.fromInt seed ++ " places the new pieces off the road and clear of the gates and ramps") <|
         \_ ->
             let
                 track =
-                    Track.generate (Track.trackConfigFor id seed)
+                    Track.generate (Track.trackConfigFor { biome = id, season = Map.Summer, weather = Map.Clear, seed = seed })
 
                 pieces =
                     List.filter (\o -> List.member o.kind newKinds) track.obstacles
@@ -130,15 +138,15 @@ verifyPlacement id seed =
                 ()
 
 
-verifyPresence : TrackId -> Test
+verifyPresence : Map.Biome -> Test
 verifyPresence id =
-    test (trackIdToString id ++ " has several dock-built crashables over a few seeds") <|
+    test (Map.biomeToString id ++ " has several dock-built crashables over a few seeds") <|
         \_ ->
             let
                 counts =
                     List.map
                         (\seed ->
-                            Track.generate (Track.trackConfigFor id seed)
+                            Track.generate (Track.trackConfigFor { biome = id, season = Map.Summer, weather = Map.Clear, seed = seed })
                                 |> .obstacles
                                 |> List.filter (\o -> List.member o.kind newKinds)
                                 |> List.length

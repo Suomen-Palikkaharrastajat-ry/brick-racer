@@ -20,7 +20,7 @@ removing a smashed piece only filters a short list.
 
 import Array exposing (Array)
 import Game.BrickLook as BrickLook
-import Game.MapParams exposing (MapParams, Season(..))
+import Game.MapParams exposing (Biome(..), MapParams, Season(..))
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Racer.Scenery exposing (ArchKind(..), ArchSpot)
 import Racer.TerrainShader exposing (TerrainVertex)
@@ -34,7 +34,6 @@ import Racer.Types
         , ObstacleKind(..)
         , SideRamp
         , SurfaceType(..)
-        , TrackId(..)
         , TrackObstacle
         , TrackSample
         )
@@ -60,8 +59,7 @@ type alias TrackChunk =
 {-| Pre-built chunk array for O(1) visible-window frustum culling during gameplay.
 -}
 type alias TrackRenderBundle =
-    { trackId : TrackId
-    , map : MapParams
+    { map : MapParams
     , seed : Int
     , chunkSizeM : Float
     , chunks : Array TrackChunk
@@ -91,8 +89,7 @@ buildTrackRenderBundle track =
                 |> List.map (buildChunk track chunkSizeM numChunks)
                 |> Array.fromList
     in
-    { trackId = track.config.id
-    , map = track.config.map
+    { map = track.config.map
     , seed = track.config.seed
     , chunkSizeM = chunkSizeM
     , chunks = chunks
@@ -346,8 +343,8 @@ buildStartApronTris track =
                 rowZero =
                     sampleCrossSectionVertices track s0
             in
-            stitchCrossSections track.config.id track.config.map.season s0.surface -2 rowBack2 rowBack1
-                ++ stitchCrossSections track.config.id track.config.map.season s0.surface -1 rowBack1 rowZero
+            stitchCrossSections track.config.map s0.surface -2 rowBack2 rowBack1
+                ++ stitchCrossSections track.config.map s0.surface -1 rowBack1 rowZero
 
 
 buildStripBetweenSamples : GeneratedTrack -> Int -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
@@ -361,7 +358,7 @@ buildStripBetweenSamples track idx =
                 row1 =
                     sampleCrossSectionVertices track s1
             in
-            stitchCrossSections track.config.id track.config.map.season s0.surface idx row0 row1
+            stitchCrossSections track.config.map s0.surface idx row0 row1
 
         _ ->
             []
@@ -425,14 +422,13 @@ sampleCrossSectionVertices track smp =
 
 
 stitchCrossSections :
-    TrackId
-    -> Season
+    MapParams
     -> SurfaceType
     -> Int
     -> List CrossVertex
     -> List CrossVertex
     -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
-stitchCrossSections trackId season surface segIdx r0 r1 =
+stitchCrossSections map surface segIdx r0 r1 =
     let
         pairs0 =
             adjacentPairs r0
@@ -443,7 +439,7 @@ stitchCrossSections trackId season surface segIdx r0 r1 =
         stepBand bandIdx ( ( a0, b0 ), ( a1, b1 ) ) =
             let
                 col =
-                    bandColor trackId season surface segIdx bandIdx
+                    bandColor map surface segIdx bandIdx
 
                 studs =
                     bandStuds surface bandIdx
@@ -529,12 +525,12 @@ bandStuds surface bandIdx =
                 1
 
 
-{-| The field and verge colours of a course in summer.
+{-| The field and verge colours of a biome in summer.
 -}
-fieldColors : TrackId -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
-fieldColors trackId segIdx =
-    case trackId of
-        FarmLane ->
+fieldColors : Biome -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
+fieldColors biome segIdx =
+    case biome of
+        Farmland ->
             { verge = ldrawColor 10
             , near = ldrawColor 2
             , far =
@@ -546,16 +542,28 @@ fieldColors trackId segIdx =
                     ldrawColor 10
             }
 
-        ForestTrail ->
+        Boreal ->
             { verge = ldrawColor 2
             , near = ldrawColor 288
             , far = ldrawColor 288
             }
 
-        MeadowPath ->
+        Fell ->
             { verge = ldrawColor 10
             , near = ldrawColor 10
             , far = ldrawColor 326
+            }
+
+        Desert ->
+            { verge = ldrawColor 28
+            , near = ldrawColor 19
+            , far =
+                -- Sand dunes: tan with dark tan ridges
+                if modBy 10 (segIdx + 1000) < 3 then
+                    ldrawColor 28
+
+                else
+                    ldrawColor 19
             }
 
 
@@ -564,21 +572,21 @@ course's own colours. Spring is bright green, with light-green strips on the
 farm; autumn is tan with dark orange strips and a dark tan verge; winter is
 white snow with a light bluish grey verge.
 -}
-seasonFieldColors : TrackId -> Season -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
-seasonFieldColors trackId season segIdx =
+seasonFieldColors : MapParams -> Int -> { verge : Vec3, near : Vec3, far : Vec3 }
+seasonFieldColors map segIdx =
     let
         strip =
             modBy 10 (segIdx + 1000) < 5
     in
-    case season of
+    case map.season of
         Summer ->
-            fieldColors trackId segIdx
+            fieldColors map.biome segIdx
 
         Spring ->
             { verge = ldrawColor 10
             , near = ldrawColor 10
             , far =
-                if trackId == FarmLane && strip then
+                if map.biome == Farmland && strip then
                     ldrawColor 326
 
                 else
@@ -639,14 +647,14 @@ in the map's season.
 Segment -1 holds the crisp white starting line leading up to the start arch at `s = 0`,
 while segment -2 provides alternating yellow hazard and white grid staging stalls.
 -}
-bandColor : TrackId -> Season -> SurfaceType -> Int -> Int -> Vec3
-bandColor trackId season surface segIdx bandIdx =
+bandColor : MapParams -> SurfaceType -> Int -> Int -> Vec3
+bandColor map surface segIdx bandIdx =
     let
         road =
-            seasonRoadColors season surface
+            seasonRoadColors map.season surface
 
         field =
-            seasonFieldColors trackId season segIdx
+            seasonFieldColors map segIdx
 
         -- Alternating red and white curb rumble strips along road edge bands (4 and 8)
         isCurb =
@@ -660,7 +668,7 @@ bandColor trackId season surface segIdx bandIdx =
 
         isRockCut =
             (bandIdx <= 1 || bandIdx >= 11)
-                && (trackId == ForestTrail)
+                && (map.biome == Boreal)
                 && (modBy 7 (segIdx + 1000) < 3)
 
         rockCutColor =

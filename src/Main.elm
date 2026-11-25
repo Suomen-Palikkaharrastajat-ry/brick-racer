@@ -16,6 +16,7 @@ import Browser.Dom as Dom
 import Browser.Events
 import DesignTokens.Colors as Brand
 import Dict exposing (Dict)
+import Game.MapParams as Map exposing (Biome, MapParams, Pick(..), Season, Selection, WeatherKind)
 import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
 import Game.PartLoading as PartLoading
 import Game.Ports as GamePorts
@@ -63,7 +64,6 @@ import Racer.Types
         , PhysicsState
         , PresetBuild
         , RaceMode(..)
-        , TrackId(..)
         , TrackObstacle
         , VehicleSpec
         )
@@ -184,8 +184,7 @@ type alias ResultsState =
     , title : String
     , vehicle : VehicleSpec
     , meshes : CarMeshBundle
-    , trackId : TrackId
-    , seed : Int
+    , map : MapParams
     , finishTimeS : Float
     , topSpeedKmh : Float
     , finalIntegrityPct : Int
@@ -194,11 +193,10 @@ type alias ResultsState =
     }
 
 
-{-| Cached track geometry and spatial chunk bundle keyed by track and seed.
+{-| Cached track geometry and spatial chunk bundle keyed by map code.
 -}
 type alias CachedTrack =
-    { trackId : TrackId
-    , seed : Int
+    { mapCode : String
     , track : GeneratedTrack
     , bundle : TrackRenderBundle
     }
@@ -247,8 +245,10 @@ type alias Model =
     , partIndexLoaded : Bool
     , props : Scenery.Props
     , staticMeshes : StaticMeshes
-    , trackId : TrackId
-    , seed : Int
+    , selection : Selection
+    , map : MapParams
+    , seedText : String
+    , lastMap : Maybe MapParams
     , cachedTrack : Maybe CachedTrack
     , language : Language
     , viewportWidth : Int
@@ -347,9 +347,13 @@ type Msg
     | EditInBuilder
     | OpenBuilder
     | BuildMsg Build.Msg
-    | SelectTrack TrackId
+    | PickBiome (Pick Biome)
+    | PickSeason (Pick Season)
+    | PickWeather (Pick WeatherKind)
     | ChangeSeed String
     | RandomSeed
+    | UsePreviousMap
+    | NewMap
     | BackToMenu
     | CopyShareLink
     | OpenQrScanner
@@ -449,11 +453,13 @@ init flags =
         parsedInit =
             Ingest.parseHash flags.initialHash
 
-        initTrackId =
-            Maybe.withDefault FarmLane parsedInit.trackId
+        initSelection =
+            parsedInit.map
+                |> Maybe.map exactSelection
+                |> Maybe.withDefault Map.anySelection
 
-        initSeed =
-            Maybe.withDefault 1 parsedInit.seed
+        initMap =
+            Map.resolve initSelection
 
         initPreset =
             defaultPreset
@@ -491,8 +497,10 @@ init flags =
                     { plinth = TerrainMesh.buildGaragePlinthMesh
                     , shadow = TerrainShader.buildShadowQuadMesh
                     }
-                , trackId = initTrackId
-                , seed = max 1 initSeed
+                , selection = initSelection
+                , map = initMap
+                , seedText = String.fromInt initSelection.seed
+                , lastMap = Nothing
                 , cachedTrack = Nothing
                 , language = lang
                 , viewportWidth = 1280
@@ -563,10 +571,10 @@ init flags =
                 presetTitle lang initPreset
 
             vHash =
-                Ingest.encodeRaceHash initTrackId initSeed doc
+                Ingest.encodeRaceHash initMap doc
 
             ( nextModel, enterCmd ) =
-                loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id, roomCodeInput = code, playerModeTab = Garage.NetworkTab }
+                loadDocumentIntoGarage title doc Nothing False { baseModel | selectedPresetId = Just initPreset.id, roomCodeInput = code, playerModeTab = Garage.NetworkTab }
         in
         ( nextModel
         , Cmd.batch
@@ -590,15 +598,13 @@ init flags =
                     Ok decoded ->
                         { doc = decoded.document
                         , title = decoded.suggestedName
-                        , trackId = Maybe.withDefault initTrackId decoded.trackId
-                        , seed = Maybe.withDefault initSeed decoded.seed
+                        , map = decoded.map
                         }
 
                     Err _ ->
                         { doc = Document.parse initPreset.ldrText
                         , title = presetTitle lang initPreset
-                        , trackId = initTrackId
-                        , seed = initSeed
+                        , map = Nothing
                         }
 
             analyzed =
@@ -613,11 +619,12 @@ init flags =
                 , wheelPreviewSpin = 0.0
                 }
 
+            modelWithMap =
+                withMap initData.map baseModel
+
             modelForBuilder =
-                { baseModel
-                    | trackId = initData.trackId
-                    , seed = max 1 initData.seed
-                    , customCar = Just { title = initData.title, document = initData.doc }
+                { modelWithMap
+                    | customCar = Just { title = initData.title, document = initData.doc }
                     , selectedPresetId = Nothing
                     , savedGarage = Just savedGarageState
                 }
@@ -635,7 +642,7 @@ init flags =
                         Just { title = decoded.suggestedName, document = decoded.document }
 
                     ( nextModel, enterCmd ) =
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { baseModel | customCar = custom, selectedPresetId = Nothing }
+                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.map False { baseModel | customCar = custom, selectedPresetId = Nothing }
                 in
                 ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
@@ -648,7 +655,7 @@ init flags =
                         presetTitle lang initPreset
 
                     ( nextModel, enterCmd ) =
-                        loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id }
+                        loadDocumentIntoGarage title doc Nothing False { baseModel | selectedPresetId = Just initPreset.id }
                 in
                 ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
@@ -661,7 +668,7 @@ init flags =
                 presetTitle lang initPreset
 
             ( nextModel, enterCmd ) =
-                loadDocumentIntoGarage title doc Nothing Nothing False { baseModel | selectedPresetId = Just initPreset.id }
+                loadDocumentIntoGarage title doc Nothing False { baseModel | selectedPresetId = Just initPreset.id }
         in
         ( nextModel, Cmd.batch (enterCmd :: startupCmds) )
 
@@ -885,7 +892,7 @@ update msg model =
             ( { model | multiplayer = Nothing }
             , Cmd.batch
                 [ GamePorts.leaveMultiplayerRoom ()
-                , GamePorts.setUrlHash (Ingest.encodeRaceHash model.trackId model.seed garageDoc)
+                , GamePorts.setUrlHash (Ingest.encodeRaceHash model.map garageDoc)
                 ]
             )
 
@@ -894,7 +901,7 @@ update msg model =
                 vHash =
                     case activeDocument model.page of
                         Just doc ->
-                            Ingest.encodeRaceHash model.trackId model.seed doc
+                            Ingest.encodeRaceHash model.map doc
 
                         Nothing ->
                             ""
@@ -902,7 +909,7 @@ update msg model =
             ( { model | playerModeTab = Garage.NetworkTab }
             , GamePorts.createMultiplayerRoom
                 { roomId = ""
-                , courseId = Racer.Types.trackIdToString model.trackId
+                , courseId = Map.toCode model.map
                 , name = "Host Commentator"
                 , vehicleHash = vHash
                 , maxPlayers = Multiplayer.sessionCapacity mode
@@ -917,7 +924,7 @@ update msg model =
                 vHash =
                     case activeDocument model.page of
                         Just doc ->
-                            Ingest.encodeRaceHash model.trackId model.seed doc
+                            Ingest.encodeRaceHash model.map doc
 
                         Nothing ->
                             ""
@@ -979,9 +986,22 @@ update msg model =
 
                         SetupPage garage ->
                             let
+                                -- A joiner races the host's map.
+                                joinedModel =
+                                    case ( room.role, Map.fromCode room.courseId ) of
+                                        ( JoinedPlayer, Just hostMap ) ->
+                                            if hostMap /= model.map then
+                                                withSelection (exactSelection hostMap) model
+
+                                            else
+                                                model
+
+                                        _ ->
+                                            model
+
                                 shareCmd =
                                     if room.role == JoinedPlayer then
-                                        GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash model.trackId model.seed garage.document)
+                                        GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash joinedModel.map garage.document)
 
                                     else
                                         Cmd.none
@@ -992,7 +1012,7 @@ update msg model =
                             if room.status /= Lobby then
                                 let
                                     ( nextModel, enterCmd ) =
-                                        startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { model | multiplayer = Just room }
+                                        startRaceFromDoc garage.title garage.document garage.vehicle garage.meshes { joinedModel | multiplayer = Just room }
                                 in
                                 ( nextModel
                                 , Cmd.batch
@@ -1003,7 +1023,7 @@ update msg model =
                                 )
 
                             else
-                                ( { model | multiplayer = Just room, playerModeTab = Garage.NetworkTab }
+                                ( { joinedModel | multiplayer = Just room, playerModeTab = Garage.NetworkTab }
                                 , Cmd.batch
                                     [ shareCmd
                                     , hashCmd
@@ -1040,7 +1060,7 @@ update msg model =
                             custom =
                                 Just { title = decoded.suggestedName, document = decoded.document }
                         in
-                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True { model | customCar = custom, selectedPresetId = Nothing }
+                        loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.map True { model | customCar = custom, selectedPresetId = Nothing }
 
                     Err Ingest.InvalidBinaryPayload ->
                         ( { model | pendingBinaryPaste = Just trimmed }
@@ -1063,8 +1083,7 @@ update msg model =
                             in
                             loadDocumentIntoGarage decoded.suggestedName
                                 decoded.document
-                                decoded.trackId
-                                decoded.seed
+                                decoded.map
                                 True
                                 { model
                                     | pendingBinaryPaste = Nothing
@@ -1115,7 +1134,7 @@ update msg model =
                                 custom =
                                     Just { title = decoded.suggestedName, document = decoded.document }
                             in
-                            loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed True { model | customCar = custom, selectedPresetId = Nothing }
+                            loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.map True { model | customCar = custom, selectedPresetId = Nothing }
 
                         Err _ ->
                             ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }
@@ -1145,7 +1164,7 @@ update msg model =
                         vHash =
                             case activeDocument model.page of
                                 Just doc ->
-                                    Ingest.encodeRaceHash model.trackId model.seed doc
+                                    Ingest.encodeRaceHash model.map doc
 
                                 Nothing ->
                                     ""
@@ -1177,7 +1196,7 @@ update msg model =
                                         custom =
                                             Just { title = decoded.suggestedName, document = decoded.document }
                                     in
-                                    loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.trackId decoded.seed False { model | customCar = custom, selectedPresetId = Nothing }
+                                    loadDocumentIntoGarage decoded.suggestedName decoded.document decoded.map False { model | customCar = custom, selectedPresetId = Nothing }
 
                             Err _ ->
                                 ( model, Cmd.none )
@@ -1254,7 +1273,7 @@ update msg model =
 
                                 hashCmd =
                                     if docBefore /= docAfter then
-                                        GamePorts.setUrlHash (Ingest.encodeGarageHash model.trackId model.seed docAfter)
+                                        GamePorts.setUrlHash (Ingest.encodeGarageHash model.map docAfter)
 
                                     else
                                         Cmd.none
@@ -1267,7 +1286,7 @@ update msg model =
                             case model.savedGarage of
                                 Just garage ->
                                     ( { model | page = SetupPage garage, savedGarage = Nothing }
-                                    , GamePorts.setUrlHash (Ingest.encodeRaceHash model.trackId model.seed garage.document)
+                                    , GamePorts.setUrlHash (Ingest.encodeRaceHash model.map garage.document)
                                     )
 
                                 Nothing ->
@@ -1317,7 +1336,7 @@ update msg model =
                                     shareCmd =
                                         case model.multiplayer of
                                             Just _ ->
-                                                GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash nextModel.trackId nextModel.seed doc)
+                                                GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash nextModel.map doc)
 
                                             Nothing ->
                                                 Cmd.none
@@ -1333,38 +1352,52 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        SelectTrack nextTrackId ->
-            let
-                updatedModel =
-                    { model
-                        | trackId = nextTrackId
-                        , shareCopiedNotice = False
-                    }
-            in
-            case updatedModel.page of
-                SetupPage garage ->
-                    ( updatedModel
-                    , GamePorts.setUrlHash (Ingest.encodeRaceHash updatedModel.trackId updatedModel.seed garage.document)
-                    )
+        PickBiome pick ->
+            applySelection (\sel -> { sel | biome = pick }) model
 
-                _ ->
-                    ( updatedModel, Cmd.none )
+        PickSeason pick ->
+            applySelection (\sel -> { sel | season = pick }) model
+
+        PickWeather pick ->
+            applySelection (\sel -> { sel | weather = pick }) model
 
         ChangeSeed rawStr ->
-            let
-                nextSeed =
-                    String.toInt rawStr
-                        |> Maybe.map (clamp 1 999999)
-                        |> Maybe.withDefault model.seed
-            in
-            ( { model | seed = nextSeed, shareCopiedNotice = False }, Cmd.none )
+            case Map.fromCode rawStr of
+                Just pasted ->
+                    applySelection (\_ -> exactSelection pasted) model
+
+                Nothing ->
+                    case String.toInt (String.trim rawStr) of
+                        Just n ->
+                            let
+                                ( nextModel, cmd ) =
+                                    applySelection (\sel -> { sel | seed = clamp 1 999999 n }) model
+                            in
+                            ( { nextModel | seedText = rawStr }, cmd )
+
+                        Nothing ->
+                            ( { model | seedText = rawStr, shareCopiedNotice = False }, Cmd.none )
 
         RandomSeed ->
+            applySelection (\sel -> { sel | seed = nextRandomSeed sel.seed }) model
+
+        UsePreviousMap ->
+            case model.lastMap of
+                Just previous ->
+                    applySelection (\_ -> exactSelection previous) model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        NewMap ->
             let
-                nextSeed =
-                    modBy 9999 (model.seed * 1664525 + 1013904223) + 1
+                sel =
+                    model.selection
+
+                nextModel =
+                    withSelection { sel | seed = nextRandomSeed sel.seed } model
             in
-            ( { model | seed = abs nextSeed, shareCopiedNotice = False }, Cmd.none )
+            update InspectInGarage nextModel
 
         BackToMenu ->
             let
@@ -1406,7 +1439,7 @@ update msg model =
                                 title =
                                     presetTitle model.language defaultPreset
                             in
-                            loadDocumentIntoGarage title doc Nothing Nothing False { cleanModel | selectedPresetId = Just defaultPreset.id }
+                            loadDocumentIntoGarage title doc Nothing False { cleanModel | selectedPresetId = Just defaultPreset.id }
 
                 SetupPage _ ->
                     ( cleanModel, Cmd.batch [ silenceAudioCmd, GamePorts.leaveMultiplayerRoom () ] )
@@ -1419,7 +1452,7 @@ update msg model =
                 Just doc ->
                     let
                         hashStr =
-                            Ingest.encodeRaceHash model.trackId model.seed doc
+                            Ingest.encodeRaceHash model.map doc
                     in
                     ( { model | shareCopiedNotice = True }
                     , Cmd.batch [ GamePorts.setUrlHash hashStr, GamePorts.copyShareUrl hashStr ]
@@ -1441,7 +1474,7 @@ update msg model =
                     vHash =
                         case activeDocument model.page of
                             Just doc ->
-                                Ingest.encodeRaceHash model.trackId model.seed doc
+                                Ingest.encodeRaceHash model.map doc
 
                             Nothing ->
                                 ""
@@ -2672,13 +2705,12 @@ processPhysicsEvents events extraCmds race model =
                 appendFinishSplit events race.elapsedTime race.splitTimes
 
             entry =
-                { trackId = race.track.config.id
+                { mapCode = Map.leaderboardKey race.track.config.map
                 , vehicleName = race.vehicle.name
                 , timeSeconds = race.elapsedTime
                 , topSpeedKmh = race.topSpeedKmh
                 , wheelCount = List.length race.vehicle.wheels
                 , steeringLabel = RI18n.steeringMechName model.language race.vehicle.steering
-                , seed = race.track.config.seed
                 }
 
             ( nextLb, isNewBest ) =
@@ -2689,8 +2721,7 @@ processPhysicsEvents events extraCmds race model =
                 , title = race.title
                 , vehicle = race.vehicle
                 , meshes = race.meshes
-                , trackId = race.track.config.id
-                , seed = race.track.config.seed
+                , map = race.track.config.map
                 , finishTimeS = race.elapsedTime
                 , topSpeedKmh = race.topSpeedKmh
                 , finalIntegrityPct = clamp 0 100 (round race.physics.integrity)
@@ -2740,6 +2771,7 @@ processPhysicsEvents events extraCmds race model =
         in
         ( { model
             | leaderboard = nextLb
+            , lastMap = Just race.track.config.map
             , page = RacePage updatedRace
             , pressedKeys = Set.empty
             , touch = emptyTouch
@@ -2808,7 +2840,7 @@ processPhysicsEvents events extraCmds race model =
                                 toFloat (index + 1) / 4.0
 
                             refTrackTime =
-                                Leaderboard.bestForTrack rAcc.track.config.id model.leaderboard
+                                Leaderboard.bestForMap rAcc.track.config.map model.leaderboard
                                     |> Maybe.map .timeSeconds
                                     |> Maybe.withDefault (rAcc.track.totalLengthM / 22.0)
 
@@ -2889,14 +2921,71 @@ appendFinishSplit events elapsed existing =
         existing
 
 
-loadDocumentIntoGarage : String -> Document -> Maybe TrackId -> Maybe Int -> Bool -> Model -> ( Model, Cmd Msg )
-loadDocumentIntoGarage suggestedTitle doc maybeTrack maybeSeed syncHash model =
-    let
-        nextTrackId =
-            Maybe.withDefault model.trackId maybeTrack
+{-| A selection with every part fixed to the map's values, so a shared
+link shows its concrete map.
+-}
+exactSelection : MapParams -> Selection
+exactSelection map =
+    { biome = Exactly map.biome
+    , season = Exactly map.season
+    , weather = Exactly map.weather
+    , seed = map.seed
+    }
 
-        nextSeed =
-            Maybe.withDefault model.seed (Maybe.map (clamp 1 999999) maybeSeed)
+
+{-| Set the picker selection and the map it resolves to.
+-}
+withSelection : Selection -> Model -> Model
+withSelection selection model =
+    { model
+        | selection = selection
+        , map = Map.resolve selection
+        , seedText = String.fromInt selection.seed
+        , shareCopiedNotice = False
+    }
+
+
+{-| Switch to a map (as from a link) when one is given.
+-}
+withMap : Maybe MapParams -> Model -> Model
+withMap maybeMap model =
+    case maybeMap of
+        Just map ->
+            withSelection (exactSelection map) model
+
+        Nothing ->
+            model
+
+
+{-| Change the selection from the map picker and write the new map into the
+URL hash while the garage is shown.
+-}
+applySelection : (Selection -> Selection) -> Model -> ( Model, Cmd Msg )
+applySelection change model =
+    let
+        nextModel =
+            withSelection (change model.selection) model
+    in
+    case nextModel.page of
+        SetupPage garage ->
+            ( nextModel, GamePorts.setUrlHash (Ingest.encodeRaceHash nextModel.map garage.document) )
+
+        _ ->
+            ( nextModel, Cmd.none )
+
+
+{-| The next seed from the dice button, 1 to 999999.
+-}
+nextRandomSeed : Int -> Int
+nextRandomSeed seed =
+    modBy 999999 (abs (seed * 1664525 + 1013904223)) + 1
+
+
+loadDocumentIntoGarage : String -> Document -> Maybe MapParams -> Bool -> Model -> ( Model, Cmd Msg )
+loadDocumentIntoGarage suggestedTitle doc maybeMap syncHash model0 =
+    let
+        model =
+            withMap maybeMap model0
 
         analyzed =
             Analyze.analyzeDocument suggestedTitle doc model.partCache model.partIndex
@@ -2918,7 +3007,7 @@ loadDocumentIntoGarage suggestedTitle doc maybeTrack maybeSeed syncHash model =
 
         hashCmd =
             if syncHash then
-                GamePorts.setUrlHash (Ingest.encodeRaceHash nextTrackId nextSeed doc)
+                GamePorts.setUrlHash (Ingest.encodeRaceHash model.map doc)
 
             else
                 Cmd.none
@@ -2927,9 +3016,7 @@ loadDocumentIntoGarage suggestedTitle doc maybeTrack maybeSeed syncHash model =
             fetchPartsCmd model.resolverConfig stats.needed
     in
     ( { model
-        | trackId = nextTrackId
-        , seed = nextSeed
-        , partCache = markedCache
+        | partCache = markedCache
         , pasteError = Nothing
         , shareCopiedNotice = False
         , pressedKeys = Set.empty
@@ -2944,7 +3031,7 @@ startRaceFromDoc : String -> Document -> VehicleSpec -> CarMeshBundle -> Model -
 startRaceFromDoc title doc vehicle meshes model =
     let
         ( cachedTrack, modelWithTrack ) =
-            ensureTrackBuilt model.trackId model.seed model
+            ensureTrackBuilt model.map model
 
         isSplit =
             localSplitScreen model
@@ -3007,7 +3094,7 @@ startRaceFromDoc title doc vehicle meshes model =
                     , splitDelta = Nothing
                     , hudAlert = Nothing
                     , debris = []
-                    , debrisSeed = max 1 (modelWithTrack.seed * 97 + p2Car.vehicle.placementCount)
+                    , debrisSeed = max 1 (modelWithTrack.map.seed * 97 + p2Car.vehicle.placementCount)
                     }
 
             else
@@ -3032,7 +3119,7 @@ startRaceFromDoc title doc vehicle meshes model =
             , cameraMode = ChaseCam
             , camera = cam
             , debris = []
-            , debrisSeed = max 1 (modelWithTrack.seed * 73 + vehicle.placementCount)
+            , debrisSeed = max 1 (modelWithTrack.map.seed * 73 + vehicle.placementCount)
             , shake = 0.0
             , player2 = maybeP2
             , multiplayer = model.multiplayer
@@ -3057,35 +3144,31 @@ startRaceFromDoc title doc vehicle meshes model =
     )
 
 
-ensureTrackBuilt : TrackId -> Int -> Model -> ( CachedTrack, Model )
-ensureTrackBuilt trackId seed model =
+ensureTrackBuilt : MapParams -> Model -> ( CachedTrack, Model )
+ensureTrackBuilt map model =
     case model.cachedTrack of
         Just cached ->
-            if cached.trackId == trackId && cached.seed == seed then
+            if cached.mapCode == Map.toCode map then
                 ( cached, model )
 
             else
-                buildAndStoreTrack trackId seed model
+                buildAndStoreTrack map model
 
         Nothing ->
-            buildAndStoreTrack trackId seed model
+            buildAndStoreTrack map model
 
 
-buildAndStoreTrack : TrackId -> Int -> Model -> ( CachedTrack, Model )
-buildAndStoreTrack trackId seed model =
+buildAndStoreTrack : MapParams -> Model -> ( CachedTrack, Model )
+buildAndStoreTrack map model =
     let
-        cfg =
-            Track.trackConfigFor trackId seed
-
         track =
-            Track.generate cfg
+            Track.generate (Track.trackConfigFor map)
 
         bundle =
             TerrainMesh.buildTrackRenderBundle track
 
         cached =
-            { trackId = trackId
-            , seed = seed
+            { mapCode = Map.toCode map
             , track = track
             , bundle = bundle
             }
@@ -4202,8 +4285,10 @@ view model =
                 , wheelPreviewSpin = garage.wheelPreviewSpin
                 , partsLoaded = stats.settled
                 , partsTotal = stats.total
-                , selectedTrack = model.trackId
-                , seed = model.seed
+                , selection = model.selection
+                , map = model.map
+                , seedText = model.seedText
+                , hasPreviousMap = model.lastMap /= Nothing && model.lastMap /= Just model.map
                 , leaderboard = model.leaderboard
                 , viewportWidth = model.viewportWidth
                 , viewportHeight = model.viewportHeight
@@ -4220,9 +4305,12 @@ view model =
                 }
                 { onOpenBuilder = OpenBuilder
                 , onStartRace = GarageToRace
-                , onSelectTrack = SelectTrack
+                , onPickBiome = PickBiome
+                , onPickSeason = PickSeason
+                , onPickWeather = PickWeather
                 , onChangeSeed = ChangeSeed
                 , onRandomSeed = RandomSeed
+                , onUsePreviousMap = UsePreviousMap
                 , onSetPlayerModeTab = SetPlayerModeTab
                 , onSetRaceMode = SetRaceMode
                 , onSelectPlayerSlot = SelectPlayerSlot
@@ -4281,7 +4369,7 @@ view model =
                                 , p2Camera = p2.camera
                                 , p2HudData =
                                     { language = model.language
-                                    , courseTitle = RI18n.trackTitle model.language race.track.config.id
+                                    , courseTitle = RI18n.mapTitle model.language race.track.config.map
                                     , map = race.track.config.map
                                     , physics = p2.physics
                                     , nextCheckpointM = nextCheckpointMeters race.track.checkpoints p2.physics
@@ -4318,7 +4406,7 @@ view model =
                         model.viewportWidth
                         model.viewportHeight
                         { language = model.language
-                        , courseTitle = RI18n.trackTitle model.language race.track.config.id
+                        , courseTitle = RI18n.mapTitle model.language race.track.config.map
                         , map = race.track.config.map
                         , physics = race.physics
                         , nextCheckpointM = nextCheckpointMeters race.track.checkpoints race.physics
@@ -4370,8 +4458,7 @@ view model =
         FinishLeaderboardPage res ->
             Results.view
                 { language = model.language
-                , trackId = res.trackId
-                , seed = res.seed
+                , map = res.map
                 , vehicle = res.vehicle
                 , finishTimeS = res.finishTimeS
                 , topSpeedKmh = res.topSpeedKmh
@@ -4382,6 +4469,7 @@ view model =
                 , shareCopiedNotice = model.shareCopiedNotice
                 }
                 { onRaceAgain = RestartRace
+                , onNewMap = NewMap
                 , onCopyShareLink = CopyShareLink
                 , onInspectGarage = InspectInGarage
                 , onBackToMenu = BackToMenu
@@ -4407,7 +4495,7 @@ openBuilder maybeBase doc model =
                 |> Tuple.mapFirst (Build.setPartCacheAndIndex model.partCache model.partIndex)
 
         hashCmd =
-            GamePorts.setUrlHash (Ingest.encodeGarageHash model.trackId model.seed doc)
+            GamePorts.setUrlHash (Ingest.encodeGarageHash model.map doc)
     in
     ( { model
         | page = BuildPage build

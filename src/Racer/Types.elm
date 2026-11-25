@@ -23,7 +23,6 @@ module Racer.Types exposing
     , SurfaceType(..)
     , TerrainSample
     , TrackConfig
-    , TrackId(..)
     , TrackObstacle
     , TrackSample
     , ValidationCode(..)
@@ -32,13 +31,10 @@ module Racer.Types exposing
     , VehicleSpec
     , WashZone
     , WheelSpec
-    , allTrackIds
     , fixedDt
     , lduPerMeter
     , lduToMeters
     , metersToLdu
-    , trackIdFromString
-    , trackIdToString
     , vec3LduToMeters
     , vec3MetersToLdu
     )
@@ -100,67 +96,6 @@ vec3MetersToLdu v =
     Vec3.scale lduPerMeter v
 
 
-{-| Available countryside downhill courses.
--}
-type TrackId
-    = FarmLane
-    | ForestTrail
-    | MeadowPath
-
-
-{-| Every selectable course, in menu order (easiest first).
--}
-allTrackIds : List TrackId
-allTrackIds =
-    [ FarmLane, ForestTrail, MeadowPath ]
-
-
-{-| Serialize a `TrackId` for URL hashes and storage.
--}
-trackIdToString : TrackId -> String
-trackIdToString trackId =
-    case trackId of
-        FarmLane ->
-            "farm-lane"
-
-        ForestTrail ->
-            "forest-trail"
-
-        MeadowPath ->
-            "meadow-path"
-
-
-{-| Parse a `TrackId` from URL query/hash segments.
-
-Ids of the retired long mountain courses still resolve to the countryside course
-that replaced them, so old share links and stored best times keep working.
-
--}
-trackIdFromString : String -> Maybe TrackId
-trackIdFromString raw =
-    case String.toLower (String.trim raw) of
-        "farm-lane" ->
-            Just FarmLane
-
-        "forest-trail" ->
-            Just ForestTrail
-
-        "meadow-path" ->
-            Just MeadowPath
-
-        "pine-ridge" ->
-            Just FarmLane
-
-        "quarry-switchbacks" ->
-            Just ForestTrail
-
-        "alpine-glacier" ->
-            Just MeadowPath
-
-        _ ->
-            Nothing
-
-
 {-| Unpaved surface beneath a wheel or track segment.
 
 `RoughVerge` is the tufty strip just outside the roadbed and `MeadowGrass` the
@@ -197,8 +132,7 @@ type alias ControlPoint =
 {-| Course configuration descriptor shown in menus and generator.
 -}
 type alias TrackConfig =
-    { id : TrackId
-    , seed : Int
+    { seed : Int
     , lengthM : Float
     , dropM : Float
     , defaultHalfWidthM : Float
@@ -638,13 +572,12 @@ type alias PresetBuild =
 {-| Local personal-best leaderboard record.
 -}
 type alias LeaderboardEntry =
-    { trackId : TrackId
+    { mapCode : String
     , vehicleName : String
     , timeSeconds : Float
     , topSpeedKmh : Float
     , wheelCount : Int
     , steeringLabel : String
-    , seed : Int
     }
 
 

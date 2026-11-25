@@ -15,13 +15,14 @@ module EditorTest exposing (suite)
 
 import EmbeddedParts
 import Expect
+import Game.MapParams as Map
 import LDraw.Catalog as Catalog
 import LDraw.Connectivity as Connectivity
 import LDraw.Document as Document exposing (Document)
 import Racer.Analyze as Analyze
 import Racer.Editor as Editor exposing (Base)
 import Racer.Ingest as Ingest
-import Racer.Types exposing (TrackId(..), ValidationSeverity(..), VehicleSpec)
+import Racer.Types exposing (ValidationSeverity(..), VehicleSpec)
 import Set
 import Test exposing (Test, describe, test)
 
@@ -136,7 +137,7 @@ builtCarTest base =
             List.foldl addPart base.document [ "3001.dat", "3001.dat", "3039.dat", "3829c01.dat", "3023b.dat", "3070b.dat" ]
 
         roundTrip =
-            Ingest.decodeRaceInput Nothing (Ingest.encodeRaceHash FarmLane 7 built)
+            Ingest.decodeRaceInput Nothing (Ingest.encodeRaceHash { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 7 } built)
                 |> Result.map .document
     in
     describe base.id

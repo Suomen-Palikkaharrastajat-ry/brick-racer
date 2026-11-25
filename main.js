@@ -3,11 +3,7 @@ import { bootGame } from './vendor/packages/brick-frame-game/runtime/game-boot.j
 import { initThumbnails } from './vendor/packages/brick-frame-viewport/runtime/thumbnail-pipeline.js'
 import { createAudioEngine } from './audio.js'
 import { Elm } from './src/Main.elm'
-import { migrateRetiredTrackBestTimes } from './leaderboard-migration.js'
 import { tiltSteerOptions } from './steer-mode.js'
-
-// Drop best times stored for the retired courses (once, before Elm reads them).
-migrateRetiredTrackBestTimes('racer')
 
 // Phones play in landscape. On the first touch, ask for fullscreen and lock the
 // screen to landscape where the browser allows it (fullscreen and a user gesture

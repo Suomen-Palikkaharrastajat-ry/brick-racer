@@ -6,6 +6,7 @@ and WebGL matrix composition.
 
 import Dict
 import Expect
+import Game.MapParams as Map
 import LDraw.Catalog as Catalog
 import LDraw.Document as Document
 import Math.Matrix4 as Mat4
@@ -18,7 +19,7 @@ import Racer.Leaderboard as Leaderboard
 import Racer.Physics as Physics
 import Racer.Render as Render
 import Racer.Track as Track
-import Racer.Types exposing (CameraMode(..), SurfaceType(..), TrackId(..))
+import Racer.Types exposing (CameraMode(..), SurfaceType(..))
 import Render.Camera as Camera
 import Test exposing (Test, describe, test)
 
@@ -36,7 +37,7 @@ suite =
                 |> .spec
 
         track =
-            Track.generate (Track.trackConfigFor FarmLane 1)
+            Track.generate (Track.trackConfigFor farmland)
 
         basePhysics =
             Physics.initPhysics track vehicleSpec
@@ -111,23 +112,21 @@ suite =
                 \_ ->
                     let
                         entry1 =
-                            { trackId = FarmLane
+                            { mapCode = Map.leaderboardKey farmland
                             , vehicleName = "Kart A"
                             , timeSeconds = 58.4
                             , topSpeedKmh = 92.0
                             , wheelCount = 4
                             , steeringLabel = "2x2 Turntable Bogie"
-                            , seed = 1
                             }
 
                         entry2 =
-                            { trackId = FarmLane
+                            { mapCode = Map.leaderboardKey farmland
                             , vehicleName = "Kart B"
                             , timeSeconds = 51.2
                             , topSpeedKmh = 104.0
                             , wheelCount = 4
                             , steeringLabel = "2x2 Turntable Bogie"
-                            , seed = 1
                             }
 
                         entrySlower =
@@ -146,14 +145,45 @@ suite =
                             Leaderboard.decodeLeaderboard (Leaderboard.encodeLeaderboard lb3)
 
                         bestAfter =
-                            Leaderboard.bestForTrack FarmLane decoded
+                            Leaderboard.bestForMap farmland decoded
                     in
                     Expect.all
                         [ \_ -> Expect.equal True best1
                         , \_ -> Expect.equal True best2
                         , \_ -> Expect.equal False best3
                         , \_ -> Expect.equal (Just "Kart B") (Maybe.map .vehicleName bestAfter)
-                        , \_ -> Expect.equal 3 (List.length (Leaderboard.entriesForTrack FarmLane decoded))
+                        , \_ -> Expect.equal 3 (List.length (Leaderboard.entriesForMap farmland decoded))
+                        ]
+                        ()
+            , test "leaderboard keeps one board per map and drops old per-track entries" <|
+                \_ ->
+                    let
+                        entryOn map time =
+                            { mapCode = Map.leaderboardKey map
+                            , vehicleName = "Kart"
+                            , timeSeconds = time
+                            , topSpeedKmh = 90.0
+                            , wheelCount = 4
+                            , steeringLabel = "2x2 Turntable Bogie"
+                            }
+
+                        other =
+                            { farmland | seed = 2 }
+
+                        ( lb1, _ ) =
+                            Leaderboard.recordRun (entryOn farmland 50.0) Leaderboard.empty
+
+                        ( lb2, otherBest ) =
+                            Leaderboard.recordRun (entryOn other 70.0) lb1
+
+                        oldJson =
+                            "[{\"trackId\":\"farm-lane\",\"vehicleName\":\"Old\",\"timeSeconds\":40.0,\"topSpeedKmh\":80.0,\"wheelCount\":4,\"steeringLabel\":\"x\",\"seed\":1}]"
+                    in
+                    Expect.all
+                        [ \_ -> Expect.equal True otherBest
+                        , \_ -> Expect.equal [ 50.0 ] (List.map .timeSeconds (Leaderboard.entriesForMap farmland lb2))
+                        , \_ -> Expect.equal [ 70.0 ] (List.map .timeSeconds (Leaderboard.entriesForMap other lb2))
+                        , \_ -> Expect.equal [] (Leaderboard.decodeLeaderboard oldJson).entries
                         ]
                         ()
             ]
@@ -200,3 +230,10 @@ suite =
                         ()
             ]
         ]
+
+
+{-| A fixed summer, clear farmland map.
+-}
+farmland : Map.MapParams
+farmland =
+    { biome = Map.Farmland, season = Map.Summer, weather = Map.Clear, seed = 1 }

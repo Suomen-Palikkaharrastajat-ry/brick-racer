@@ -8,7 +8,6 @@ module Racer.Track exposing
     , groundHeightAt
     , loopFrame
     , loopLaneHalfWidth
-    , mapForTrack
     , obstaclesNear
     , recoveryBankGrade
     , recoveryCorridorM
@@ -24,13 +23,9 @@ module Racer.Track exposing
 
 {-| Procedural downhill countryside course generator and spatial terrain sampler.
 
-Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads:
-
-  - `FarmLane`: dirt and gravel farm road with two clear bends and a steep drop
-    into the farmyard,
-  - `ForestTrail`: packed-earth forest track with a root-rippled section, a log
-    hump and a fast gravel chute through a clearing,
-  - `MeadowPath`: narrow, steepest grass footpath with a field hump and tussocks.
+Generates short, steep, deterministic Catmull-Rom tracks on unpaved roads from
+a map (`Game.MapParams`): the map's biome picks the course shape and road
+surfaces (`Racer.Course`), and its seed draws the bends, drops and features.
 
 Each course is lined with brick-built scenery (trees, bushes, fences, rocks,
 signposts, hay bales, cottages, barns, crates, barrels, garden gnomes, brick
@@ -64,7 +59,6 @@ import Racer.Types
         , SurfaceType(..)
         , TerrainSample
         , TrackConfig
-        , TrackId(..)
         , TrackObstacle
         , TrackSample
         , WashZone
@@ -72,23 +66,18 @@ import Racer.Types
 import Random
 
 
-{-| The course for a track id and seed. The id picks a map (its biome, with
-summer and clear weather), and the map's seeded course shape gives the length,
+{-| The course for a map. The map's seeded course shape gives the length,
 drop and width. The first of eight seeded attempts that passes
 `validationIssues` is used; should none pass, the first attempt is kept.
 -}
-trackConfigFor : TrackId -> Int -> TrackConfig
-trackConfigFor id seed =
+trackConfigFor : Map.MapParams -> TrackConfig
+trackConfigFor map =
     let
-        map =
-            mapForTrack id seed
-
         cp =
             Course.courseParams map
 
         configAt attempt =
-            { id = id
-            , seed = seed
+            { seed = map.seed
             , lengthM = cp.lengthM
             , dropM = cp.dropM
             , defaultHalfWidthM = cp.halfWidthM
@@ -115,27 +104,6 @@ trackConfigFor id seed =
 maxAttempts : Int
 maxAttempts =
     8
-
-
-{-| The map behind a track id: the three countryside courses are the
-farmland, boreal and fell maps.
--}
-mapForTrack : TrackId -> Int -> Map.MapParams
-mapForTrack id seed =
-    { biome =
-        case id of
-            FarmLane ->
-                Map.Farmland
-
-            ForestTrail ->
-                Map.Boreal
-
-            MeadowPath ->
-                Map.Fell
-    , season = Map.Summer
-    , weather = Map.Clear
-    , seed = clamp 1 999999 seed
-    }
 
 
 {-| Generate a complete deterministic `GeneratedTrack` from a `TrackConfig`.
