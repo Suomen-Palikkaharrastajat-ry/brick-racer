@@ -378,7 +378,8 @@ shareCumulative gaps =
             List.sum gaps
 
         cumulative =
-            List.scanl (+) 0 gaps
+            List.foldl (\g acc -> (g + Maybe.withDefault 0 (List.head acc)) :: acc) [ 0 ] gaps
+                |> List.reverse
     in
     List.map
         (\c ->
