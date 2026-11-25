@@ -641,48 +641,20 @@ buildControlPoints config =
 
         startAltitude =
             config.dropM + 20.0
-
-        ( finalKnots, _ ) =
-            List.foldl
-                (\knot ( acc, rng ) ->
-                    let
-                        ( jitterX, rng1 ) =
-                            Random.step (Random.float -5.0 5.0) rng
-
-                        ( jitterY, rng2 ) =
-                            Random.step (Random.float -0.8 0.8) rng1
-
-                        envelope =
-                            if knot.sFrac <= 0.06 || knot.sFrac >= 0.92 then
-                                0.0
-
-                            else
-                                sin (pi * clamp 0.0 1.0 ((knot.sFrac - 0.06) / 0.86))
-
-                        x =
-                            knot.xOffset + jitterX * envelope
-
-                        z =
-                            knot.zProgress * lenScale
-
-                        y =
-                            startAltitude - knot.yDropFrac * config.dropM + jitterY * envelope
-
-                        cp : ControlPoint
-                        cp =
-                            { position = vec3 x y z
-                            , roadHalfWidth = knot.halfWidth
-                            , bankingRad = 0.0
-                            , surface = knot.surface
-                            , feature = knot.feature
-                            }
-                    in
-                    ( cp :: acc, rng2 )
-                )
-                ( [], Random.initialSeed (config.seed * 7919 + 13) )
-                rawKnots
     in
-    List.reverse finalKnots
+    List.map
+        (\knot ->
+            { position =
+                vec3 knot.xOffset
+                    (startAltitude - knot.yDropFrac * config.dropM)
+                    (knot.zProgress * lenScale)
+            , roadHalfWidth = knot.halfWidth
+            , bankingRad = 0.0
+            , surface = knot.surface
+            , feature = knot.feature
+            }
+        )
+        rawKnots
 
 
 evaluateCatmullRomSeries : Int -> List ControlPoint -> List RawSplinePt

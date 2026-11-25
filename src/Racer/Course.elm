@@ -158,9 +158,10 @@ generateKnots attempt map cp =
         zShares =
             shareCumulative zGaps
 
-        -- Drop: gaps of random size, the first capped and one middle gap steeper.
+        -- Drop: each gap follows its forward gap (an even grade) with a little
+        -- variation, the first is gentler and one middle gap steeper.
         ( dropGaps, seed2 ) =
-            randomsIn (n - 1) ( 0.6, 1.5 ) seed1
+            randomsIn (n - 1) ( 0.8, 1.25 ) seed1
 
         ( steepU, seed3 ) =
             draw ( 0, 1 ) seed2
@@ -170,20 +171,51 @@ generateKnots attempt map cp =
 
         adjustedDrop =
             List.indexedMap
-                (\i g ->
+                (\i ( zGap, g ) ->
                     if i == 0 then
-                        min g 0.6
+                        zGap * g * 0.6
 
                     else if i == steepIndex then
-                        g * 1.4
+                        zGap * g * 1.3
 
                     else
-                        g
+                        zGap * g
                 )
-                dropGaps
+                (List.map2 Tuple.pair zGaps dropGaps)
 
         yArr =
-            Array.fromList (shareCumulative adjustedDrop)
+            straighten (Array.fromList (shareCumulative adjustedDrop))
+
+        -- The knots `straightFrom - 1` to `straightFrom + 2` are put on one
+        -- line (sideways and in the drop), so the road between `straightFrom`
+        -- and `straightFrom + 1`, a little before half way, is straight and
+        -- evenly graded: room for the loop.
+        straightFrom =
+            (45 * (n - 1)) // 100
+
+        straighten arr =
+            let
+                z0 =
+                    at zShareArr (straightFrom - 1)
+
+                z3 =
+                    at zShareArr (straightFrom + 2)
+
+                v0 =
+                    at arr (straightFrom - 1)
+
+                v3 =
+                    at arr (straightFrom + 2)
+
+                onLine i =
+                    v0 + (v3 - v0) * (at zShareArr i - z0) / max 1.0e-6 (z3 - z0)
+            in
+            arr
+                |> Array.set straightFrom (onLine straightFrom)
+                |> Array.set (straightFrom + 1) (onLine (straightFrom + 1))
+
+        zShareArr =
+            Array.fromList zShares
 
         -- Sideways: interior knots get a random sign and size.
         ( sJitter, seed4 ) =
@@ -298,7 +330,7 @@ generateKnots attempt map cp =
             zFor scale2
 
         xArr =
-            walkSideways zArr
+            straighten (walkSideways zArr)
 
         -- Features on middle knots, at least one knot apart.
         candidates =
@@ -309,7 +341,7 @@ generateKnots attempt map cp =
                             s =
                                 at sArr i
                         in
-                        s >= 0.2 && s <= 0.9
+                        s >= 0.2 && s <= 0.9 && i /= straightFrom && i /= straightFrom + 1
                     )
                 |> List.sortBy (\i -> at priorityArr i)
 
