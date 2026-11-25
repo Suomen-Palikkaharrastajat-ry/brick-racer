@@ -1822,9 +1822,40 @@ placeSideRamps track =
                     (normalizeXZ (splineSampleAtS track (c.startS + lengthM)).tangent)
                 > cos 0.25
 
+        -- The ground behind the lip must keep rising away from the road, so a
+        -- ramp never sits over a hollow a car could get stuck in.
+        hollowBehind c =
+            let
+                mid =
+                    c.startS + lengthM * 0.5
+
+                smp =
+                    splineSampleAtS track mid
+
+                outerM =
+                    smp.halfWidth + 1.4
+
+                heights =
+                    List.map
+                        (\k ->
+                            let
+                                d =
+                                    c.side * (outerM + toFloat k * 0.5)
+
+                                p =
+                                    Vec3.add smp.center (Vec3.scale d (normalizeXZ smp.right))
+                            in
+                            groundHeightAt track mid (Vec3.getX p) (Vec3.getZ p)
+                        )
+                        (List.range 0 36)
+            in
+            List.map2 (\a b -> b - a) heights (List.drop 1 heights)
+                |> List.any (\rise -> rise < -0.03)
+
         usable c =
             (c.startS > 50.0)
                 && (c.startS + lengthM < track.finishS - 20.0)
+                && not (hollowBehind c)
                 && List.all (\cp -> clearOf (cp.s - 10.0) (cp.s + 10.0) c) track.checkpoints
                 && List.all (\cp -> clearOf (cp.s - 63.0) (cp.s - 47.0) c) track.checkpoints
                 && List.all (\rp -> clearOf rp.startS rp.endS c) track.ramps
