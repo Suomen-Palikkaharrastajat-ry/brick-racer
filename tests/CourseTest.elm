@@ -219,7 +219,7 @@ suite =
                                         issues ->
                                             Just (Debug.toString id ++ " seed " ++ String.fromInt seed ++ ": " ++ String.join ", " issues)
                                 )
-                                (List.range 1 40)
+                                (List.range 1 40 ++ [ 42, 77, 99, 109, 1234 ])
                         )
                         [ FarmLane, ForestTrail, MeadowPath ]
                     )
