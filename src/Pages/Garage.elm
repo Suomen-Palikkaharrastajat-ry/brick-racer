@@ -19,7 +19,7 @@ import FeatherIcons
 import Game.MapParams exposing (Biome, MapParams, Pick, Season, Selection, WeatherKind)
 import Game.MapPicker as MapPicker
 import Game.Multiplayer exposing (Role(..), RoomState, SessionMode(..))
-import Html exposing (Html, button, div, h2, input, p, span, text)
+import Html exposing (Html, button, details, div, h2, input, p, span, summary, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
 import Html.Lazy
@@ -529,10 +529,13 @@ viewCourseSelection data actions =
                 |> Maybe.map (\entry -> String.fromFloat (roundFloat 2 entry.timeSeconds) ++ " s")
                 |> Maybe.withDefault "—"
     in
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s3 ] ]
-        [ div [ Tw.classes [ Tw.flex, Tw.items_baseline, Tw.justify_between, Tw.gap Th.s2 ] ]
-            [ h2 [ Tw.classes [ Tw.text_sm, Tw.font_bold, Tw.uppercase, Tw.tracking_wider ], Attr.style "color" Brand.legoYellow ]
-                [ text (RI18n.coursesHeading lang) ]
+    details [ Attr.class "racer-course-options", Tw.classes [ Tw.w_full ] ]
+        [ summary [ Attr.class "racer-course-toggle", Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.gap Th.s2, Tw.py Th.s2 ] ]
+            [ span [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
+                [ span [ Attr.class "racer-chevron", Attr.attribute "aria-hidden" "true" ] [ text "▸" ]
+                , h2 [ Tw.classes [ Tw.text_sm, Tw.font_bold, Tw.uppercase, Tw.tracking_wider ], Attr.style "color" Brand.legoYellow ]
+                    [ text (RI18n.coursesHeading lang) ]
+                ]
             , span
                 [ Tw.classes [ Tw.text_xs, Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.font_mono ]
                 , Attr.style "background" "rgba(255, 255, 255, 0.08)"
@@ -546,31 +549,33 @@ viewCourseSelection data actions =
                 ]
                 [ text (RI18n.mapTitle lang data.map ++ " ⏱ " ++ personalBest) ]
             ]
-        , div
-            [ Attr.class "racer-map-picker"
-            , Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.text_xs ]
-            , Attr.style "background" "rgba(7, 25, 38, 0.75)"
-            , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
-            , Attr.style "color" Brand.legoWhite
-            ]
-            [ MapPicker.view
-                { labels = RI18n.mapPickerLabels lang
-                , selection = data.selection
-                , seedText = data.seedText
-                , onBiome = actions.onPickBiome
-                , onSeason = actions.onPickSeason
-                , onWeather = actions.onPickWeather
-                , onSeedInput = actions.onChangeSeed
-                , onRandomSeed = actions.onRandomSeed
-                , onPrevious =
-                    if data.hasPreviousMap then
-                        Just actions.onUsePreviousMap
+        , div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s3, Tw.pt Th.s2 ] ]
+            [ div
+                [ Attr.class "racer-map-picker"
+                , Tw.classes [ Tw.p Th.s3, Tw.rounded_xl, Tw.text_xs ]
+                , Attr.style "background" "rgba(7, 25, 38, 0.75)"
+                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
+                , Attr.style "color" Brand.legoWhite
+                ]
+                [ MapPicker.view
+                    { labels = RI18n.mapPickerLabels lang
+                    , selection = data.selection
+                    , seedText = data.seedText
+                    , onBiome = actions.onPickBiome
+                    , onSeason = actions.onPickSeason
+                    , onWeather = actions.onPickWeather
+                    , onSeedInput = actions.onChangeSeed
+                    , onRandomSeed = actions.onRandomSeed
+                    , onPrevious =
+                        if data.hasPreviousMap then
+                            Just actions.onUsePreviousMap
 
-                    else
-                        Nothing
-                }
+                        else
+                            Nothing
+                    }
+                ]
+            , Html.Lazy.lazy2 viewCoursePreview lang data.map
             ]
-        , Html.Lazy.lazy2 viewCoursePreview lang data.map
         ]
 
 

@@ -109,6 +109,26 @@ body:not(:has(.is-racing)) .rotate-hint {
 /* The shared map picker (Game.MapPicker) is plain markup: rows of a label
    and chips, a seed row, then the resolved map code. Chips and the seed field
    are at least 44 px tall so they are easy to hit on a phone. */
+.racer-course-options > summary {
+  list-style: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.racer-course-options > summary::-webkit-details-marker {
+  display: none;
+}
+
+.racer-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: #facc15;
+}
+
+.racer-course-options[open] > summary .racer-chevron {
+  transform: rotate(90deg);
+}
+
 .racer-map-picker > div {
   display: flex;
   flex-direction: column;
