@@ -244,8 +244,8 @@ generate config =
 {-| Checks a generated course must pass before it is used: its length and
 grade, no steep 20 m stretch, no bend tighter than 30 m (the off-road
 ground beside the road reaches about 26 m out), legs far enough apart not to
-touch, one loop, at least one launch ramp, and at least four
-checkpoints in order. An empty list means the course passes.
+touch, ground beside the road that rises away from it, one loop, at least
+one launch ramp, and at least four checkpoints in order. An empty list means the course passes.
 -}
 validationIssues : GeneratedTrack -> List String
 validationIssues track =
@@ -370,6 +370,40 @@ validationIssues track =
             else
                 Nothing
 
+        -- Across the road, every 4 m, the ground beside it must rise away
+        -- from it (within 6 cm per metre) as far as the car can reach: on the
+        -- inside of a bend it can fold over and drop.
+        foldsAt sVal side =
+            let
+                smp =
+                    splineSampleAtS track sVal
+
+                flatRight =
+                    normalizeXZ smp.right
+
+                heightAt k =
+                    let
+                        p =
+                            Vec3.add smp.center (Vec3.scale (side * (smp.halfWidth + 1.0 + toFloat k)) flatRight)
+                    in
+                    groundHeightAt track sVal (Vec3.getX p) (Vec3.getZ p)
+
+                heights =
+                    List.map heightAt (List.range 0 (round recoveryCorridorM))
+            in
+            List.map2 (\h0 h1 -> h1 < h0 - 0.06) heights (List.drop 1 heights)
+                |> List.any identity
+
+        foldIssue =
+            if
+                List.range 1 (floor (track.finishS / 4.0) - 1)
+                    |> List.any (\k -> foldsAt (toFloat k * 4.0) 1.0 || foldsAt (toFloat k * 4.0) -1.0)
+            then
+                Just "the ground beside the road folds over"
+
+            else
+                Nothing
+
         checkpointsIssue =
             let
                 ss =
@@ -394,6 +428,7 @@ validationIssues track =
         , loopIssue
         , rampIssue
         , checkpointsIssue
+        , foldIssue
         ]
 
 
