@@ -887,9 +887,28 @@ pairConcentricWheels hits =
                     List.map
                         (\c ->
                             if c.id == targetId then
+                                let
+                                    mergedHub =
+                                        if not c.hasRubberTire && hit.isTire then
+                                            vec3 (Vec3.getX (Vec3.scale 0.5 (Vec3.add c.hubYUp hit.hubYUp))) (Vec3.getY c.hubYUp) (Vec3.getZ c.hubYUp)
+
+                                        else if c.hasRubberTire && not hit.isTire then
+                                            vec3 (Vec3.getX (Vec3.scale 0.5 (Vec3.add c.hubYUp hit.hubYUp))) (Vec3.getY hit.hubYUp) (Vec3.getZ hit.hubYUp)
+
+                                        else
+                                            Vec3.scale 0.5 (Vec3.add c.hubYUp hit.hubYUp)
+
+                                    spinAx =
+                                        if c.hasRubberTire && not hit.isTire then
+                                            hit.spinAxisYUp
+
+                                        else
+                                            c.spinAxisYUp
+                                in
                                 { c
                                     | placementIds = hit.placement.id :: c.placementIds
-                                    , hubYUp = Vec3.scale 0.5 (Vec3.add c.hubYUp hit.hubYUp)
+                                    , hubYUp = mergedHub
+                                    , spinAxisYUp = spinAx
                                     , radiusLdu = max c.radiusLdu hit.radiusLdu
                                     , widthLdu = max c.widthLdu hit.widthLdu
                                     , hasRubberTire = c.hasRubberTire || hit.isTire
@@ -1115,7 +1134,15 @@ transformWheelCluster modelToCar c =
             Mat4.transform modelToCar c.hubYUp
 
         spinCar =
-            normalizeSafe (transformVecOnly modelToCar c.spinAxisYUp) (vec3 1 0 0)
+            let
+                rawSpin =
+                    normalizeSafe (transformVecOnly modelToCar c.spinAxisYUp) (vec3 1 0 0)
+            in
+            if Vec3.getX rawSpin < 0.0 then
+                Vec3.negate rawSpin
+
+            else
+                rawSpin
     in
     { id = c.id
     , placementIds = c.placementIds

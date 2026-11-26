@@ -11,8 +11,9 @@ import Expect
 import LDraw.Catalog as Catalog
 import LDraw.Document as Document
 import Math.Matrix4 as Mat4 exposing (Mat4)
-import Math.Vector3 exposing (vec3)
+import Math.Vector3 as Vec3 exposing (vec3)
 import Racer.Analyze as Analyze exposing (PlacementRecord, ValidationContext)
+import Racer.Ingest as Ingest
 import Racer.Types as Types exposing (Fix(..), SteeringMechanism(..), ValidationCode(..), ValidationIssue, ValidationSeverity(..), WheelSpec)
 import Test exposing (Test, describe, test)
 
@@ -665,4 +666,41 @@ wheelCountSuite =
                         Analyze.starRating (Analyze.buildValidationReport (contextWith wheels)) True
                 in
                 Expect.equal (stars fourWheels) (stars inlineTwo)
+        , test "turntable kart wheels have concentric rim and tire pairing without vertical hub distortion" <|
+            \_ ->
+                let
+                    doc =
+                        Ingest.findPresetById "turntable-kart"
+                            |> Maybe.map (.ldrText >> Document.parse)
+                            |> Maybe.withDefault Document.empty
+
+                    analyzed =
+                        Analyze.analyzeDocument "Turntable GP Kart" doc Dict.empty Catalog.emptyPartIndex
+
+                    wheels =
+                        analyzed.spec.wheels
+                in
+                Expect.all
+                    [ \ws -> Expect.equal 4 (List.length ws)
+                    , \ws -> Expect.equal True (List.all (\w -> Vec3.getX w.spinAxis > 0.0) ws)
+                    , \ws ->
+                        let
+                            frontY =
+                                List.filter .isFront ws |> List.map (\w -> Vec3.getY w.localHubPosLdu)
+
+                            rearY =
+                                List.filter (not << .isFront) ws |> List.map (\w -> Vec3.getY w.localHubPosLdu)
+                        in
+                        case ( frontY, rearY ) of
+                            ( [ fy1, fy2 ], [ ry1, ry2 ] ) ->
+                                Expect.all
+                                    [ \_ -> Expect.within (Expect.Absolute 0.01) fy1 fy2
+                                    , \_ -> Expect.within (Expect.Absolute 0.01) ry1 ry2
+                                    ]
+                                    ()
+
+                            _ ->
+                                Expect.fail "Expected 2 front and 2 rear wheels"
+                    ]
+                    wheels
         ]

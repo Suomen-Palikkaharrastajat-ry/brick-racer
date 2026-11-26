@@ -27,7 +27,7 @@ import Json.Decode as Decode
 import Math.Vector3 as Vec3
 import Racer.I18n as RI18n
 import Racer.Leaderboard as Leaderboard
-import Racer.Types exposing (CrashReason(..), PhysicsState)
+import Racer.Types exposing (CrashReason(..), PhysicsState, SteeringMechanism(..), VehicleSpec, WheelSpec)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 import Tailwind as Tw
@@ -51,6 +51,7 @@ type alias HudViewData =
     { language : Language
     , courseTitle : String
     , map : MapParams
+    , vehicle : VehicleSpec
     , physics : PhysicsState
     , nextCheckpointM : Float
     , elapsedTime : Float
@@ -383,7 +384,7 @@ viewDamagePanel data =
             , span [ Tw.classes [ Tw.tabular_nums, Tw.font_bold ], Attr.style "color" (skeletonColor damageRatio 0.0) ]
                 [ text (String.fromInt damage ++ "%") ]
             ]
-        , viewSkeleton damageRatio
+        , viewSkeleton data.vehicle damageRatio
         , div [ Tw.classes [ Tw.flex, Tw.gap Th.s1_dot_5, Tw.flex_wrap, Tw.justify_center ] ]
             [ if data.physics.chassisScraping then
                 hazardChip "#f59e0b" (RI18n.warningScraping lang)
@@ -404,12 +405,200 @@ viewDamagePanel data =
         ]
 
 
-{-| Vertical white skeleton of the car, top view with the nose at the top.
+{-| Vertical white skeleton of the car, top view with the nose at the top,
+generated dynamically from the chosen vehicle's geometry and wheel layout.
 Each part turns from white to red once the damage passes its threshold, so the
 wheels show damage first and the steering last.
 -}
-viewSkeleton : Float -> Html msg
-viewSkeleton damage =
+viewSkeleton : VehicleSpec -> Float -> Html msg
+viewSkeleton vehicle damage =
+    let
+        minX =
+            Vec3.getX vehicle.boundsMinLdu
+
+        maxX =
+            Vec3.getX vehicle.boundsMaxLdu
+
+        minZ =
+            Vec3.getZ vehicle.boundsMinLdu
+
+        maxZ =
+            Vec3.getZ vehicle.boundsMaxLdu
+
+        centerZ =
+            (minZ + maxZ) * 0.5
+
+        spanZ =
+            max 60.0 (maxZ - minZ)
+
+        spanX =
+            max 30.0 (maxX - minX)
+
+        scale =
+            min (86.0 / spanZ) (44.0 / spanX)
+
+        toSvgX lduX =
+            30.0 + lduX * scale
+
+        toSvgY lduZ =
+            56.0 - (lduZ - centerZ) * scale
+
+        -- Wheels (threshold 0.1)
+        wheelElements =
+            List.map
+                (\w ->
+                    let
+                        cx =
+                            toSvgX (Vec3.getX w.localHubPosLdu)
+
+                        cy =
+                            toSvgY (Vec3.getZ w.localHubPosLdu)
+
+                        ww =
+                            clamp 5.0 9.0 (w.widthLdu * scale)
+
+                        wh =
+                            clamp 10.0 20.0 (w.radiusLdu * 2.0 * scale)
+                    in
+                    Svg.rect
+                        [ SvgA.x (String.fromFloat (cx - ww * 0.5))
+                        , SvgA.y (String.fromFloat (cy - wh * 0.5))
+                        , SvgA.width (String.fromFloat ww)
+                        , SvgA.height (String.fromFloat wh)
+                        , SvgA.rx "2"
+                        ]
+                        []
+                )
+                vehicle.wheels
+
+        -- Axles connecting each wheel to the centerline (threshold 0.25)
+        axleElements =
+            List.map
+                (\w ->
+                    let
+                        cx =
+                            toSvgX (Vec3.getX w.localHubPosLdu)
+
+                        cy =
+                            toSvgY (Vec3.getZ w.localHubPosLdu)
+                    in
+                    Svg.line
+                        [ SvgA.x1 (String.fromFloat cx)
+                        , SvgA.y1 (String.fromFloat cy)
+                        , SvgA.x2 "30"
+                        , SvgA.y2 (String.fromFloat cy)
+                        ]
+                        []
+                )
+                vehicle.wheels
+
+        -- Body outline (threshold 0.4)
+        bx1 =
+            clamp 10.0 23.0 (toSvgX (minX * 0.72))
+
+        bx2 =
+            clamp 37.0 50.0 (toSvgX (maxX * 0.72))
+
+        byFront =
+            clamp 8.0 22.0 (toSvgY maxZ)
+
+        byRear =
+            clamp 90.0 106.0 (toSvgY minZ)
+
+        noseY =
+            max 6.0 (byFront - 4.0)
+
+        taperFrontY =
+            min (byRear - 10.0) (byFront + 12.0)
+
+        taperRearY =
+            max (byFront + 10.0) (byRear - 12.0)
+
+        bodyD =
+            "M 30 "
+                ++ String.fromFloat noseY
+                ++ " L "
+                ++ String.fromFloat bx2
+                ++ " "
+                ++ String.fromFloat taperFrontY
+                ++ " L "
+                ++ String.fromFloat bx2
+                ++ " "
+                ++ String.fromFloat taperRearY
+                ++ " L "
+                ++ String.fromFloat (bx2 - 3.0)
+                ++ " "
+                ++ String.fromFloat byRear
+                ++ " L "
+                ++ String.fromFloat (bx1 + 3.0)
+                ++ " "
+                ++ String.fromFloat byRear
+                ++ " L "
+                ++ String.fromFloat bx1
+                ++ " "
+                ++ String.fromFloat taperRearY
+                ++ " L "
+                ++ String.fromFloat bx1
+                ++ " "
+                ++ String.fromFloat taperFrontY
+                ++ " Z"
+
+        -- Cockpit / midsection (threshold 0.6)
+        cockpitWidth =
+            (bx2 - bx1) * 0.5
+
+        cockpitElements =
+            [ Svg.rect
+                [ SvgA.x (String.fromFloat (30.0 - cockpitWidth * 0.5))
+                , SvgA.y "44"
+                , SvgA.width (String.fromFloat cockpitWidth)
+                , SvgA.height "24"
+                , SvgA.rx "2"
+                ]
+                []
+            ]
+
+        -- Steering element (threshold 0.7)
+        steeringElements =
+            case vehicle.steering of
+                TurntableBogie bogie ->
+                    [ Svg.circle
+                        [ SvgA.cx (String.fromFloat (toSvgX (Vec3.getX bogie.pivotPosLdu)))
+                        , SvgA.cy (String.fromFloat (toSvgY (Vec3.getZ bogie.pivotPosLdu)))
+                        , SvgA.r "3.5"
+                        ]
+                        []
+                    ]
+
+                TwinKnuckle knuckle ->
+                    [ Svg.circle
+                        [ SvgA.cx (String.fromFloat (toSvgX (Vec3.getX knuckle.leftPivotLdu)))
+                        , SvgA.cy (String.fromFloat (toSvgY (Vec3.getZ knuckle.leftPivotLdu)))
+                        , SvgA.r "2.5"
+                        ]
+                        []
+                    , Svg.circle
+                        [ SvgA.cx (String.fromFloat (toSvgX (Vec3.getX knuckle.rightPivotLdu)))
+                        , SvgA.cy (String.fromFloat (toSvgY (Vec3.getZ knuckle.rightPivotLdu)))
+                        , SvgA.r "2.5"
+                        ]
+                        []
+                    ]
+
+                FixedAxleFallback ->
+                    case vehicle.steeringWheelPivotLdu of
+                        Just pivot ->
+                            [ Svg.circle
+                                [ SvgA.cx (String.fromFloat (toSvgX (Vec3.getX pivot)))
+                                , SvgA.cy (String.fromFloat (toSvgY (Vec3.getZ pivot)))
+                                , SvgA.r "3.0"
+                                ]
+                                []
+                            ]
+
+                        Nothing ->
+                            [ Svg.circle [ SvgA.cx "30", SvgA.cy (String.fromFloat (byFront + 10.0)), SvgA.r "3.0" ] [] ]
+    in
     Svg.svg
         [ SvgA.viewBox "0 0 60 112"
         , Attr.style "width" "4rem"
@@ -417,27 +606,11 @@ viewSkeleton damage =
         , Attr.style "display" "block"
         , Attr.style "margin" "0.25rem auto"
         ]
-        [ skeletonPart damage
-            0.1
-            [ Svg.rect [ SvgA.x "3", SvgA.y "18", SvgA.width "9", SvgA.height "16", SvgA.rx "3" ] []
-            , Svg.rect [ SvgA.x "48", SvgA.y "18", SvgA.width "9", SvgA.height "16", SvgA.rx "3" ] []
-            , Svg.rect [ SvgA.x "3", SvgA.y "78", SvgA.width "9", SvgA.height "16", SvgA.rx "3" ] []
-            , Svg.rect [ SvgA.x "48", SvgA.y "78", SvgA.width "9", SvgA.height "16", SvgA.rx "3" ] []
-            ]
-        , skeletonPart damage
-            0.25
-            [ Svg.line [ SvgA.x1 "12", SvgA.y1 "26", SvgA.x2 "48", SvgA.y2 "26" ] []
-            , Svg.line [ SvgA.x1 "12", SvgA.y1 "86", SvgA.x2 "48", SvgA.y2 "86" ] []
-            ]
-        , skeletonPart damage
-            0.4
-            [ Svg.path [ SvgA.d "M 20 8 L 40 8 L 43 22 L 43 90 L 40 104 L 20 104 L 17 90 L 17 22 Z" ] [] ]
-        , skeletonPart damage
-            0.6
-            [ Svg.path [ SvgA.d "M 20 42 L 40 42 M 20 70 L 40 70 M 26 42 L 26 70 M 34 42 L 34 70" ] [] ]
-        , skeletonPart damage
-            0.7
-            [ Svg.circle [ SvgA.cx "30", SvgA.cy "14", SvgA.r "3" ] [] ]
+        [ skeletonPart damage 0.1 wheelElements
+        , skeletonPart damage 0.25 axleElements
+        , skeletonPart damage 0.4 [ Svg.path [ SvgA.d bodyD ] [] ]
+        , skeletonPart damage 0.6 cockpitElements
+        , skeletonPart damage 0.7 steeringElements
         ]
 
 
