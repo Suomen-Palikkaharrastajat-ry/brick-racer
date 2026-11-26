@@ -131,14 +131,14 @@ updateRaceCamera dt mode physics spec cam =
     case mode of
         ChaseCam ->
             let
-                -- Round a loop the camera swings out to a three-quarter view from
-                -- behind and backs off, so the whole loop and the car on it show.
+                -- Round a loop, keep the camera directly behind the car and slightly backed off,
+                -- following altitude tightly without disorienting sideways swings.
                 onLoop =
                     physics.loopRide /= Nothing
 
                 desiredAz =
                     if onLoop then
-                        physics.yaw + pi + chaseLoopSwingRad
+                        physics.yaw + pi
 
                     else
                         physics.yaw + pi - physics.yawRate * 0.09
@@ -150,7 +150,7 @@ updateRaceCamera dt mode physics spec cam =
 
                 desiredDist =
                     if onLoop then
-                        max chaseLoopDistanceM (chaseDistance radiusM speed)
+                        chaseDistance radiusM speed + 1.2
 
                     else
                         chaseDistance radiusM speed
@@ -161,8 +161,12 @@ updateRaceCamera dt mode physics spec cam =
                     clamp -chaseTurnLeadM chaseTurnLeadM (physics.yawRate * chaseTurnLeadGain)
 
                 lookAheadTarget =
-                    chaseAimPoint physics carCenterHeight
-                        |> Vec3.add (Vec3.scale turnLead (Physics.forwardVector (physics.yaw + pi / 2)))
+                    if onLoop then
+                        Vec3.add physics.position (vec3 0 (carCenterHeight * 0.5) 0)
+
+                    else
+                        chaseAimPoint physics carCenterHeight
+                            |> Vec3.add (Vec3.scale turnLead (Physics.forwardVector (physics.yaw + pi / 2)))
 
                 alpha =
                     clamp 0.0 1.0 (dt * 9.0)
@@ -176,8 +180,15 @@ updateRaceCamera dt mode physics spec cam =
                 nextDist =
                     lerp baseCam.distance desiredDist (clamp 0.0 1.0 (dt * 5.0))
 
+                targetLerpRate =
+                    if onLoop then
+                        clamp 0.0 1.0 (dt * 18.0)
+
+                    else
+                        clamp 0.0 1.0 (dt * 8.5)
+
                 nextTarget =
-                    vec3Lerp (clamp 0.0 1.0 (dt * 8.5)) baseCam.target lookAheadTarget
+                    vec3Lerp targetLerpRate baseCam.target lookAheadTarget
             in
             { baseCam
                 | azimuth = nextAz
@@ -233,19 +244,6 @@ chaseDistance radiusM speedMps =
             clamp 0.0 chaseSpeedPullbackM (max 0.0 speedMps * 0.012)
     in
     base + pullback
-
-
-{-| How far (m) the chase camera backs off, and how far round (rad) it swings
-to the side, while the car rides a loop.
--}
-chaseLoopDistanceM : Float
-chaseLoopDistanceM =
-    10.0
-
-
-chaseLoopSwingRad : Float
-chaseLoopSwingRad =
-    0.8
 
 
 {-| Most the chase camera backs off with speed (m).

@@ -541,14 +541,22 @@ viewTrackSection data actions =
 
         nextWeather =
             nextIn (Map.allowedWeathers map.biome map.season) map.weather
+
+        labelText =
+            case lang of
+                Fi ->
+                    "Rata"
+
+                En ->
+                    "Track"
     in
     div
         [ Attr.attribute "data-testid" "track-section"
         , Tw.classes
             [ Tw.flex
-            , Tw.flex_col
-            , Tw.justify_between
-            , Tw.gap Th.s2
+            , Tw.flex_row
+            , Tw.items_stretch
+            , Tw.gap Th.s3
             , Tw.p Th.s3
             , Tw.rounded_2xl
             , Tw.border
@@ -558,43 +566,80 @@ viewTrackSection data actions =
         , Attr.style "background" "rgba(13, 34, 53, 0.95)"
         , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
         ]
-        [ -- Icon row: Dice to randomize, then Biome, Season, Weather
-          div
-            [ Attr.attribute "data-testid" "track-axes-row"
-            , Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Bp.sm [ Tw.justify_start ], Tw.gap Th.s3 ]
+        [ div
+            [ Tw.classes
+                [ Tw.flex
+                , Tw.items_center
+                , Tw.justify_center
+                , Tw.select_none
+                , Tw.shrink_0
+                , Tw.pr Th.s2
+                , Tw.border_r
+                ]
+            , Attr.style "writing-mode" "vertical-rl"
+            , Attr.style "transform" "rotate(180deg)"
+            , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
+            , Attr.attribute "aria-hidden" "true"
             ]
-            [ iconButton
-                { label = RI18n.randomWorldLabel lang
-                , pressed = Nothing
-                , onPress = actions.onRandomSeed
-                , icon = MenuIcons.dice
-                , accent = True
-                }
-            , span [ Tw.classes [ Tw.w_px, Tw.h Th.s8, Tw.mx Th.s1 ], Attr.style "background" "rgba(255, 255, 255, 0.15)", Attr.attribute "aria-hidden" "true" ] []
-            , iconButton
-                { label = labels.biome ++ ": " ++ labels.biomeName map.biome
-                , pressed = Nothing
-                , onPress = actions.onPickBiome (Exactly (nextIn Map.allBiomes map.biome))
-                , icon = MenuIcons.biome map.biome
-                , accent = False
-                }
-            , iconButton
-                { label = labels.season ++ ": " ++ labels.seasonName map.season
-                , pressed = Nothing
-                , onPress = actions.onPickSeason (Exactly (nextIn Map.allSeasons map.season))
-                , icon = MenuIcons.season map.season
-                , accent = False
-                }
-            , iconButton
-                { label = labels.weather ++ ": " ++ labels.weatherName map.weather
-                , pressed = Nothing
-                , onPress = actions.onPickWeather (Exactly nextWeather)
-                , icon = MenuIcons.weather map.weather
-                , accent = False
-                }
+            [ span
+                [ Tw.classes
+                    [ Tw.text_xs
+                    , Tw.font_black
+                    , Tw.uppercase
+                    , Tw.tracking_widest
+                    ]
+                , Attr.style "color" Brand.legoYellow
+                ]
+                [ text labelText ]
             ]
-        , -- Right-aligned code + seed row without explanation
-          viewSeedRow data actions
+        , div
+            [ Tw.classes
+                [ Tw.flex_1
+                , Tw.flex
+                , Tw.flex_col
+                , Tw.justify_between
+                , Tw.gap Th.s2
+                , Tw.min_w Th.s0
+                ]
+            ]
+            [ -- Icon row: Dice to randomize, then Biome, Season, Weather
+              div
+                [ Attr.attribute "data-testid" "track-axes-row"
+                , Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Bp.sm [ Tw.justify_start ], Tw.gap Th.s3 ]
+                ]
+                [ iconButton
+                    { label = RI18n.randomWorldLabel lang
+                    , pressed = Nothing
+                    , onPress = actions.onRandomSeed
+                    , icon = MenuIcons.dice
+                    , accent = True
+                    }
+                , span [ Tw.classes [ Tw.w_px, Tw.h Th.s8, Tw.mx Th.s1 ], Attr.style "background" "rgba(255, 255, 255, 0.15)", Attr.attribute "aria-hidden" "true" ] []
+                , iconButton
+                    { label = labels.biome ++ ": " ++ labels.biomeName map.biome
+                    , pressed = Nothing
+                    , onPress = actions.onPickBiome (Exactly (nextIn Map.allBiomes map.biome))
+                    , icon = MenuIcons.biome map.biome
+                    , accent = False
+                    }
+                , iconButton
+                    { label = labels.season ++ ": " ++ labels.seasonName map.season
+                    , pressed = Nothing
+                    , onPress = actions.onPickSeason (Exactly (nextIn Map.allSeasons map.season))
+                    , icon = MenuIcons.season map.season
+                    , accent = False
+                    }
+                , iconButton
+                    { label = labels.weather ++ ": " ++ labels.weatherName map.weather
+                    , pressed = Nothing
+                    , onPress = actions.onPickWeather (Exactly nextWeather)
+                    , icon = MenuIcons.weather map.weather
+                    , accent = False
+                    }
+                ]
+            , -- Right-aligned code + seed row without explanation
+              viewSeedRow data actions
+            ]
         ]
 
 
@@ -946,14 +991,22 @@ viewNormalPlayerOptions data actions =
                 , icon = icon
                 , accent = False
                 }
+
+        labelText =
+            case lang of
+                Fi ->
+                    "Kilpailijat"
+
+                En ->
+                    "Racers"
     in
     div
         [ Attr.attribute "data-testid" "normal-player-options"
         , Tw.classes
             [ Tw.flex
-            , Tw.flex_col
-            , Tw.justify_between
-            , Tw.gap Th.s2
+            , Tw.flex_row
+            , Tw.items_stretch
+            , Tw.gap Th.s3
             , Tw.p Th.s3
             , Tw.rounded_2xl
             , Tw.border
@@ -966,27 +1019,64 @@ viewNormalPlayerOptions data actions =
         [ div
             [ Tw.classes
                 [ Tw.flex
-                , Tw.flex_wrap
                 , Tw.items_center
                 , Tw.justify_center
-                , Bp.sm [ Tw.justify_start ]
-                , Tw.gap Th.s3
+                , Tw.select_none
+                , Tw.shrink_0
+                , Tw.pr Th.s2
+                , Tw.border_r
+                ]
+            , Attr.style "writing-mode" "vertical-rl"
+            , Attr.style "transform" "rotate(180deg)"
+            , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
+            , Attr.attribute "aria-hidden" "true"
+            ]
+            [ span
+                [ Tw.classes
+                    [ Tw.text_xs
+                    , Tw.font_black
+                    , Tw.uppercase
+                    , Tw.tracking_widest
+                    ]
+                , Attr.style "color" Brand.legoYellow
+                ]
+                [ text labelText ]
+            ]
+        , div
+            [ Tw.classes
+                [ Tw.flex_1
+                , Tw.flex
+                , Tw.flex_col
+                , Tw.justify_center
+                , Tw.gap Th.s2
+                , Tw.min_w Th.s0
                 ]
             ]
             [ div
-                [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ]
-                , Attr.attribute "role" "group"
-                , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+                [ Tw.classes
+                    [ Tw.flex
+                    , Tw.flex_wrap
+                    , Tw.items_center
+                    , Tw.justify_center
+                    , Bp.sm [ Tw.justify_start ]
+                    , Tw.gap Th.s3
+                    ]
                 ]
-                [ tabButton HotSeatTab FeatherIcons.monitor (RI18n.hotSeatTabLabel lang)
-                , tabButton NetworkTab FeatherIcons.wifi (RI18n.networkTabLabel lang)
-                ]
-            , case data.playerModeTab of
-                HotSeatTab ->
-                    viewHotSeatOptions data actions
+                [ div
+                    [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ]
+                    , Attr.attribute "role" "group"
+                    , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+                    ]
+                    [ tabButton HotSeatTab FeatherIcons.monitor (RI18n.hotSeatTabLabel lang)
+                    , tabButton NetworkTab FeatherIcons.wifi (RI18n.networkTabLabel lang)
+                    ]
+                , case data.playerModeTab of
+                    HotSeatTab ->
+                        viewHotSeatOptions data actions
 
-                NetworkTab ->
-                    viewNetworkOptions data actions
+                    NetworkTab ->
+                        viewNetworkOptions data actions
+                ]
             ]
         ]
 
