@@ -26,7 +26,6 @@ import I18n exposing (Language)
 import Json.Decode as Decode
 import Math.Vector3 as Vec3
 import Racer.I18n as RI18n
-import Racer.Leaderboard as Leaderboard
 import Racer.Types exposing (CrashReason(..), PhysicsState, SteeringMechanism(..), VehicleSpec, WheelSpec)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -116,7 +115,8 @@ viewHudOverlay =
 viewHudOverlayWith : HudSlots msg -> HudViewData -> HudActions msg -> Html msg
 viewHudOverlayWith slots data actions =
     div
-        [ Tw.classes
+        [ Attr.attribute "data-testid" "hud-overlay"
+        , Tw.classes
             [ Tw.absolute
             , Tw.pointer_events_none
             , Tw.flex
@@ -138,7 +138,7 @@ viewHudOverlayWith slots data actions =
 
 viewTopArea : List (Html msg) -> HudViewData -> HudActions msg -> Html msg
 viewTopArea belowTopBar data actions =
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_end, Tw.gap Th.s2 ] ]
+    div [ Attr.attribute "data-testid" "hud-top-area", Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_end, Tw.gap Th.s2 ] ]
         (viewToolbar data actions :: belowTopBar)
 
 
@@ -152,7 +152,7 @@ viewToolbar data actions =
             else
                 RI18n.audioUnmutedLabel data.language
     in
-    div [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
+    div [ Attr.attribute "data-testid" "hud-toolbar", Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
         [ viewMapBadge data
         , hudIconBtn actions.onToggleAudio
             (if data.audioMuted then
@@ -335,7 +335,7 @@ viewCrashOverlay lang rec actions =
 
 viewBottomArea : List (Html msg) -> HudViewData -> HudActions msg -> Html msg
 viewBottomArea aboveFooter data actions =
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
+    div [ Attr.attribute "data-testid" "hud-bottom-area", Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
         ((if touchPadsVisible data then
             viewTouchControls data actions
 
@@ -351,7 +351,7 @@ viewBottomArea aboveFooter data actions =
 -}
 viewFooter : HudViewData -> Html msg
 viewFooter data =
-    div [ Tw.classes [ Tw.flex, Tw.items_end, Tw.justify_between, Tw.gap Th.s3, Tw.w_full ] ]
+    div [ Attr.attribute "data-testid" "hud-footer", Tw.classes [ Tw.flex, Tw.items_end, Tw.justify_between, Tw.gap Th.s3, Tw.w_full ] ]
         [ viewDamagePanel data
         , viewSpeedPanel data
         ]
@@ -374,7 +374,8 @@ viewDamagePanel data =
             toFloat damage / 100.0
     in
     div
-        [ Tw.classes [ Tw.rounded_xl, Tw.px Th.s3, Tw.py Th.s2_dot_5, Tw.border, Tw.flex, Tw.flex_col, Tw.items_center ]
+        [ Attr.attribute "data-testid" "hud-damage-panel"
+        , Tw.classes [ Tw.rounded_xl, Tw.px Th.s3, Tw.py Th.s2_dot_5, Tw.border, Tw.flex, Tw.flex_col, Tw.items_center ]
         , Attr.style "background" "rgba(15, 23, 42, 0.78)"
         , Attr.style "border-color" "rgba(148, 163, 184, 0.25)"
         , Attr.style "width" "min(20vw, 6rem)"
@@ -666,7 +667,8 @@ hazardChip col labelStr =
 viewSpeedPanel : HudViewData -> Html msg
 viewSpeedPanel data =
     div
-        [ Tw.classes [ Tw.rounded_xl, Tw.px Th.s3, Tw.py Th.s2, Tw.border, Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s1 ]
+        [ Attr.attribute "data-testid" "hud-speed-panel"
+        , Tw.classes [ Tw.rounded_xl, Tw.px Th.s3, Tw.py Th.s2, Tw.border, Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s1 ]
         , Attr.style "background" "rgba(15, 23, 42, 0.8)"
         , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
         , Attr.style "width" "min(40vw, 9.5rem)"
@@ -1071,7 +1073,7 @@ viewTouchControls data actions =
             , Html.Events.on "pointerleave" (Decode.succeed (setter False))
             ]
     in
-    div [ Tw.classes [ Tw.flex, Tw.items_end, Tw.justify_between, Tw.w_full, Tw.mb Th.s1 ] ]
+    div [ Attr.attribute "data-testid" "hud-touch-controls", Tw.classes [ Tw.flex, Tw.items_end, Tw.justify_between, Tw.w_full, Tw.mb Th.s1 ] ]
         [ div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
             [ button (Attr.type_ "button" :: holdEvents actions.onTouchSteerLeft ++ padStyle data.touchLeftHeld) [ text "◀" ]
             , button (Attr.type_ "button" :: holdEvents actions.onTouchSteerRight ++ padStyle data.touchRightHeld) [ text "▶" ]

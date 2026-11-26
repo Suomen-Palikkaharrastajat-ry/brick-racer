@@ -60,18 +60,20 @@ view data actions =
             Leaderboard.entriesForMap data.map data.leaderboard
     in
     div
-        [ Tw.classes [ Tw.min_h_screen, Tw.w_full, Tw.flex, Tw.items_center, Tw.justify_center, Tw.p Th.s4, Tw.overflow_y_auto ]
+        [ Attr.attribute "data-testid" "results-page"
+        , Tw.classes [ Tw.min_h_screen, Tw.w_full, Tw.flex, Tw.items_center, Tw.justify_center, Tw.p Th.s4, Tw.overflow_y_auto ]
         , Attr.style "background" ("linear-gradient(155deg, " ++ Brand.legoBlack ++ " 0%, #0d2235 55%, " ++ Brand.legoBlack ++ " 100%)")
         , Attr.style "color" Brand.legoWhite
         ]
         [ div
-            [ Tw.classes [ Tw.w_full, Tw.rounded_n2xl, Tw.p Th.s6, Tw.border, Tw.flex, Tw.flex_col, Tw.gap Th.s5 ]
+            [ Attr.attribute "data-testid" "results-card"
+            , Tw.classes [ Tw.w_full, Tw.rounded_n2xl, Tw.p Th.s6, Tw.border, Tw.flex, Tw.flex_col, Tw.gap Th.s5 ]
             , Attr.style "max-width" "46rem"
             , Attr.style "background" "rgba(5, 19, 29, 0.92)"
             , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
             ]
             [ -- Header + PB badge
-              div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_between, Tw.gap Th.s3 ] ]
+              div [ Attr.attribute "data-testid" "results-header", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_between, Tw.gap Th.s3 ] ]
                 [ div []
                     [ div [ Tw.classes [ Tw.text_xs, Tw.font_semibold ], Attr.style "color" "#38bdf8" ]
                         [ text (RI18n.mapTitle lang data.map) ]
@@ -92,7 +94,7 @@ view data actions =
                 ]
 
             -- Big Time + Key Stats
-            , div [ Tw.classes [ Tw.grid, Tw.grid_cols_2, Tw.gap Th.s3 ] ]
+            , div [ Attr.attribute "data-testid" "results-stats", Tw.classes [ Tw.grid, Tw.grid_cols_2, Tw.gap Th.s3 ] ]
                 [ metricBox "Finish Time" (Leaderboard.formatRaceTime data.finishTimeS) Brand.green
                 , metricBox "Top Speed" (String.fromInt (round data.topSpeedKmh) ++ " km/h") "#38bdf8"
                 , metricBox "Integrity Left" (String.fromInt data.finalIntegrityPct ++ "%") Brand.legoWhite
@@ -121,7 +123,7 @@ view data actions =
                     ]
 
             -- Course Leaderboard
-            , div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2 ] ]
+            , div [ Attr.attribute "data-testid" "results-leaderboard", Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2 ] ]
                 [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
                     [ FeatherIcons.award |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml []
                     , h2 [ Tw.classes [ Tw.text_sm, Tw.font_bold ] ] [ text "Local Leaderboard" ]
@@ -154,7 +156,7 @@ view data actions =
                 text ""
 
             -- Action Buttons
-            , div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.gap Th.s3, Tw.pt Th.s2 ] ]
+            , div [ Attr.attribute "data-testid" "results-actions", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.gap Th.s3, Tw.pt Th.s2 ] ]
                 [ Button.primaryOnDark actions.onRaceAgain (RI18n.raceAgainButton lang)
                 , Button.secondary actions.onNewMap (RI18n.newMapButton lang)
                 , Button.secondary actions.onCopyShareLink (RI18n.shareRaceUrlButton lang)

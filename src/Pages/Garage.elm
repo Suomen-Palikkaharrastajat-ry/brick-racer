@@ -26,7 +26,7 @@ import Component.Navbar as Navbar
 import DesignTokens.Colors as Brand
 import FeatherIcons exposing (Icon)
 import Game.MapParams as Map exposing (Biome, MapParams, Pick(..), Season, Selection, WeatherKind)
-import Game.Multiplayer exposing (Role(..), RoomState, SessionMode(..))
+import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, SessionMode(..))
 import Html exposing (Html, button, div, input, span, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onBlur, onClick, onInput)
@@ -184,7 +184,8 @@ view data actions =
             ]
     in
     div
-        [ Tw.classes
+        [ Attr.attribute "data-testid" "garage-page"
+        , Tw.classes
             [ Tw.min_h_screen
             , Tw.w_full
             , Tw.flex
@@ -207,7 +208,8 @@ view data actions =
                 ]
             ]
             [ div
-                [ Tw.classes
+                [ Attr.attribute "data-testid" "main-content"
+                , Tw.classes
                     [ Tw.w_full
                     , Tw.flex
                     , Tw.flex_col
@@ -229,55 +231,57 @@ view data actions =
 -}
 viewHeader : GarageViewData -> GarageActions msg -> Html msg
 viewHeader data actions =
-    Navbar.viewAppHeader
-        { brand =
-            Navbar.viewBrand
-                { href = "#"
-                , iconSrc = "/favicon.svg"
-                , title = RI18n.menuTitle data.language
-                , onClick = Nothing
-                }
-        , navLabel = "Päävalikko"
-        , links = []
-        , trailing =
-            [ button
-                [ Attr.type_ "button"
-                , onClick actions.onToggleAudio
-                , Tw.classes
-                    [ Tw.p Th.s2
-                    , Tw.rounded_lg
-                    , Tw.text_simple Th.white
-                    , Tw.cursor_pointer
-                    , Bp.hover [ Tw.bg_color (Th.yellow Th.s400), Tw.text_simple Th.black ]
+    div [ Attr.attribute "data-testid" "header-navbar" ]
+        [ Navbar.viewAppHeader
+            { brand =
+                Navbar.viewBrand
+                    { href = "#"
+                    , iconSrc = "/favicon.svg"
+                    , title = RI18n.menuTitle data.language
+                    , onClick = Nothing
+                    }
+            , navLabel = "Päävalikko"
+            , links = []
+            , trailing =
+                [ button
+                    [ Attr.type_ "button"
+                    , onClick actions.onToggleAudio
+                    , Tw.classes
+                        [ Tw.p Th.s2
+                        , Tw.rounded_lg
+                        , Tw.text_simple Th.white
+                        , Tw.cursor_pointer
+                        , Bp.hover [ Tw.bg_color (Th.yellow Th.s400), Tw.text_simple Th.black ]
+                        ]
+                    , Attr.attribute "aria-label"
+                        (if data.audioMuted then
+                            RI18n.audioMutedLabel data.language
+
+                         else
+                            RI18n.audioUnmutedLabel data.language
+                        )
+                    , Attr.title
+                        (if data.audioMuted then
+                            RI18n.audioMutedLabel data.language
+
+                         else
+                            RI18n.audioUnmutedLabel data.language
+                        )
                     ]
-                , Attr.attribute "aria-label"
-                    (if data.audioMuted then
-                        RI18n.audioMutedLabel data.language
+                    [ (if data.audioMuted then
+                        FeatherIcons.volumeX
 
-                     else
-                        RI18n.audioUnmutedLabel data.language
-                    )
-                , Attr.title
-                    (if data.audioMuted then
-                        RI18n.audioMutedLabel data.language
-
-                     else
-                        RI18n.audioUnmutedLabel data.language
-                    )
+                       else
+                        FeatherIcons.volume2
+                      )
+                        |> FeatherIcons.withSize 20
+                        |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                    ]
                 ]
-                [ (if data.audioMuted then
-                    FeatherIcons.volumeX
-
-                   else
-                    FeatherIcons.volume2
-                  )
-                    |> FeatherIcons.withSize 20
-                    |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-                ]
-            ]
-        , menuToggle = Nothing
-        , sticky = False
-        }
+            , menuToggle = Nothing
+            , sticky = False
+            }
+        ]
 
 
 {-| Dual Player Car Switcher (when in 2-Player mode).
@@ -336,7 +340,7 @@ viewPlayerSlotSelector data actions =
                 ]
     in
     if data.raceMode == SplitScreenTwoPlayer then
-        div [ Tw.classes [ Tw.flex, Tw.gap Th.s3, Tw.w_full ] ]
+        div [ Attr.attribute "data-testid" "player-slot-selector", Tw.classes [ Tw.flex, Tw.gap Th.s3, Tw.w_full ] ]
             [ slotButton p1Active "🏎️ P1:" data.playerOneTitle SlotPlayer1
             , slotButton p2Active "🚙 P2:" data.playerTwoTitle SlotPlayer2
             ]
@@ -350,7 +354,8 @@ viewPlayerSlotSelector data actions =
 viewTurntableHero : GarageViewData -> Int -> Int -> List (Html.Attribute msg) -> Html msg
 viewTurntableHero data canvasWidth canvasHeight canvasEvents =
     div
-        [ Tw.classes
+        [ Attr.attribute "data-testid" "hero-preview"
+        , Tw.classes
             [ Tw.relative
             , Tw.w_full
             , Tw.rounded_2xl
@@ -432,10 +437,11 @@ viewActionButtons data actions =
         iconOf icon =
             icon |> FeatherIcons.withSize 22 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
     in
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Bp.sm [ Tw.flex_row ], Tw.gap Th.s3, Tw.w_full ] ]
+    div [ Attr.attribute "data-testid" "action-buttons", Tw.classes [ Tw.flex, Tw.flex_col, Bp.sm [ Tw.flex_row ], Tw.gap Th.s3, Tw.w_full ] ]
         [ button
             [ Attr.type_ "button"
             , onClick actions.onOpenBuilder
+            , Attr.attribute "data-testid" "build-action-button"
             , Tw.classes mainButtonClasses
             , Attr.style "background" "rgba(255, 255, 255, 0.1)"
             , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
@@ -460,6 +466,7 @@ viewActionButtons data actions =
             button
                 [ Attr.type_ "button"
                 , onClick actions.onStartMultiplayerCountdown
+                , Attr.attribute "data-testid" "race-action-button"
                 , Tw.classes (Tw.shadow_lg :: mainButtonClasses)
                 , Attr.style "background" Brand.legoYellow
                 , Attr.style "color" Brand.legoBlack
@@ -472,6 +479,7 @@ viewActionButtons data actions =
             button
                 [ Attr.type_ "button"
                 , onClick actions.onStartRace
+                , Attr.attribute "data-testid" "race-action-button"
                 , Tw.classes (Tw.shadow_lg :: mainButtonClasses)
                 , Attr.style "background"
                     (if tooFewWheels then
@@ -523,7 +531,8 @@ viewTrackSection data actions =
             nextIn (Map.allowedWeathers map.biome map.season) map.weather
     in
     div
-        [ Tw.classes
+        [ Attr.attribute "data-testid" "track-section"
+        , Tw.classes
             [ Tw.flex
             , Tw.flex_col
             , Tw.gap Th.s2
@@ -536,7 +545,10 @@ viewTrackSection data actions =
         , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
         ]
         [ -- Icon row: Dice to randomize, then Biome, Season, Weather
-          div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Bp.sm [ Tw.justify_start ], Tw.gap Th.s3 ] ]
+          div
+            [ Attr.attribute "data-testid" "track-axes-row"
+            , Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Bp.sm [ Tw.justify_start ], Tw.gap Th.s3 ]
+            ]
             [ iconButton
                 { label = RI18n.randomWorldLabel lang
                 , pressed = Nothing
@@ -607,6 +619,7 @@ viewSeedRow data actions =
                     , Attr.type_ "text"
                     , Attr.attribute "inputmode" "text"
                     , Attr.attribute "aria-label" (RI18n.mapPickerLabels lang).seed
+                    , Attr.attribute "data-testid" "track-seed-input"
                     , Attr.value data.seedText
                     , onInput actions.onChangeSeed
                     , onBlur actions.onCommitSeed
@@ -625,6 +638,7 @@ viewSeedRow data actions =
                     [ Attr.type_ "button"
                     , onClick actions.onStartSeedEdit
                     , Attr.attribute "aria-label" (RI18n.editSeedLabel lang data.map.seed)
+                    , Attr.attribute "data-testid" "track-seed-display"
                     , Attr.title (RI18n.editSeedLabel lang data.map.seed)
                     , Tw.classes [ Tw.px Th.s2, Tw.py Th.s1, Tw.rounded_md, Tw.text_xs, Tw.font_mono, Tw.cursor_pointer, Tw.transition_colors ]
                     , Attr.style "background" "transparent"
@@ -632,11 +646,12 @@ viewSeedRow data actions =
                     ]
                     [ text codeText ]
     in
-    div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_end, Tw.gap Th.s1_dot_5, Tw.w_full, Tw.pt Th.s1 ] ]
+    div [ Attr.attribute "data-testid" "track-seed-row", Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_end, Tw.gap Th.s1_dot_5, Tw.w_full, Tw.pt Th.s1 ] ]
         [ seedView
         , button
             [ Attr.type_ "button"
             , onClick actions.onCopySeed
+            , Attr.attribute "data-testid" "track-seed-copy"
             , Attr.attribute "aria-label" (RI18n.copySeedLabel lang)
             , Attr.title (RI18n.copySeedLabel lang)
             , Tw.classes [ Tw.p Th.s1, Tw.rounded, Tw.cursor_pointer, Tw.transition_colors ]
@@ -767,12 +782,14 @@ boolText b =
 -}
 viewPlayerOptions : GarageViewData -> GarageActions msg -> Html msg
 viewPlayerOptions data actions =
-    case data.multiplayer of
-        Just room ->
-            viewMultiplayerLobby data actions room
+    div [ Attr.attribute "data-testid" "player-options", Tw.classes [ Tw.w_full ] ]
+        [ case data.multiplayer of
+            Just room ->
+                viewMultiplayerLobby data actions room
 
-        Nothing ->
-            viewNormalPlayerOptions data actions
+            Nothing ->
+                viewNormalPlayerOptions data actions
+        ]
 
 
 {-| Host / client waiting room dialog showing QR code, room code, and joined player roster.
@@ -784,7 +801,7 @@ viewMultiplayerLobby data actions room =
             data.language
 
         isHost =
-            room.role == HostCommentator
+            room.role == Multiplayer.HostCommentator
 
         isTwoPlayerHost =
             isHost && room.maxPlayers == 2
@@ -803,7 +820,8 @@ viewMultiplayerLobby data actions room =
                 playerCount >= 1
     in
     div
-        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s4, Tw.p Th.s5, Tw.rounded_2xl, Tw.border ]
+        [ Attr.attribute "data-testid" "multiplayer-lobby"
+        , Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s4, Tw.p Th.s5, Tw.rounded_2xl, Tw.border ]
         , Attr.style "background" "rgba(8, 27, 42, 0.95)"
         , Attr.style "border-color" Brand.legoYellow
         , Attr.style "box-shadow" "0 0 24px rgba(250, 200, 10, 0.15)"
@@ -915,7 +933,7 @@ viewNormalPlayerOptions data actions =
                 , accent = False
                 }
     in
-    div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s3, Tw.w_full ] ]
+    div [ Attr.attribute "data-testid" "normal-player-options", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s3, Tw.w_full ] ]
         [ div
             [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ]
             , Attr.attribute "role" "group"
@@ -950,7 +968,7 @@ viewHotSeatOptions data actions =
                 , accent = False
                 }
     in
-    div [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ], Attr.attribute "role" "group", Attr.style "background" "rgba(15, 23, 42, 0.85)" ]
+    div [ Attr.attribute "data-testid" "hotseat-options", Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ], Attr.attribute "role" "group", Attr.style "background" "rgba(15, 23, 42, 0.85)" ]
         [ modeButton SinglePlayer FeatherIcons.user (RI18n.singlePlayerModeLabel lang)
         , modeButton SplitScreenTwoPlayer FeatherIcons.users (RI18n.splitScreenModeLabel lang)
         ]
@@ -965,7 +983,7 @@ viewNetworkOptions data actions =
         lang =
             data.language
     in
-    div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s2 ] ]
+    div [ Attr.attribute "data-testid" "network-options", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s2 ] ]
         [ iconButton
             { label = RI18n.createTwoPlayerRoomButton lang
             , pressed = Nothing
