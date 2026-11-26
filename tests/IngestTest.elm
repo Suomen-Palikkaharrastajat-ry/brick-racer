@@ -17,6 +17,7 @@ import Racer.Ingest as Ingest exposing (IngestError(..))
 import Racer.Types as Types exposing (SteeringMechanism(..), ValidationCode(..), ValidationSeverity(..))
 import Render.Camera as Camera
 import Set
+import StarterBasesTest exposing (isOffsetRimTyre)
 import Studio.Health as Health
 import Test exposing (Test, describe, test)
 
@@ -308,8 +309,11 @@ ingestSuite =
                             doc =
                                 Document.parse preset.ldrText
 
+                            -- A 6014b rim with its 56890 tyre is a known false positive
+                            -- (see StarterBasesTest.isOffsetRimTyre), so it is not counted.
                             healthIssues =
                                 Health.check EmbeddedParts.cache doc Set.empty
+                                    |> List.filter (not << isOffsetRimTyre doc)
 
                             tidyFixes =
                                 Health.plan EmbeddedParts.cache doc Set.empty healthIssues
