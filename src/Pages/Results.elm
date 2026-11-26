@@ -159,10 +159,10 @@ view data actions =
             , div [ Attr.attribute "data-testid" "results-actions", Tw.classes [ Tw.flex, Tw.justify_center, Tw.pt Th.s2 ] ]
                 [ Button.primaryOnDark actions.onBackToMenu
                     (case lang of
-                        Fi ->
+                        I18n.Fi ->
                             "Palaa päävalikkoon"
 
-                        En ->
+                        I18n.En ->
                             "Return to Main Menu"
                     )
                 ]
