@@ -3507,10 +3507,10 @@ sampleP1Input model =
                 tiltSteer
 
         tiltBraking =
-            model.tilt.enabled && model.tilt.available && model.tiltPitch.zone == TiltPitch.Backward
+            model.tiltPitch.zone == TiltPitch.Backward
 
         brake =
-            if held "s" || (not isSplit && held "ArrowDown") || model.touch.brake || tiltBraking then
+            if held "s" || held "S" || (not isSplit && (held "ArrowDown" || held "Down")) || model.touch.brake || tiltBraking then
                 1.0
 
             else
@@ -3564,7 +3564,7 @@ sampleP2Input model =
                   )
 
         brake =
-            if held "ArrowDown" then
+            if held "ArrowDown" || held "Down" then
                 1.0
 
             else

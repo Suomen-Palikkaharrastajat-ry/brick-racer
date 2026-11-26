@@ -703,4 +703,41 @@ wheelCountSuite =
                                 Expect.fail "Expected 2 front and 2 rear wheels"
                     ]
                     wheels
+        , test "alpine crawler off-road wheels have concentric rim and tire pairing without vertical hub distortion" <|
+            \_ ->
+                let
+                    doc =
+                        Ingest.findPresetById "alpine-crawler"
+                            |> Maybe.map (.ldrText >> Document.parse)
+                            |> Maybe.withDefault Document.empty
+
+                    analyzed =
+                        Analyze.analyzeDocument "Alpine Trail Crawler" doc Dict.empty Catalog.emptyPartIndex
+
+                    wheels =
+                        analyzed.spec.wheels
+                in
+                Expect.all
+                    [ \ws -> Expect.equal 4 (List.length ws)
+                    , \ws -> Expect.equal True (List.all (\w -> Vec3.getX w.spinAxis > 0.0) ws)
+                    , \ws ->
+                        let
+                            frontY =
+                                List.filter .isFront ws |> List.map (\w -> Vec3.getY w.localHubPosLdu)
+
+                            rearY =
+                                List.filter (not << .isFront) ws |> List.map (\w -> Vec3.getY w.localHubPosLdu)
+                        in
+                        case ( frontY, rearY ) of
+                            ( [ fy1, fy2 ], [ ry1, ry2 ] ) ->
+                                Expect.all
+                                    [ \_ -> Expect.within (Expect.Absolute 0.01) fy1 fy2
+                                    , \_ -> Expect.within (Expect.Absolute 0.01) ry1 ry2
+                                    ]
+                                    ()
+
+                            _ ->
+                                Expect.fail "Expected 2 front and 2 rear wheels"
+                    ]
+                    wheels
         ]

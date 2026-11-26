@@ -512,7 +512,7 @@ stepOnGround dt track spec input state =
         brakeDecel =
             let
                 service =
-                    6.8 * clamp 0.0 1.0 input.brake
+                    12.0 * clamp 0.0 1.0 input.brake
 
                 hand =
                     if input.handbrake then
@@ -828,11 +828,14 @@ stepOnGround dt track spec input state =
         rollTorqueInput =
             (latAccel * comHeight * mass * 0.38) - (leanLat * mass * 2.1 * halfTrack)
 
-        rollSpring =
-            -mass * halfTrack * 28.0 * state.roll - mass * 9.5 * state.rollRate
+        rollTorqueAccel =
+            rollTorqueInput / max 1.5 spec.inertia.roll
+
+        rollSpringAccel =
+            -36.0 * state.roll
 
         nextRollRate =
-            clamp -4.5 4.5 (state.rollRate + ((rollTorqueInput + rollSpring) / max 1.5 spec.inertia.roll) * dt)
+            clamp -4.5 4.5 ((state.rollRate + (rollTorqueAccel + rollSpringAccel) * dt) / (1.0 + 14.0 * dt))
 
         nextRoll =
             clamp -1.35 1.35 (state.roll + nextRollRate * dt)
