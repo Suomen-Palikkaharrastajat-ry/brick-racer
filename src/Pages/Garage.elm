@@ -453,6 +453,17 @@ viewActionButtons data actions =
         [ button
             [ Attr.type_ "button"
             , onClick actions.onOpenBuilder
+            , Attr.title
+                (if data.raceMode == SplitScreenTwoPlayer then
+                    if data.activeSlot == SlotPlayer1 then
+                        RI18n.openBuilderButton lang ++ " (P1)"
+
+                    else
+                        RI18n.openBuilderButton lang ++ " (P2)"
+
+                 else
+                    RI18n.openBuilderButton lang
+                )
             , Attr.attribute "data-testid" "build-action-button"
             , Tw.classes mainButtonClasses
             , Attr.style "background" "rgba(255, 255, 255, 0.1)"
@@ -478,6 +489,7 @@ viewActionButtons data actions =
             button
                 [ Attr.type_ "button"
                 , onClick actions.onStartMultiplayerCountdown
+                , Attr.title (RI18n.startRaceButton lang)
                 , Attr.attribute "data-testid" "race-action-button"
                 , Tw.classes (Tw.shadow_lg :: mainButtonClasses)
                 , Attr.style "background" Brand.legoYellow
@@ -491,6 +503,13 @@ viewActionButtons data actions =
             button
                 [ Attr.type_ "button"
                 , onClick actions.onStartRace
+                , Attr.title
+                    (if tooFewWheels then
+                        RI18n.raceAnywayButton lang
+
+                     else
+                        RI18n.startRaceButton lang
+                    )
                 , Attr.attribute "data-testid" "race-action-button"
                 , Tw.classes (Tw.shadow_lg :: mainButtonClasses)
                 , Attr.style "background"
@@ -573,11 +592,9 @@ viewTrackSection data actions =
                 , Tw.justify_center
                 , Tw.select_none
                 , Tw.shrink_0
-                , Tw.pr Th.s2
+                , Tw.pr Th.s3
                 , Tw.border_r
                 ]
-            , Attr.style "writing-mode" "vertical-rl"
-            , Attr.style "transform" "rotate(180deg)"
             , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
             , Attr.attribute "aria-hidden" "true"
             ]
@@ -589,6 +606,8 @@ viewTrackSection data actions =
                     , Tw.tracking_widest
                     ]
                 , Attr.style "color" Brand.legoYellow
+                , Attr.style "writing-mode" "vertical-rl"
+                , Attr.style "transform" "rotate(180deg)"
                 ]
                 [ text labelText ]
             ]
@@ -1023,11 +1042,9 @@ viewNormalPlayerOptions data actions =
                 , Tw.justify_center
                 , Tw.select_none
                 , Tw.shrink_0
-                , Tw.pr Th.s2
+                , Tw.pr Th.s3
                 , Tw.border_r
                 ]
-            , Attr.style "writing-mode" "vertical-rl"
-            , Attr.style "transform" "rotate(180deg)"
             , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
             , Attr.attribute "aria-hidden" "true"
             ]
@@ -1039,6 +1056,8 @@ viewNormalPlayerOptions data actions =
                     , Tw.tracking_widest
                     ]
                 , Attr.style "color" Brand.legoYellow
+                , Attr.style "writing-mode" "vertical-rl"
+                , Attr.style "transform" "rotate(180deg)"
                 ]
                 [ text labelText ]
             ]
@@ -1047,7 +1066,7 @@ viewNormalPlayerOptions data actions =
                 [ Tw.flex_1
                 , Tw.flex
                 , Tw.flex_col
-                , Tw.justify_center
+                , Tw.justify_between
                 , Tw.gap Th.s2
                 , Tw.min_w Th.s0
                 ]
@@ -1077,7 +1096,76 @@ viewNormalPlayerOptions data actions =
                     NetworkTab ->
                         viewNetworkOptions data actions
                 ]
+            , viewPlayerStatusRow data
             ]
+        ]
+
+
+{-| A written description of the chosen gameplay combination under the racer controls.
+-}
+viewPlayerStatusRow : GarageViewData -> Html msg
+viewPlayerStatusRow data =
+    let
+        lang =
+            data.language
+
+        desc =
+            case data.playerModeTab of
+                HotSeatTab ->
+                    case data.raceMode of
+                        SinglePlayer ->
+                            case lang of
+                                Fi ->
+                                    "Yksinpeli haamuautoa vastaan"
+
+                                En ->
+                                    "Single player vs ghost car"
+
+                        SplitScreenTwoPlayer ->
+                            case lang of
+                                Fi ->
+                                    "Jaettu ruutu (2 pelaajaa samalla laitteella)"
+
+                                En ->
+                                    "Split screen (2 players on this device)"
+
+                NetworkTab ->
+                    if not (String.isEmpty (String.trim data.roomCode)) then
+                        case lang of
+                            Fi ->
+                                "Liittymässä huoneeseen: " ++ String.trim data.roomCode
+
+                            En ->
+                                "Joining room: " ++ String.trim data.roomCode
+
+                    else
+                        case lang of
+                            Fi ->
+                                "Verkkopeli • Avaa huone tai syötä koodi"
+
+                            En ->
+                                "Network race • Host room or enter code"
+    in
+    div
+        [ Attr.attribute "data-testid" "player-status-row"
+        , Tw.classes
+            [ Tw.flex
+            , Tw.items_center
+            , Tw.justify_end
+            , Tw.gap Th.s1_dot_5
+            , Tw.w_full
+            , Tw.pt Th.s1
+            ]
+        ]
+        [ span
+            [ Tw.classes
+                [ Tw.px Th.s2
+                , Tw.py Th.s1
+                , Tw.text_xs
+                ]
+            , Attr.style "color" "#94a3b8"
+            ]
+            [ text desc ]
         ]
 
 
