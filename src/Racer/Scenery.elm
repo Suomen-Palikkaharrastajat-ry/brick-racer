@@ -65,13 +65,10 @@ sources =
     , ( "snowyPineTree", BrickModels.pineTreeIn { needles = 288, cap = Just 15 } )
     , ( "palmTree", BrickModels.palmTree )
     , ( "bush", BrickModels.bush )
-    , ( "fence", BrickModels.fence )
     , ( "rock", BrickModels.rock )
     , ( "signpost", BrickModels.signpost )
     , ( "hayBale", BrickModels.hayBale )
     , ( "hayStack", BrickModels.hayStack )
-    , ( "cottage", BrickModels.cottage )
-    , ( "barn", BrickModels.barn )
     ]
         ++ SceneryModels.all
         ++ [ ( "3001.dat", BrickModels.singlePart "3001.dat" )

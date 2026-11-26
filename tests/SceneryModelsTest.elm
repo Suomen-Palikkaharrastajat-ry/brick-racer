@@ -20,7 +20,14 @@ suite : Test
 suite =
     describe "Dock-built crashable scenery"
         [ describe "Models are made of catalog parts"
-            (List.map verifyCatalogParts newModels)
+            (List.map verifyCatalogParts catalogVerifiedModels)
+        , describe "Full-scale dimensions and continuous fence coverage"
+            [ verifyFenceContinuity
+            , verifyBuildingScale "cottage" SceneryModels.cottage 400 360 500
+            , verifyBuildingScale "barn" SceneryModels.barn 400 600 500
+            , verifyBuildingScale "chalet" SceneryModels.chalet 400 440 500
+            , verifyBuildingScale "pitGarage" SceneryModels.pitGarage 400 500 280
+            ]
         , describe "Placements stay off the road and clear of the start, arches and ramps"
             (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) courseBiomes)
         , describe "Every course has some of them"
@@ -45,20 +52,126 @@ newModels =
     ]
 
 
-{-| The part file of every type 1 line of an LDraw model.
+catalogVerifiedModels : List ( String, String )
+catalogVerifiedModels =
+    newModels
+        ++ [ ( "fence", SceneryModels.fence )
+           , ( "cottage", SceneryModels.cottage )
+           , ( "barn", SceneryModels.barn )
+           , ( "brickWall", SceneryModels.brickWall )
+           ]
+
+
+{-| A parsed type-1 placement row from an LDraw model.
 -}
-partFiles : String -> List String
-partFiles ldr =
+type alias PlacementRow =
+    { file : String
+    , x : Float
+    , y : Float
+    , z : Float
+    }
+
+
+parsePlacements : String -> List PlacementRow
+parsePlacements ldr =
     String.lines ldr
         |> List.filterMap
             (\line ->
                 case String.words line of
-                    "1" :: rest ->
-                        List.reverse rest |> List.head
+                    "1" :: _ :: xStr :: yStr :: zStr :: rest ->
+                        case ( String.toFloat xStr, String.toFloat yStr, String.toFloat zStr ) of
+                            ( Just x, Just y, Just z ) ->
+                                List.reverse rest
+                                    |> List.head
+                                    |> Maybe.map (\file -> { file = file, x = x, y = y, z = z })
+
+                            _ ->
+                                Nothing
 
                     _ ->
                         Nothing
             )
+
+
+{-| The part file of every type 1 line of an LDraw model.
+-}
+partFiles : String -> List String
+partFiles ldr =
+    parsePlacements ldr
+        |> List.map .file
+
+
+verifyFenceContinuity : Test
+verifyFenceContinuity =
+    test "fence horizontal 1x6 rails span the full 480 LDU (3.0 m) step without seam double-posts" <|
+        \_ ->
+            let
+                rows =
+                    parsePlacements SceneryModels.fence
+
+                rails =
+                    List.filter (\r -> r.file == "3009.dat") rows
+
+                railZs =
+                    List.map .z rails
+
+                minRailZ =
+                    List.minimum railZs |> Maybe.withDefault 0
+
+                maxRailZ =
+                    List.maximum railZs |> Maybe.withDefault 0
+
+                postZs =
+                    List.filter (\r -> r.file == "3070b.dat") rows
+                        |> List.map .z
+                        |> List.sort
+
+                postGaps =
+                    List.map2 (\a b -> b - a) postZs (List.drop 1 postZs)
+
+                seamGap =
+                    case ( List.head postZs, List.reverse postZs |> List.head ) of
+                        ( Just firstZ, Just lastZ ) ->
+                            (480 + firstZ) - lastZ
+
+                        _ ->
+                            0
+            in
+            Expect.all
+                [ \_ -> Expect.equal -180 minRailZ
+                , \_ -> Expect.equal 180 maxRailZ
+                , \_ -> Expect.equal [ 160, 160 ] postGaps
+                , \_ -> Expect.equal 160 seamGap
+                ]
+                ()
+
+
+verifyBuildingScale : String -> String -> Float -> Float -> Float -> Test
+verifyBuildingScale name ldr minSpanX minSpanZ minHeight =
+    test (name ++ " is built at authentic 1:1 full building scale") <|
+        \_ ->
+            let
+                rows =
+                    parsePlacements ldr
+
+                xs =
+                    List.map .x rows
+
+                ys =
+                    List.map .y rows
+
+                zs =
+                    List.map .z rows
+
+                span list =
+                    (List.maximum list |> Maybe.withDefault 0) - (List.minimum list |> Maybe.withDefault 0)
+            in
+            Expect.all
+                [ \_ -> Expect.atLeast minSpanX (span xs)
+                , \_ -> Expect.atLeast minSpanZ (span zs)
+                , \_ -> Expect.atLeast minHeight (span ys)
+                ]
+                ()
 
 
 verifyCatalogParts : ( String, String ) -> Test
