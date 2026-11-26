@@ -752,15 +752,7 @@ runCore step model =
             else
                 case model.base of
                     Just base ->
-                        let
-                            doc =
-                                Core.getDocument studio
-                        in
-                        if List.any (Editor.isBasePlacement base) (Document.mainPlacements doc) then
-                            Editor.baseIntact base doc
-
-                        else
-                            True
+                        Editor.baseIntact base (Core.getDocument studio)
 
                     Nothing ->
                         True
