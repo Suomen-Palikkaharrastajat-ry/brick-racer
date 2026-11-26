@@ -276,6 +276,14 @@ buildChunk track chunkSizeM numChunks chunkIdx =
                 |> List.filter (\lp -> lp.entryS >= minS && lp.entryS < maxS)
                 |> List.concatMap (buildLoopTris track)
 
+        chunkObstacles =
+            sceneryInRange minS maxS track.obstacles
+
+        buildingPadTris =
+            chunkObstacles
+                |> List.filter (\o -> isBuildingObstacle o.kind)
+                |> List.concatMap (buildBuildingPadTris track)
+
         centerSample =
             Track.splineSampleAtS track ((minS + maxS) * 0.5)
     in
@@ -284,8 +292,8 @@ buildChunk track chunkSizeM numChunks chunkIdx =
     , maxS = maxS
     , boundsCenter = centerSample.center
     , boundsRadius = chunkSizeM * 0.85 + 52.0
-    , mesh = WebGL.triangles (ribbonTris ++ rampTris ++ sideRampTris ++ loopTris)
-    , scenery = sceneryInRange minS maxS track.obstacles
+    , mesh = WebGL.triangles (ribbonTris ++ rampTris ++ sideRampTris ++ loopTris ++ buildingPadTris)
+    , scenery = chunkObstacles
     , arches = arches
     }
 
@@ -293,6 +301,142 @@ buildChunk track chunkSizeM numChunks chunkIdx =
 sceneryInRange : Float -> Float -> List TrackObstacle -> List TrackObstacle
 sceneryInRange minS maxS obstacles =
     List.filter (\o -> o.s >= minS && o.s < maxS) obstacles
+
+
+isBuildingObstacle : ObstacleKind -> Bool
+isBuildingObstacle kind =
+    case kind of
+        Cottage ->
+            True
+
+        Barn ->
+            True
+
+        Chalet ->
+            True
+
+        PitGarage ->
+            True
+
+        _ ->
+            False
+
+
+{-| Level green ground terrace pad under roadside buildings, seamlessly
+blending into the hillside so structures never hang in midair on downhill grades.
+-}
+buildBuildingPadTris : GeneratedTrack -> TrackObstacle -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+buildBuildingPadTris track obs =
+    let
+        yaw =
+            obs.yaw
+
+        fwd =
+            vec3 (sin yaw) 0 (cos yaw)
+
+        right =
+            vec3 (cos yaw) 0 -(sin yaw)
+
+        ( halfW, halfD ) =
+            case obs.kind of
+                Cottage ->
+                    ( 1.8, 1.6 )
+
+                Barn ->
+                    ( 1.8, 2.3 )
+
+                Chalet ->
+                    ( 1.8, 1.8 )
+
+                PitGarage ->
+                    ( 1.8, 2.0 )
+
+                _ ->
+                    ( obs.radiusM + 0.4, obs.radiusM + 0.4 )
+
+        skirtMargin =
+            1.8
+
+        cx =
+            Vec3.getX obs.position
+
+        cz =
+            Vec3.getZ obs.position
+
+        topY =
+            Vec3.getY obs.position + 0.14
+
+        ptTop xLocal zLocal =
+            let
+                px =
+                    cx + xLocal * Vec3.getX right + zLocal * Vec3.getX fwd
+
+                pz =
+                    cz + xLocal * Vec3.getZ right + zLocal * Vec3.getZ fwd
+            in
+            vec3 px topY pz
+
+        ptSkirt xLocal zLocal =
+            let
+                px =
+                    cx + xLocal * Vec3.getX right + zLocal * Vec3.getX fwd
+
+                pz =
+                    cz + xLocal * Vec3.getZ right + zLocal * Vec3.getZ fwd
+
+                naturalY =
+                    (Track.sampleAt track px pz).height - 0.04
+            in
+            vec3 px naturalY pz
+
+        t0 =
+            ptTop halfW -halfD
+
+        t1 =
+            ptTop -halfW -halfD
+
+        t2 =
+            ptTop -halfW halfD
+
+        t3 =
+            ptTop halfW halfD
+
+        sW =
+            halfW + skirtMargin
+
+        sD =
+            halfD + skirtMargin
+
+        k0 =
+            ptSkirt sW -sD
+
+        k1 =
+            ptSkirt -sW -sD
+
+        k2 =
+            ptSkirt -sW sD
+
+        k3 =
+            ptSkirt sW sD
+
+        col =
+            (seasonFieldColors track.config.map (floor (obs.s / 2.0))).near
+
+        upNorm =
+            vec3 0 1 0
+
+        skirtQuad pA pB qB qA =
+            let
+                n =
+                    normalizeSafe (Vec3.cross (Vec3.sub qA pA) (Vec3.sub pB pA)) upNorm
+            in
+            quad pA pB qB qA n col
+    in
+    quad t0 t1 t2 t3 upNorm col
+        ++ skirtQuad t1 t0 k0 k1
+        ++ skirtQuad t2 t1 k1 k2
+        ++ skirtQuad t3 t2 k2 k3
+        ++ skirtQuad t0 t3 k3 k0
 
 
 {-| Refresh only the scenery list of the chunk that holds arc length `s`, after
