@@ -360,7 +360,7 @@ countdownBoard =
 
 
 {-| An alpine timber chalet: a stone foundation, reddish-brown timber walls,
-windows, a dark red 45° slope roof, and a chimney.
+windows, a dark red 45° slope roof, and a chimney, built to genuine 1:1 scale.
 -}
 chalet : String
 chalet =
@@ -369,34 +369,83 @@ chalet =
             -24 * toFloat (k + 1)
 
         foundation =
-            [ part darkBluishGrey ( 0, layerY 0, -20 ) Straight "3001.dat"
-            , part darkBluishGrey ( 0, layerY 0, 20 ) Straight "3001.dat"
-            ]
-
-        walls =
-            List.range 1 2
-                |> List.concatMap
-                    (\k ->
-                        [ part reddishBrown ( 0, layerY k, -20 ) Straight "3001.dat"
-                        , part reddishBrown ( 0, layerY k, 20 ) Straight "3001.dat"
+            List.concat
+                [ List.concatMap
+                    (\z ->
+                        [ part darkBluishGrey ( -60, layerY 0, z ) Quarter "3001.dat"
+                        , part darkBluishGrey ( 60, layerY 0, z ) Quarter "3001.dat"
                         ]
                     )
+                    [ -80, 0, 80 ]
+                , List.concatMap
+                    (\x ->
+                        [ part darkBluishGrey ( x, layerY 0, -100 ) Straight "3001.dat"
+                        , part darkBluishGrey ( x, layerY 0, 100 ) Straight "3001.dat"
+                        ]
+                    )
+                    [ -20, 20 ]
+                ]
 
-        front =
-            [ part white ( -20, layerY 1, -50 ) Straight "3005.dat"
-            , part white ( 20, layerY 1, -50 ) Straight "3005.dat"
-            ]
+        wallLayer k =
+            let
+                col =
+                    if modBy 2 k == 0 then
+                        reddishBrown
+
+                    else
+                        darkTan
+
+                sides =
+                    List.concatMap
+                        (\z ->
+                            if z == 0 && (k == 2 || k == 3) then
+                                [ part white ( -60, layerY k, z ) Quarter "3004.dat"
+                                , part white ( 60, layerY k, z ) Quarter "3004.dat"
+                                ]
+
+                            else
+                                [ part col ( -60, layerY k, z ) Quarter "3001.dat"
+                                , part col ( 60, layerY k, z ) Quarter "3001.dat"
+                                ]
+                        )
+                        [ -80, 0, 80 ]
+
+                ends =
+                    List.concatMap
+                        (\x ->
+                            [ part col ( x, layerY k, -100 ) Straight "3001.dat"
+                            , part col ( x, layerY k, 100 ) Straight "3001.dat"
+                            ]
+                        )
+                        [ -20, 20 ]
+            in
+            sides ++ ends
+
+        walls =
+            List.concatMap wallLayer [ 1, 2, 3, 4 ]
+
+        roofZ =
+            [ -100, -60, -20, 20, 60, 100 ]
 
         roof =
-            [ part darkRed ( -20, layerY 3, -20 ) Straight "3039.dat"
-            , part darkRed ( 20, layerY 3, -20 ) Straight "3039.dat"
-            , part darkRed ( -20, layerY 3, 20 ) Half "3039.dat"
-            , part darkRed ( 20, layerY 3, 20 ) Half "3039.dat"
-            , part lightBluishGrey ( 20, layerY 3, 20 ) Straight "3005.dat"
-            , part lightBluishGrey ( 20, layerY 3 - 24, 20 ) Straight "3005.dat"
+            List.concatMap
+                (\z ->
+                    [ part darkRed ( -70, layerY 5, z ) Quarter "3039.dat"
+                    , part darkRed ( 70, layerY 5, z ) Straight "3039.dat"
+                    , part darkRed ( -30, layerY 6, z ) Quarter "3039.dat"
+                    , part darkRed ( 30, layerY 6, z ) Straight "3039.dat"
+                    , part darkRed ( 0, layerY 7, z ) Straight "3020.dat"
+                    ]
+                )
+                roofZ
+
+        chimney =
+            [ part lightBluishGrey ( 50, layerY 6, -60 ) Straight "3005.dat"
+            , part lightBluishGrey ( 50, layerY 7, -60 ) Straight "3005.dat"
+            , part lightBluishGrey ( 50, layerY 8, -60 ) Straight "3005.dat"
             ]
     in
-    model "Alpine chalet" (foundation ++ walls ++ front ++ roof)
+    model "Alpine chalet" (foundation ++ walls ++ roof ++ chimney)
 
 
 
@@ -404,7 +453,7 @@ chalet =
 
 
 {-| A roadside pit garage bay: a dark grey base plate, four light grey corner
-pillars, a blue canopy roof, and stacked tires and oil drums inside.
+pillars, a blue canopy roof, and stacked tires and oil drums inside, built to 1:1 scale.
 -}
 pitGarage : String
 pitGarage =
@@ -413,25 +462,40 @@ pitGarage =
             -24 * toFloat (k + 1)
 
         floorPlate =
-            [ part darkBluishGrey ( 0, -8, 0 ) Straight "3034.dat" ]
+            List.concatMap
+                (\x ->
+                    List.map (\z -> part darkBluishGrey ( x, -8, z ) Straight "3034.dat") [ -80, 0, 80 ]
+                )
+                [ -40, 40 ]
 
         pillars =
             List.concatMap
                 (\( x, z ) ->
-                    [ part lightBluishGrey ( x, layerY 0, z ) Straight "3005.dat"
-                    , part lightBluishGrey ( x, layerY 1, z ) Straight "3005.dat"
-                    ]
+                    List.map (\k -> part lightBluishGrey ( x, layerY k, z ) Straight "3003.dat") [ 0, 1, 2, 3, 4 ]
                 )
-                [ ( -60, -20 ), ( 60, -20 ), ( -60, 20 ), ( 60, 20 ) ]
+                [ ( -60, -100 ), ( 60, -100 ), ( -60, 100 ), ( 60, 100 ) ]
+
+        beams =
+            [ part lightBluishGrey ( 0, layerY 5, -100 ) Straight "3034.dat"
+            , part lightBluishGrey ( 0, layerY 5, 100 ) Straight "3034.dat"
+            , part lightBluishGrey ( -60, layerY 5, 0 ) Quarter "3034.dat"
+            , part lightBluishGrey ( 60, layerY 5, 0 ) Quarter "3034.dat"
+            ]
 
         canopy =
-            [ part blue ( 0, layerY 2, 0 ) Straight "3034.dat" ]
+            List.concatMap
+                (\x ->
+                    List.map (\z -> part blue ( x, layerY 6, z ) Straight "3031.dat") [ -60, 20 ]
+                )
+                [ -40, 0, 40 ]
 
         inside =
-            [ part 0 ( -20, layerY 0, 0 ) Straight "3003.dat"
-            , part 0 ( -20, layerY 1, 0 ) Straight "3003.dat"
-            , part yellow ( 20, layerY 0, 0 ) Straight "3003.dat"
-            , part lightBluishGrey ( 20, layerY 1 - 8, 0 ) Straight "3024.dat"
+            [ part red ( -40, layerY 0, -80 ) Straight "3003.dat"
+            , part red ( -40, layerY 1, -80 ) Straight "3003.dat"
+            , part yellow ( -40, layerY 2 + 16, -80 ) Straight "2412b.dat"
+            , part black ( 40, layerY 0, -80 ) Straight "3641.dat"
+            , part black ( 40, layerY 0 - 10, -80 ) Straight "3641.dat"
+            , part black ( 40, layerY 0 - 20, -80 ) Straight "3641.dat"
             ]
     in
-    model "Pit garage" (floorPlate ++ pillars ++ canopy ++ inside)
+    model "Pit garage" (floorPlate ++ pillars ++ beams ++ canopy ++ inside)

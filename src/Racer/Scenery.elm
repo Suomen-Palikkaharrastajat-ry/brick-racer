@@ -36,7 +36,7 @@ import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Math.Vector4 exposing (Vec4, vec4)
 import Racer.SceneryModels as SceneryModels
 import Racer.TerrainShader exposing (DebrisPiece)
-import Racer.Types exposing (ObstacleKind(..), TrackObstacle, lduToMeters)
+import Racer.Types exposing (ObstacleKind(..), TrackObstacle, lduPerMeter, lduToMeters)
 import WebGL
 
 
@@ -99,6 +99,21 @@ refresh =
 -- SCENERY
 
 
+{-| Render a prop model at genuine 1:1 vehicle scale (160 LDU = 1.0 m,
+so 1 LDU = 0.00625 m) without non-uniform or Duplo stretching.
+-}
+fit1to1 : PropModel -> Mat4
+fit1to1 prop =
+    let
+        s =
+            1.0 / lduPerMeter
+
+        h =
+            max 0.001 (Vec3.getY (BrickProps.size prop))
+    in
+    BrickProps.fitHeight (s * h) prop
+
+
 {-| Which model a scenery piece is drawn with, and how it is fitted to the
 piece's size (base on the ground, in metres). Leafy trees turn dark orange
 in autumn and pines wear snow caps in winter.
@@ -112,7 +127,7 @@ modelFor season obs =
 
               else
                 "leafyTree"
-            , BrickProps.fitHeight obs.heightM
+            , fit1to1
             )
 
         PineTree ->
@@ -121,73 +136,73 @@ modelFor season obs =
 
               else
                 "pineTree"
-            , BrickProps.fitHeight obs.heightM
+            , fit1to1
             )
 
         PalmTree ->
-            ( "palmTree", BrickProps.fitHeight obs.heightM )
+            ( "palmTree", fit1to1 )
 
         Bush ->
-            ( "bush", BrickProps.fitHeight obs.heightM )
+            ( "bush", fit1to1 )
 
         FenceSection ->
-            ( "fence", \prop -> BrickProps.fitLength (lduToMeters (Vec3.getZ (BrickProps.size prop))) prop )
+            ( "fence", fit1to1 )
 
         Rock ->
-            ( "rock", BrickProps.fitBox { width = 2 * obs.radiusM, height = obs.heightM, depth = 1.6 * obs.radiusM } )
+            ( "rock", fit1to1 )
 
         Signpost ->
-            ( "signpost", BrickProps.fitHeight obs.heightM )
+            ( "signpost", fit1to1 )
 
         HayBale ->
             if obs.heightM > 1.2 then
-                ( "hayStack", BrickProps.fitHeight obs.heightM )
+                ( "hayStack", fit1to1 )
 
             else
-                ( "hayBale", BrickProps.fitHeight obs.heightM )
+                ( "hayBale", fit1to1 )
 
         Cottage ->
-            ( "cottage", BrickProps.fitWidth 4.0 )
+            ( "cottage", fit1to1 )
 
         Barn ->
-            ( "barn", BrickProps.fitWidth 5.2 )
+            ( "barn", fit1to1 )
 
         Crate ->
             if obs.heightM > 1.2 then
-                ( "crateStack", BrickProps.fitHeight obs.heightM )
+                ( "crateStack", fit1to1 )
 
             else
-                ( "crate", BrickProps.fitHeight obs.heightM )
+                ( "crate", fit1to1 )
 
         Barrel ->
-            ( "barrels", BrickProps.fitHeight obs.heightM )
+            ( "barrels", fit1to1 )
 
         GardenGnome ->
-            ( "gnome", BrickProps.fitHeight obs.heightM )
+            ( "gnome", fit1to1 )
 
         BrickWall ->
-            ( "brickWall", BrickProps.fitBox { width = 0.48, height = obs.heightM, depth = 2.92 } )
+            ( "brickWall", fit1to1 )
 
         BrickPallet ->
-            ( "brickPallet", BrickProps.fitHeight obs.heightM )
+            ( "brickPallet", fit1to1 )
 
         TileStack ->
-            ( "tileStack", BrickProps.fitHeight obs.heightM )
+            ( "tileStack", fit1to1 )
 
         BrickGate ->
-            ( "brickGate", BrickProps.fitHeight obs.heightM )
+            ( "brickGate", fit1to1 )
 
         SlopeBlock ->
-            ( "slopeBlock", BrickProps.fitHeight obs.heightM )
+            ( "slopeBlock", fit1to1 )
 
         CountdownBoard ->
-            ( "countdownBoard", BrickProps.fitHeight obs.heightM )
+            ( "countdownBoard", fit1to1 )
 
         Chalet ->
-            ( "chalet", BrickProps.fitWidth 4.5 )
+            ( "chalet", fit1to1 )
 
         PitGarage ->
-            ( "pitGarage", BrickProps.fitWidth 4.2 )
+            ( "pitGarage", fit1to1 )
 
 
 noTint : Vec4
@@ -306,7 +321,7 @@ archEntities v inView props spots =
                 BrickModels.archBricks
                     { halfWidth = spot.halfWidth
                     , postHeight = 4.8
-                    , unit = 0.016
+                    , unit = lduToMeters 1.0
                     , postColor = postColor
                     , bannerColors = banner
                     }
@@ -363,8 +378,11 @@ debrisEntities v props pieces =
                             fade =
                                 clamp 0.0 1.0 ((piece.lifetime - piece.age) / 0.5)
 
-                            s =
-                                Vec3.toRecord (Vec3.scale fade piece.size)
+                            u =
+                                lduToMeters 1.0 * max 0.05 fade
+
+                            h =
+                                max 0.001 (Vec3.getY (BrickProps.size prop))
 
                             c =
                                 Vec3.toRecord piece.color
@@ -372,8 +390,7 @@ debrisEntities v props pieces =
                             world =
                                 Mat4.makeTranslate piece.position
                                     |> (\m -> Mat4.mul m (Mat4.makeRotate piece.rotation (vec3 1 0.7 0.4)))
-                                    |> (\m -> Mat4.mul m (Mat4.makeTranslate3 0 (-s.y / 2) 0))
-                                    |> (\m -> Mat4.mul m (BrickProps.fitBox { width = max 0.001 s.x, height = max 0.001 s.y, depth = max 0.001 s.z } prop))
+                                    |> (\m -> Mat4.mul m (BrickProps.fitHeight (u * h) prop))
                         in
                         BrickProps.draw v world (vec4 c.x c.y c.z 1) 0 prop
 
