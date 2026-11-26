@@ -167,8 +167,7 @@ viewToolbar data actions =
                 RI18n.audioUnmutedLabel data.language
     in
     div [ Attr.attribute "data-testid" "hud-toolbar", Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
-        [ viewMapBadge data
-        , hudIconBtn actions.onToggleAudio
+        [ hudIconBtn actions.onToggleAudio
             (if data.audioMuted then
                 FeatherIcons.volumeX
 
@@ -176,22 +175,6 @@ viewToolbar data actions =
                 FeatherIcons.volume2
             )
             audioLabel
-        ]
-
-
-{-| The course title (the map's biome, season and weather in the player's
-language, for example "Metsä · Talvi · Lumisade") with the map code under it.
--}
-viewMapBadge : HudViewData -> Html msg
-viewMapBadge data =
-    div
-        [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_end, Tw.px Th.s3, Tw.py Th.s0_dot_5, Tw.rounded_xl, Tw.border, Tw.text_xs ]
-        , Attr.style "border-color" "rgba(148, 163, 184, 0.28)"
-        , Attr.style "background" "rgba(15, 23, 42, 0.78)"
-        , Attr.style "color" "#ffffff"
-        ]
-        [ div [ Tw.classes [ Tw.font_semibold, Tw.whitespace_nowrap ] ] [ text data.courseTitle ]
-        , div [ Tw.classes [ Tw.whitespace_nowrap ], Attr.style "color" "#cbd5e1" ] [ text (Map.toCode data.map) ]
         ]
 
 
