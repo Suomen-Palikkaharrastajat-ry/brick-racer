@@ -1064,11 +1064,12 @@ buildSideRampTris track sr =
 -- ── Brick loops ──────────────────────────────────────────────────────────────
 
 
-{-| A loop-the-loop of bricks: a smooth grey lane with a yellow centre stripe,
-red and white kerbs (flush with the road at both ends, where the lane widens
-to the whole road), an orange outer skin and two grey brick pillars under its
-sides. Every point comes from `Track.loopFrame`, so the lane is where the car
-rides it.
+{-| A stunt loop-the-loop of bricks: an engineered rollercoaster structure with
+seamless road-to-apron transitions, multi-tier foundation abutments embedded
+deeply into the terrain, A-frame truss bents with lateral outrigger sway bracing,
+a continuous box-girder spine arch rib, transverse cantilever bracket ties, and
+banded safety kerbs with raised guardrails and race hazard chevrons.
+Every surface station comes from `Track.loopFrame`.
 -}
 buildLoopTris : GeneratedTrack -> LoopSection -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
 buildLoopTris track loop =
@@ -1077,25 +1078,39 @@ buildLoopTris track loop =
             96
 
         kerbW =
-            0.25
+            0.26
+
+        guardW =
+            0.16
 
         skinM =
             0.22
-
-        -- Just above the road, so the lane's ends do not flicker into it.
-        liftM =
-            0.03
 
         section i =
             let
                 th =
                     2.0 * pi * toFloat i / toFloat segments
 
+                fromEnd =
+                    min th (2.0 * pi - th)
+
                 hw =
                     Track.loopLaneHalfWidth loop th
 
-                kerbH =
-                    0.3 * smoothstep 0.0 0.3 (min th (2.0 * pi - th))
+                liftM =
+                    0.003 + 0.027 * smoothstep 0.0 0.12 fromEnd
+
+                effectiveSkinM =
+                    skinM * smoothstep 0.0 0.22 fromEnd
+
+                innerKerbH =
+                    0.05 * smoothstep 0.0 0.2 fromEnd
+
+                guardH =
+                    0.42 * smoothstep 0.0 0.32 fromEnd
+
+                spineDepth =
+                    0.24 * smoothstep 0.0 0.25 fromEnd
 
                 at lat along =
                     let
@@ -1106,13 +1121,55 @@ buildLoopTris track loop =
 
                 mid =
                     Track.loopFrame track loop th 0.0
+
+                laneY =
+                    liftM
             in
-            { lane = List.map (\d -> at d liftM) [ -hw, -0.12, 0.12, hw ]
-            , leftKerb = [ at -hw liftM, at -hw (liftM + kerbH), at (-hw - kerbW) (liftM + kerbH), at (-hw - kerbW) (liftM - skinM) ]
-            , rightKerb = [ at hw liftM, at hw (liftM + kerbH), at (hw + kerbW) (liftM + kerbH), at (hw + kerbW) (liftM - skinM) ]
-            , skin = [ at (-hw - kerbW) (liftM - skinM), at (hw + kerbW) (liftM - skinM) ]
+            { lane =
+                [ at -hw laneY
+                , at -0.14 laneY
+                , at 0.14 laneY
+                , at hw laneY
+                ]
+            , leftKerb =
+                [ at -hw laneY
+                , at -hw (laneY + innerKerbH)
+                , at (-hw - kerbW) (laneY + innerKerbH)
+                ]
+            , leftGuard =
+                [ at (-hw - kerbW) (laneY + innerKerbH)
+                , at (-hw - kerbW) (laneY + guardH)
+                , at (-hw - kerbW - guardW) (laneY + guardH)
+                , at (-hw - kerbW - guardW) (laneY - effectiveSkinM)
+                ]
+            , rightKerb =
+                [ at hw laneY
+                , at hw (laneY + innerKerbH)
+                , at (hw + kerbW) (laneY + innerKerbH)
+                ]
+            , rightGuard =
+                [ at (hw + kerbW) (laneY + innerKerbH)
+                , at (hw + kerbW) (laneY + guardH)
+                , at (hw + kerbW + guardW) (laneY + guardH)
+                , at (hw + kerbW + guardW) (laneY - effectiveSkinM)
+                ]
+            , skin =
+                [ at (-hw - kerbW - guardW) (laneY - effectiveSkinM)
+                , at -0.32 (laneY - effectiveSkinM)
+                , at 0.32 (laneY - effectiveSkinM)
+                , at (hw + kerbW + guardW) (laneY - effectiveSkinM)
+                ]
+            , spine =
+                [ at -0.32 (laneY - effectiveSkinM)
+                , at -0.24 (laneY - effectiveSkinM - spineDepth)
+                , at 0.24 (laneY - effectiveSkinM - spineDepth)
+                , at 0.32 (laneY - effectiveSkinM)
+                ]
             , up = mid.up
             , right = mid.right
+            , tangent = mid.tangent
+            , hw = hw
+            , fromEnd = fromEnd
             }
 
         sections =
@@ -1120,8 +1177,21 @@ buildLoopTris track loop =
 
         strips i ( a, b ) =
             let
+                isApron =
+                    a.fromEnd < Track.loopApronRad
+
                 laneColor j =
-                    if j == 1 then
+                    if isApron then
+                        if j == 1 then
+                            ldrawColor 15
+
+                        else if modBy 4 (i // 2) < 2 then
+                            ldrawColor 14
+
+                        else
+                            ldrawColor 0
+
+                    else if j == 1 then
                         if modBy 4 i < 2 then
                             ldrawColor 14
 
@@ -1132,11 +1202,18 @@ buildLoopTris track loop =
                         ldrawColor 71
 
                 kerbColor =
-                    if modBy 4 i < 2 then
+                    if modBy 4 (i // 2) < 2 then
                         ldrawColor 4
 
                     else
                         ldrawColor 15
+
+                guardRailCapColor =
+                    if modBy 4 (i // 2) < 2 then
+                        ldrawColor 4
+
+                    else
+                        ldrawColor 14
 
                 band pts0 pts1 normals colors =
                     List.map2 Tuple.pair (adjacentPairs pts0) (adjacentPairs pts1)
@@ -1147,26 +1224,141 @@ buildLoopTris track loop =
                     band a.lane b.lane [ a.up, a.up, a.up ] [ laneColor 0, laneColor 1, laneColor 2 ]
 
                 leftKerb =
-                    band a.leftKerb b.leftKerb [ a.right, a.up, Vec3.negate a.right ] [ kerbColor, kerbColor, ldrawColor 25 ]
+                    band a.leftKerb b.leftKerb [ a.right, a.up ] [ kerbColor, kerbColor ]
+
+                leftGuard =
+                    band a.leftGuard b.leftGuard [ a.right, a.up, Vec3.negate a.right ] [ ldrawColor 14, guardRailCapColor, ldrawColor 72 ]
 
                 rightKerb =
-                    band a.rightKerb b.rightKerb [ Vec3.negate a.right, a.up, a.right ] [ kerbColor, kerbColor, ldrawColor 25 ]
+                    band a.rightKerb b.rightKerb [ Vec3.negate a.right, a.up ] [ kerbColor, kerbColor ]
+
+                rightGuard =
+                    band a.rightGuard b.rightGuard [ Vec3.negate a.right, a.up, a.right ] [ ldrawColor 14, guardRailCapColor, ldrawColor 72 ]
 
                 skin =
-                    band a.skin b.skin [ Vec3.negate a.up ] [ ldrawColor 25 ]
-            in
-            lane ++ leftKerb ++ rightKerb ++ skin
+                    band a.skin b.skin [ Vec3.negate a.up, Vec3.negate a.up, Vec3.negate a.up ] [ ldrawColor 25, ldrawColor 25, ldrawColor 25 ]
 
-        pillar th =
+                spine =
+                    band a.spine b.spine [ Vec3.negate a.right, Vec3.negate a.up, a.right ] [ ldrawColor 72, ldrawColor 71, ldrawColor 72 ]
+
+                bracket =
+                    if modBy 6 i == 0 && a.fromEnd >= 0.45 && a.fromEnd <= (pi - 0.2) then
+                        let
+                            tangentW =
+                                Vec3.scale 0.08 a.tangent
+
+                            pL_spine =
+                                List.head a.spine |> Maybe.withDefault a.right
+
+                            pL_outer =
+                                List.head a.skin |> Maybe.withDefault a.right
+
+                            pR_spine =
+                                List.drop 3 a.spine |> List.head |> Maybe.withDefault a.right
+
+                            pR_outer =
+                                List.drop 3 a.skin |> List.head |> Maybe.withDefault a.right
+
+                            bracketQuad pOuter pSpine col =
+                                let
+                                    b0 =
+                                        Vec3.sub pOuter tangentW
+
+                                    b1 =
+                                        Vec3.add pOuter tangentW
+
+                                    b2 =
+                                        Vec3.add pSpine tangentW
+
+                                    b3 =
+                                        Vec3.sub pSpine tangentW
+                                in
+                                facing (Vec3.negate a.up) b0 b1 b2 b3 col
+                        in
+                        bracketQuad pL_outer pL_spine (ldrawColor 14)
+                            ++ bracketQuad pR_outer pR_spine (ldrawColor 14)
+
+                    else
+                        []
+            in
+            lane ++ leftKerb ++ leftGuard ++ rightKerb ++ rightGuard ++ skin ++ spine ++ bracket
+
+        apronEndCaps =
+            let
+                s0 =
+                    List.head sections
+
+                sLast =
+                    List.drop (List.length sections - 1) sections |> List.head
+
+                capAt s fwdSign =
+                    case s of
+                        Just sec ->
+                            let
+                                fwd =
+                                    Vec3.scale fwdSign sec.tangent
+
+                                roadL =
+                                    Vec3.add (List.head sec.lane |> Maybe.withDefault sec.right) (Vec3.scale -0.003 sec.up)
+
+                                roadR =
+                                    Vec3.add (List.drop 3 sec.lane |> List.head |> Maybe.withDefault sec.right) (Vec3.scale -0.003 sec.up)
+
+                                laneL =
+                                    List.head sec.lane |> Maybe.withDefault sec.right
+
+                                laneR =
+                                    List.drop 3 sec.lane |> List.head |> Maybe.withDefault sec.right
+
+                                thresholdPlate =
+                                    facing sec.up (Vec3.add roadL fwd) (Vec3.add roadR fwd) laneR laneL (ldrawColor 72)
+
+                                noseBlock guardPts nOut =
+                                    case guardPts of
+                                        _ :: pTopIn :: pTopOut :: _ ->
+                                            let
+                                                pTip =
+                                                    Vec3.add (Vec3.scale 0.5 (Vec3.add pTopIn pTopOut)) (Vec3.add (Vec3.scale 0.55 fwd) (Vec3.scale -0.42 sec.up))
+                                            in
+                                            [ facingTri sec.up pTopIn pTopOut pTip (ldrawColor 14)
+                                            , facingTri nOut pTopOut (Vec3.add pTopOut (Vec3.scale -0.42 sec.up)) pTip (ldrawColor 72)
+                                            ]
+
+                                        _ ->
+                                            []
+
+                                leftNose =
+                                    noseBlock sec.leftGuard (Vec3.negate sec.right)
+
+                                rightNose =
+                                    noseBlock sec.rightGuard sec.right
+                            in
+                            thresholdPlate ++ leftNose ++ rightNose
+
+                        Nothing ->
+                            []
+            in
+            capAt s0 -1.0 ++ capAt sLast 1.0
+
+        flankBent th =
             let
                 f =
                     Track.loopFrame track loop th 0.0
 
-                top =
-                    Vec3.add f.position (Vec3.scale -skinM f.up)
+                fromEnd =
+                    min th (2.0 * pi - th)
+
+                effectiveSkinM =
+                    skinM * smoothstep 0.0 0.22 fromEnd
+
+                spineDepth =
+                    0.24 * smoothstep 0.0 0.25 fromEnd
+
+                spinePt =
+                    Vec3.add f.position (Vec3.scale -(effectiveSkinM + spineDepth) f.up)
 
                 groundY =
-                    Track.groundHeightAt track loop.entryS (Vec3.getX top) (Vec3.getZ top)
+                    Track.groundHeightAt track loop.entryS (Vec3.getX spinePt) (Vec3.getZ spinePt)
 
                 across =
                     normalizeXZ f.right
@@ -1174,27 +1366,336 @@ buildLoopTris track loop =
                 along =
                     vec3 -(Vec3.getZ across) 0 (Vec3.getX across)
 
-                corner sa sb y =
-                    Vec3.add (vec3 (Vec3.getX top) y (Vec3.getZ top))
-                        (Vec3.add (Vec3.scale (0.28 * sa) across) (Vec3.scale (0.28 * sb) along))
+                groundCenter =
+                    vec3 (Vec3.getX spinePt) groundY (Vec3.getZ spinePt)
 
-                side ( sa0, sb0 ) ( sa1, sb1 ) =
-                    let
-                        n =
-                            normalizeSafe (Vec3.add (Vec3.scale (sa0 + sa1) across) (Vec3.scale (sb0 + sb1) along)) across
-                    in
-                    facing n (corner sa0 sb0 groundY) (corner sa1 sb1 groundY) (corner sa1 sb1 (Vec3.getY top)) (corner sa0 sb0 (Vec3.getY top)) (ldrawColor 72)
+                anchorY =
+                    groundY + 0.48
+
+                anchorCenter =
+                    vec3 (Vec3.getX spinePt) anchorY (Vec3.getZ spinePt)
+
+                heightAboveGround =
+                    Vec3.getY spinePt - groundY
             in
-            if Vec3.getY top > groundY + 0.5 then
-                adjacentPairs [ ( 1, 1 ), ( -1, 1 ), ( -1, -1 ), ( 1, -1 ), ( 1, 1 ) ]
-                    |> List.concatMap (\( c0, c1 ) -> side c0 c1)
+            if heightAboveGround > 0.8 then
+                let
+                    mainAbutment =
+                        foundationAbutment groundCenter 1.1 across along
+
+                    legW =
+                        0.12
+
+                    legFoot0 =
+                        Vec3.add anchorCenter (Vec3.scale -0.32 across)
+
+                    legFoot1 =
+                        Vec3.add anchorCenter (Vec3.scale 0.32 across)
+
+                    legTop0 =
+                        Vec3.add spinePt (Vec3.scale -0.24 f.right)
+
+                    legTop1 =
+                        Vec3.add spinePt (Vec3.scale 0.24 f.right)
+
+                    leftLeg =
+                        strutBetween legFoot0 legTop0 legW (ldrawColor 72)
+
+                    rightLeg =
+                        strutBetween legFoot1 legTop1 legW (ldrawColor 72)
+
+                    midP0 =
+                        Vec3.scale 0.5 (Vec3.add legFoot0 legTop0)
+
+                    midP1 =
+                        Vec3.scale 0.5 (Vec3.add legFoot1 legTop1)
+
+                    girt =
+                        strutBetween midP0 midP1 0.08 (ldrawColor 71)
+
+                    xBrace0 =
+                        strutBetween legFoot0 midP1 0.06 (ldrawColor 14)
+
+                    xBrace1 =
+                        strutBetween legFoot1 midP0 0.06 (ldrawColor 14)
+
+                    driftSign =
+                        if loop.driftM >= 0 then
+                            if th < pi then
+                                1.0
+
+                            else
+                                -1.0
+
+                        else if th < pi then
+                            -1.0
+
+                        else
+                            1.0
+
+                    outriggerOffset =
+                        Vec3.scale (driftSign * 1.3) across
+
+                    outriggerGround =
+                        Vec3.add groundCenter outriggerOffset
+
+                    outriggerGY =
+                        Track.groundHeightAt track loop.entryS (Vec3.getX outriggerGround) (Vec3.getZ outriggerGround)
+
+                    outriggerPos =
+                        vec3 (Vec3.getX outriggerGround) outriggerGY (Vec3.getZ outriggerGround)
+
+                    outriggerAnchor =
+                        vec3 (Vec3.getX outriggerGround) (outriggerGY + 0.48) (Vec3.getZ outriggerGround)
+
+                    outriggerAbutment =
+                        foundationAbutment outriggerPos 0.8 across along
+
+                    outriggerStrut =
+                        strutBetween outriggerAnchor (Vec3.scale 0.5 (Vec3.add legTop0 legTop1)) 0.1 (ldrawColor 72)
+                in
+                mainAbutment ++ leftLeg ++ rightLeg ++ girt ++ xBrace0 ++ xBrace1 ++ outriggerAbutment ++ outriggerStrut
 
             else
                 []
+
+        riserBent th =
+            let
+                f =
+                    Track.loopFrame track loop th 0.0
+
+                fromEnd =
+                    min th (2.0 * pi - th)
+
+                effectiveSkinM =
+                    skinM * smoothstep 0.0 0.22 fromEnd
+
+                spineDepth =
+                    0.24 * smoothstep 0.0 0.25 fromEnd
+
+                spinePt =
+                    Vec3.add f.position (Vec3.scale -(effectiveSkinM + spineDepth) f.up)
+
+                groundY =
+                    Track.groundHeightAt track loop.entryS (Vec3.getX spinePt) (Vec3.getZ spinePt)
+
+                across =
+                    normalizeXZ f.right
+
+                along =
+                    vec3 -(Vec3.getZ across) 0 (Vec3.getX across)
+
+                groundCenter =
+                    vec3 (Vec3.getX spinePt) groundY (Vec3.getZ spinePt)
+
+                heightAboveGround =
+                    Vec3.getY spinePt - groundY
+            in
+            if heightAboveGround > 0.35 then
+                let
+                    abutment =
+                        foundationAbutment groundCenter 0.95 across along
+
+                    anchorTop =
+                        vec3 (Vec3.getX spinePt) (groundY + 0.48) (Vec3.getZ spinePt)
+
+                    saddle =
+                        strutBetween anchorTop spinePt 0.16 (ldrawColor 72)
+                in
+                abutment ++ saddle
+
+            else
+                []
+
+        crownApexCrossTie =
+            let
+                fAsc =
+                    Track.loopFrame track loop (0.94 * pi) 0.0
+
+                fDesc =
+                    Track.loopFrame track loop (1.06 * pi) 0.0
+
+                pAsc =
+                    Vec3.add fAsc.position (Vec3.scale -0.46 fAsc.up)
+
+                pDesc =
+                    Vec3.add fDesc.position (Vec3.scale -0.46 fDesc.up)
+
+                tieBeam =
+                    strutBetween pAsc pDesc 0.1 (ldrawColor 14)
+
+                clampAsc =
+                    orientedBox pAsc 0.18 0.18 0.14 fAsc.right fAsc.up fAsc.tangent (ldrawColor 72)
+
+                clampDesc =
+                    orientedBox pDesc 0.18 0.18 0.14 fDesc.right fDesc.up fDesc.tangent (ldrawColor 72)
+            in
+            tieBeam ++ clampAsc ++ clampDesc
     in
     (List.indexedMap strips (adjacentPairs sections) |> List.concat)
-        ++ pillar (pi / 2.0)
-        ++ pillar (3.0 * pi / 2.0)
+        ++ apronEndCaps
+        ++ flankBent (0.46 * pi)
+        ++ flankBent (1.54 * pi)
+        ++ riserBent (0.24 * pi)
+        ++ riserBent (1.76 * pi)
+        ++ crownApexCrossTie
+
+
+orientedBox :
+    Vec3
+    -> Float
+    -> Float
+    -> Float
+    -> Vec3
+    -> Vec3
+    -> Vec3
+    -> Vec3
+    -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+orientedBox center hx hy hz ax ay az col =
+    let
+        corner sx sy sz =
+            Vec3.add center
+                (Vec3.add (Vec3.scale (sx * hx) ax)
+                    (Vec3.add (Vec3.scale (sy * hy) ay) (Vec3.scale (sz * hz) az))
+                )
+
+        p000 =
+            corner -1.0 -1.0 -1.0
+
+        p001 =
+            corner -1.0 -1.0 1.0
+
+        p010 =
+            corner -1.0 1.0 -1.0
+
+        p011 =
+            corner -1.0 1.0 1.0
+
+        p100 =
+            corner 1.0 -1.0 -1.0
+
+        p101 =
+            corner 1.0 -1.0 1.0
+
+        p110 =
+            corner 1.0 1.0 -1.0
+
+        p111 =
+            corner 1.0 1.0 1.0
+
+        negAx =
+            Vec3.negate ax
+
+        negAy =
+            Vec3.negate ay
+
+        negAz =
+            Vec3.negate az
+    in
+    facing ax p100 p110 p111 p101 col
+        ++ facing negAx p000 p001 p011 p010 col
+        ++ facing ay p010 p011 p111 p110 col
+        ++ facing negAy p000 p100 p101 p001 col
+        ++ facing az p001 p101 p111 p011 col
+        ++ facing negAz p000 p010 p110 p100 col
+
+
+strutBetween : Vec3 -> Vec3 -> Float -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+strutBetween p0 p1 halfW col =
+    let
+        delta =
+            Vec3.sub p1 p0
+
+        len =
+            Vec3.length delta
+    in
+    if len < 0.1 then
+        []
+
+    else
+        let
+            ay =
+                Vec3.scale (1.0 / len) delta
+
+            rawAx =
+                if abs (Vec3.getY ay) > 0.95 then
+                    vec3 1 0 0
+
+                else
+                    vec3 0 1 0
+
+            ax =
+                normalizeSafe (Vec3.cross ay rawAx) (vec3 1 0 0)
+
+            az =
+                normalizeSafe (Vec3.cross ax ay) (vec3 0 0 1)
+
+            mid =
+                Vec3.scale 0.5 (Vec3.add p0 p1)
+        in
+        orientedBox mid halfW (len * 0.5) halfW ax ay az col
+
+
+foundationAbutment : Vec3 -> Float -> Vec3 -> Vec3 -> List ( TerrainVertex, TerrainVertex, TerrainVertex )
+foundationAbutment groundPos width across along =
+    let
+        gx =
+            Vec3.getX groundPos
+
+        gy =
+            Vec3.getY groundPos
+
+        gz =
+            Vec3.getZ groundPos
+
+        up =
+            vec3 0 1 0
+
+        footingH =
+            0.65
+
+        footingCenter =
+            vec3 gx (gy - 0.45 + footingH * 0.5) gz
+
+        footing =
+            orientedBox footingCenter (width * 0.55) (footingH * 0.5) (width * 0.55) across up along (ldrawColor 72)
+
+        pedestalH =
+            0.22
+
+        pedestalCenter =
+            vec3 gx (gy + 0.2 + pedestalH * 0.5) gz
+
+        pedestal =
+            orientedBox pedestalCenter (width * 0.42) (pedestalH * 0.5) (width * 0.42) across up along (ldrawColor 71)
+
+        plateH =
+            0.06
+
+        plateCenter =
+            vec3 gx (gy + 0.42 + plateH * 0.5) gz
+
+        plate =
+            orientedBox plateCenter (width * 0.32) (plateH * 0.5) (width * 0.32) across up along (ldrawColor 0)
+    in
+    footing ++ pedestal ++ plate
+
+
+smoothTri : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> ( TerrainVertex, TerrainVertex, TerrainVertex )
+smoothTri a b c n col =
+    ( { position = a, normal = n, color = col, studs = 0 }
+    , { position = b, normal = n, color = col, studs = 0 }
+    , { position = c, normal = n, color = col, studs = 0 }
+    )
+
+
+facingTri : Vec3 -> Vec3 -> Vec3 -> Vec3 -> Vec3 -> ( TerrainVertex, TerrainVertex, TerrainVertex )
+facingTri n a b c col =
+    if Vec3.dot (Vec3.cross (Vec3.sub b a) (Vec3.sub c a)) n >= 0.0 then
+        smoothTri a b c n col
+
+    else
+        smoothTri a c b n col
 
 
 {-| A smooth quad `a b c d` wound so its front face looks along `n`, as the

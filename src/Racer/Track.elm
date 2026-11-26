@@ -6,6 +6,7 @@ module Racer.Track exposing
     , fieldUndulation
     , generate
     , groundHeightAt
+    , loopApronRad
     , loopFrame
     , loopLaneHalfWidth
     , obstaclesNear
