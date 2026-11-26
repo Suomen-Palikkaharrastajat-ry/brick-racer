@@ -512,7 +512,7 @@ init flags =
                     }
                 , selection = initSelection
                 , map = initMap
-                , seedText = String.fromInt initSelection.seed
+                , seedText = Map.toCode initMap
                 , editingSeed = False
                 , menuPanel = Garage.WorldPanel
                 , lastMap = Nothing
@@ -1397,7 +1397,7 @@ update msg model =
             ( { model | seedText = rawStr }, Cmd.none )
 
         StartSeedEdit ->
-            ( { model | editingSeed = True, seedText = String.fromInt model.selection.seed }
+            ( { model | editingSeed = True, seedText = Map.toCode model.map }
             , Task.attempt (\_ -> NoOp) (Dom.focus Garage.seedInputId)
             )
 
@@ -1407,17 +1407,17 @@ update msg model =
                     ( nextModel, cmd ) =
                         update (ChangeSeed model.seedText) { model | editingSeed = False }
                 in
-                ( { nextModel | seedText = String.fromInt nextModel.selection.seed }, cmd )
+                ( { nextModel | seedText = Map.toCode nextModel.map }, cmd )
 
             else
                 ( model, Cmd.none )
 
         CancelSeedEdit ->
-            ( { model | editingSeed = False, seedText = String.fromInt model.selection.seed }, Cmd.none )
+            ( { model | editingSeed = False, seedText = Map.toCode model.map }, Cmd.none )
 
         CopySeed ->
             ( { model | shareCopiedNotice = True }
-            , GamePorts.copyShareUrl (String.fromInt model.map.seed)
+            , GamePorts.copyShareUrl (Map.toCode model.map)
             )
 
         ToggleSteepness ->
@@ -2994,10 +2994,14 @@ exactSelection map =
 -}
 withSelection : Selection -> Model -> Model
 withSelection selection model =
+    let
+        resolved =
+            Map.resolve selection
+    in
     { model
         | selection = selection
-        , map = Map.resolve selection
-        , seedText = String.fromInt selection.seed
+        , map = resolved
+        , seedText = Map.toCode resolved
         , shareCopiedNotice = False
     }
 

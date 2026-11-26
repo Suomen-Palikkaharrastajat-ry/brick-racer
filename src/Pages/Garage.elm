@@ -222,7 +222,7 @@ view data actions =
                 [ viewPlayerSlotSelector data actions
                 , viewTurntableHero data canvasWidth canvasHeight canvasEvents
                 , viewActionButtons data actions
-                , viewMenuPanels data actions
+                , viewTrackSection data actions
                 , viewPlayerOptions data actions
                 ]
             ]
@@ -506,106 +506,13 @@ viewActionButtons data actions =
         ]
 
 
-{-| The "Course | World" switch and the panel it shows.
+{-| Track randomization: dice icon to randomize track, then three icons
+visualizing the result (biome, season, weather) that cycle their feature axes on
+click; below them, right-aligned map code + seed without explanation and small
+copy icon button. Clicking the code + seed opens inline editing.
 -}
-viewMenuPanels : GarageViewData -> GarageActions msg -> Html msg
-viewMenuPanels data actions =
-    let
-        lang =
-            data.language
-
-        tab panel icon label =
-            let
-                isSelected =
-                    data.menuPanel == panel
-            in
-            button
-                [ Attr.type_ "button"
-                , onClick (actions.onSetMenuPanel panel)
-                , Attr.attribute "aria-pressed" (boolText isSelected)
-                , Tw.classes [ Tw.flex_1, Tw.flex, Tw.items_center, Tw.justify_center, Tw.gap Th.s1_dot_5, Tw.py Th.s1_dot_5, Tw.px Th.s3, Tw.rounded_lg, Tw.text_xs, Tw.font_bold, Tw.transition_all, Tw.cursor_pointer ]
-                , Attr.style "background"
-                    (if isSelected then
-                        Brand.legoYellow
-
-                     else
-                        "transparent"
-                    )
-                , Attr.style "color"
-                    (if isSelected then
-                        Brand.legoBlack
-
-                     else
-                        "#94a3b8"
-                    )
-                ]
-                [ icon |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-                , span [] [ text label ]
-                ]
-    in
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s3, Tw.w_full ] ]
-        [ div
-            [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1, Tw.w_full ]
-            , Attr.style "max-width" "20rem"
-            , Attr.style "background" "rgba(15, 23, 42, 0.85)"
-            ]
-            [ tab CoursePanel FeatherIcons.map (RI18n.menuCourseTab lang)
-            , tab WorldPanel FeatherIcons.globe (RI18n.menuWorldTab lang)
-            ]
-        , case data.menuPanel of
-            CoursePanel ->
-                viewCoursePanel data
-
-            WorldPanel ->
-                viewWorldPanel data actions
-        ]
-
-
-{-| The course plan, and the personal best on this map when there is one.
--}
-viewCoursePanel : GarageViewData -> Html msg
-viewCoursePanel data =
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
-        [ Html.Lazy.lazy2 viewCoursePreview data.language data.map
-        , case Leaderboard.bestForMap data.map data.leaderboard of
-            Just entry ->
-                span
-                    [ Tw.classes [ Tw.self_end, Tw.text_xs, Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.font_mono ]
-                    , Attr.style "background" "rgba(255, 255, 255, 0.08)"
-                    , Attr.style "color" Brand.legoYellow
-                    ]
-                    [ text ("⏱ " ++ String.fromFloat (roundFloat 2 entry.timeSeconds) ++ " s") ]
-
-            Nothing ->
-                text ""
-        ]
-
-
-{-| The plan view of the selected map's course. Lazy on the map, so the
-course is generated again only when the map changes.
--}
-viewCoursePreview : Language -> MapParams -> Html msg
-viewCoursePreview lang map =
-    div
-        [ Tw.classes [ Tw.px Th.s2, Tw.py Th.s1_dot_5, Tw.rounded_xl ]
-        , Attr.style "background" "rgba(7, 25, 38, 0.75)"
-        , Attr.style "border" "1px solid rgba(255, 255, 255, 0.12)"
-        ]
-        [ Track.trackConfigFor map
-            |> Track.generate
-            |> CoursePreview.fromTrack
-            |> CoursePreview.view (RI18n.mapTitle lang map)
-        ]
-
-
-{-| The world buttons: a die for a new world, then the biome, season,
-weather and slope of the generated world. Each of the four steps its property
-on to the next value; the slope button looks for the nearest seed whose
-course has the other steepness. Under them, on the right, the small seed and
-its copy button.
--}
-viewWorldPanel : GarageViewData -> GarageActions msg -> Html msg
-viewWorldPanel data actions =
+viewTrackSection : GarageViewData -> GarageActions msg -> Html msg
+viewTrackSection data actions =
     let
         lang =
             data.language
@@ -618,76 +525,69 @@ viewWorldPanel data actions =
 
         nextWeather =
             nextIn (Map.allowedWeathers map.biome map.season) map.weather
-
-        steepness =
-            Course.steepness map
     in
-    div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s1, Tw.w_full ] ]
-        [ div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s2 ] ]
-            ([ iconButton
+    div
+        [ Tw.classes
+            [ Tw.flex
+            , Tw.flex_col
+            , Tw.gap Th.s2
+            , Tw.p Th.s3
+            , Tw.rounded_2xl
+            , Tw.border
+            , Tw.w_full
+            ]
+        , Attr.style "background" "rgba(13, 34, 53, 0.95)"
+        , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
+        ]
+        [ -- Icon row: Dice to randomize, then Biome, Season, Weather
+          div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Bp.sm [ Tw.justify_start ], Tw.gap Th.s3 ] ]
+            [ iconButton
                 { label = RI18n.randomWorldLabel lang
                 , pressed = Nothing
                 , onPress = actions.onRandomSeed
                 , icon = MenuIcons.dice
                 , accent = True
                 }
-             , iconButton
+            , span [ Tw.classes [ Tw.w_px, Tw.h_8, Tw.mx_1 ], Attr.style "background" "rgba(255, 255, 255, 0.15)", Attr.attribute "aria-hidden" "true" ] []
+            , iconButton
                 { label = labels.biome ++ ": " ++ labels.biomeName map.biome
                 , pressed = Nothing
                 , onPress = actions.onPickBiome (Exactly (nextIn Map.allBiomes map.biome))
                 , icon = MenuIcons.biome map.biome
                 , accent = False
                 }
-             , iconButton
+            , iconButton
                 { label = labels.season ++ ": " ++ labels.seasonName map.season
                 , pressed = Nothing
                 , onPress = actions.onPickSeason (Exactly (nextIn Map.allSeasons map.season))
                 , icon = MenuIcons.season map.season
                 , accent = False
                 }
-             , iconButton
+            , iconButton
                 { label = labels.weather ++ ": " ++ labels.weatherName map.weather
                 , pressed = Nothing
                 , onPress = actions.onPickWeather (Exactly nextWeather)
                 , icon = MenuIcons.weather map.weather
                 , accent = False
                 }
-             , iconButton
-                { label = RI18n.steepnessLabel lang steepness (Course.gradientPercent map)
-                , pressed = Nothing
-                , onPress = actions.onToggleSteepness
-                , icon = MenuIcons.steepness steepness
-                , accent = False
-                }
-             ]
-                ++ (if data.hasPreviousMap then
-                        [ iconButton
-                            { label = labels.previous
-                            , pressed = Nothing
-                            , onPress = actions.onUsePreviousMap
-                            , icon = FeatherIcons.rotateCcw
-                            , accent = False
-                            }
-                        ]
-
-                    else
-                        []
-                   )
-            )
-        , viewSeedRow data actions
+            ]
+        , -- Right-aligned code + seed row without explanation
+          viewSeedRow data actions
         ]
 
 
-{-| The small seed under the world buttons. Clicked, it turns into a field
-that applies the seed on Enter or when it loses focus (Escape drops the
-edit). The copy button stays in the same place in both states, so a click on
-it is not lost when the field closes on blur.
+{-| The right-aligned map code + seed without explanation under the icon row.
+Clicking the code + seed opens inline editing. Next to it is a small icon button
+to copy the map code to clipboard.
 -}
 viewSeedRow : GarageViewData -> GarageActions msg -> Html msg
 viewSeedRow data actions =
     let
         lang =
             data.language
+
+        codeText =
+            Map.toCode data.map
 
         keyDecoder =
             Decode.field "key" Decode.string
@@ -709,14 +609,15 @@ viewSeedRow data actions =
                 input
                     [ Attr.id seedInputId
                     , Attr.type_ "text"
-                    , Attr.attribute "inputmode" "numeric"
+                    , Attr.attribute "inputmode" "text"
                     , Attr.attribute "aria-label" (RI18n.mapPickerLabels lang).seed
                     , Attr.value data.seedText
                     , onInput actions.onChangeSeed
                     , onBlur actions.onCommitSeed
                     , Html.Events.on "keydown" keyDecoder
-                    , Tw.classes [ Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.text_base, Tw.font_mono, Tw.text_right ]
-                    , Attr.style "width" "7rem"
+                    , Tw.classes [ Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_md, Tw.text_xs, Tw.font_mono, Tw.text_right ]
+                    , Attr.style "min-width" "14rem"
+                    , Attr.style "max-width" "100%"
                     , Attr.style "background" "rgba(15, 23, 42, 0.8)"
                     , Attr.style "border" "1px solid rgba(148, 163, 184, 0.3)"
                     , Attr.style "color" Brand.legoWhite
@@ -729,20 +630,20 @@ viewSeedRow data actions =
                     , onClick actions.onStartSeedEdit
                     , Attr.attribute "aria-label" (RI18n.editSeedLabel lang data.map.seed)
                     , Attr.title (RI18n.editSeedLabel lang data.map.seed)
-                    , Tw.classes [ Tw.px Th.s1_dot_5, Tw.py Th.s0_dot_5, Tw.rounded, Tw.text_xs, Tw.font_mono, Tw.cursor_pointer ]
+                    , Tw.classes [ Tw.px Th.s2, Tw.py Th.s1, Tw.rounded_md, Tw.text_xs, Tw.font_mono, Tw.cursor_pointer, Tw.transition_colors ]
                     , Attr.style "background" "transparent"
                     , Attr.style "color" "#94a3b8"
                     ]
-                    [ text ("#" ++ String.fromInt data.map.seed) ]
+                    [ text codeText ]
     in
-    div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_end, Tw.gap Th.s1, Tw.w_full ] ]
+    div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_end, Tw.gap Th.s1_dot_5, Tw.w_full, Tw.pt Th.s1 ] ]
         [ seedView
         , button
             [ Attr.type_ "button"
             , onClick actions.onCopySeed
             , Attr.attribute "aria-label" (RI18n.copySeedLabel lang)
             , Attr.title (RI18n.copySeedLabel lang)
-            , Tw.classes [ Tw.p Th.s1, Tw.rounded, Tw.cursor_pointer ]
+            , Tw.classes [ Tw.p Th.s1, Tw.rounded, Tw.cursor_pointer, Tw.transition_colors ]
             , Attr.style "background" "transparent"
             , Attr.style "color"
                 (if data.shareCopiedNotice then
@@ -1220,364 +1121,55 @@ viewNetworkOptions data actions =
         ]
 
 
-{-| The menu card: a two-way switch, then the course panel or the world
-panel.
+{-| Render a scannable QR Code element.
 -}
-viewMenu :
-    { a
-        | course : Course
-        , personalBest : Maybe LeaderboardEntry
-        , language : Language
-        , selection : Selection
-        , seedText : String
-        , seedEditing : Bool
-        , menuTab : MenuTab
-        , actions : ShipyardActions msg
-    }
-    -> Html msg
-viewMenu cfg =
-    div [ Attr.class "flex flex-col gap-3 p-3 rounded-xl bg-[#0d2235]/95 border-2 border-brand-yellow" ]
-        [ div [ Attr.attribute "role" "group", Attr.class "flex p-1 rounded-lg bg-slate-900/80 border border-white/10" ]
-            [ tabButton cfg.actions cfg.menuTab CourseTab (T.courseTab cfg.language)
-            , tabButton cfg.actions cfg.menuTab WorldTab (T.worldTab cfg.language)
-            ]
-        , case cfg.menuTab of
-            CourseTab ->
-                viewCoursePanel cfg
-
-            WorldTab ->
-                viewWorldPanel cfg
-        ]
-
-
-tabButton : ShipyardActions msg -> MenuTab -> MenuTab -> String -> Html msg
-tabButton actions current tab label =
-    let
-        selected =
-            current == tab
-    in
-    button
-        [ Attr.type_ "button"
-        , onClick (actions.onSelectTab tab)
-        , Attr.attribute "aria-pressed"
-            (if selected then
-                "true"
-
-             else
-                "false"
-            )
-        , Attr.class
-            ("flex-1 min-h-[40px] rounded-md text-sm font-bold cursor-pointer transition-all "
-                ++ (if selected then
-                        "bg-brand-yellow text-brand"
-
-                    else
-                        "text-slate-300"
-                   )
-            )
-        ]
-        [ text label ]
-
-
-{-| The course: the map's name, the best time on it with its stars (nothing
-while there is none), and the previous map's button.
--}
-viewCoursePanel :
-    { a
-        | course : Course
-        , personalBest : Maybe LeaderboardEntry
-        , language : Language
-        , actions : ShipyardActions msg
-    }
-    -> Html msg
-viewCoursePanel { course, personalBest, language, actions } =
-    let
-        labels =
-            T.mapPickerLabels language
-    in
-    div [ Attr.class "flex flex-wrap items-center justify-between gap-2 min-h-[44px]" ]
-        [ span [ Attr.class "flex items-center gap-2 text-sm font-bold text-brand-yellow" ]
-            [ FeatherIcons.map |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-            , text (T.mapTitle language course.map)
-            ]
-        , div [ Attr.class "flex items-center gap-2" ]
-            [ case personalBest of
-                Just pb ->
-                    span [ Attr.class "text-xs px-1.5 py-0.5 rounded font-mono bg-white/10 text-brand-yellow" ]
-                        [ text ("⏱ " ++ T.personalBestLine language (Leaderboard.formatRaceTime pb.timeSeconds) (Physics.starRating course.targetSeconds pb.timeSeconds)) ]
-
-                Nothing ->
-                    text ""
-            , case actions.onUsePreviousMap of
-                Just msg ->
-                    iconButton msg labels.previous FeatherIcons.rotateCcw
-
-                Nothing ->
-                    text ""
-            ]
-        ]
-
-
-{-| The world: the dice, the biome, season and weather buttons and the wind,
-then the seed number (or its field) with the copy-link button at the right.
--}
-viewWorldPanel :
-    { a
-        | course : Course
-        , language : Language
-        , selection : Selection
-        , seedText : String
-        , seedEditing : Bool
-        , actions : ShipyardActions msg
-    }
-    -> Html msg
-viewWorldPanel { course, language, selection, seedText, seedEditing, actions } =
-    let
-        labels =
-            T.mapPickerLabels language
-
-        world =
-            MapParams.resolve selection
-    in
-    div [ Attr.class "flex flex-col gap-1.5" ]
-        [ div [ Attr.class "flex flex-wrap items-center gap-2" ]
-            [ button
-                [ Attr.type_ "button"
-                , onClick actions.onRollWorld
-                , Attr.title (T.rollWorld language)
-                , Attr.attribute "aria-label" (T.rollWorld language)
-                , Attr.class "w-12 h-12 flex items-center justify-center rounded-xl bg-brand-yellow text-brand cursor-pointer active:brightness-110"
+viewQrCode : String -> Html msg
+viewQrCode url =
+    case QRCode.fromString url of
+        Ok qr ->
+            div
+                [ Attr.style "background" "#ffffff"
+                , Attr.style "padding" "12px"
+                , Attr.style "border-radius" "16px"
+                , Attr.style "box-shadow" "0 4px 20px rgba(0, 0, 0, 0.4)"
+                , Attr.style "display" "inline-block"
                 ]
-                [ MenuIcons.dice |> FeatherIcons.withSize 26 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ] ]
-            , span [ Attr.class "w-px h-8 bg-white/15 mx-1", Attr.attribute "aria-hidden" "true" ] []
-            , worldButton language
-                { label = labels.biome
-                , valueName = labels.biomeName world.biome
-                , pick = selection.biome
-                , icon = MenuIcons.biome world.biome
-                , onPick = actions.onPickBiome (cycle MapParams.allBiomes selection.biome world.biome)
-                }
-            , worldButton language
-                { label = labels.season
-                , valueName = labels.seasonName world.season
-                , pick = selection.season
-                , icon = MenuIcons.season world.season
-                , onPick = actions.onPickSeason (cycle MapParams.allSeasons selection.season world.season)
-                }
-            , worldButton language
-                { label = labels.weather
-                , valueName = labels.weatherName world.weather
-                , pick = selection.weather
-                , icon = MenuIcons.weather world.weather
-                , onPick = actions.onPickWeather (cycle (MapParams.allowedWeathers world.biome world.season) selection.weather world.weather)
-                }
-            , span
-                [ Attr.attribute "role" "img"
-                , Attr.attribute "aria-label" (T.windLabel language course.wind.speed)
-                , Attr.title (T.windLabel language course.wind.speed)
-                , Attr.class "w-12 h-12 flex flex-col items-center justify-center gap-0.5 rounded-xl bg-white/5 border border-white/10 text-sky-200"
-                ]
-                [ FeatherIcons.wind |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-                , span [ Attr.class "text-[10px] leading-none font-mono", Attr.attribute "aria-hidden" "true" ]
-                    [ text (String.fromInt (round course.wind.speed)) ]
-                ]
-            ]
-        , div [ Attr.class "flex items-center justify-end gap-1" ]
-            [ if seedEditing then
-                input
-                    [ Attr.type_ "text"
-                    , Attr.id seedInputId
-                    , Attr.value seedText
-                    , onInput actions.onSeedInput
-                    , onBlur actions.onCommitSeed
-                    , Html.Events.on "keydown" (enterKey actions.onCommitSeed)
-                    , Attr.attribute "aria-label" labels.seed
-                    , Attr.attribute "autocomplete" "off"
-                    , Attr.attribute "inputmode" "text"
-                    , Attr.class "w-40 min-h-[32px] px-2 rounded-md bg-slate-900/80 border border-slate-400/30 text-xs font-mono text-white"
+                [ QRCode.toSvg
+                    [ SvgAttr.width "180px"
+                    , SvgAttr.height "180px"
                     ]
-                    []
-
-              else
-                button
-                    [ Attr.type_ "button"
-                    , onClick actions.onEditSeed
-                    , Attr.title (T.editSeed language)
-                    , Attr.attribute "aria-label" (labels.seed ++ " " ++ String.fromInt selection.seed ++ ". " ++ T.editSeed language)
-                    , Attr.class "min-h-[32px] px-2 rounded-md text-[10px] font-mono text-slate-400 cursor-pointer hover:text-white"
-                    ]
-                    [ text ("#" ++ String.fromInt selection.seed) ]
-            , button
-                [ Attr.type_ "button"
-                , onClick actions.onCopyMapLink
-
-                -- Keep the seed field's focus, so a click copies instead of
-                -- first closing the field under the pointer.
-                , Html.Events.preventDefaultOn "mousedown" (Decode.succeed ( actions.onKeepFocus, True ))
-                , Attr.title (T.copyLink language)
-                , Attr.attribute "aria-label" (T.copyLink language)
-                , Attr.class "w-8 h-8 flex items-center justify-center rounded-md text-slate-400 cursor-pointer hover:text-white"
+                    qr
                 ]
-                [ FeatherIcons.copy |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ] ]
-            ]
-        ]
+
+        Err _ ->
+            text ""
 
 
-{-| A world setting's button: the icon of the value the map has, marked when
-it is chosen rather than left to chance. A press steps to the next value.
+{-| Construct full or fragment room URL for QR codes.
 -}
-worldButton :
-    Language
-    ->
-        { label : String
-        , valueName : String
-        , pick : Pick a
-        , icon : FeatherIcons.Icon
-        , onPick : msg
-        }
-    -> Html msg
-worldButton language { label, valueName, pick, icon, onPick } =
+makeRoomUrl : String -> String -> String
+makeRoomUrl baseUrl roomId =
     let
-        ( description, look ) =
-            case pick of
-                Any ->
-                    ( label ++ ": " ++ valueName ++ ", " ++ T.byChance language
-                    , "bg-white/5 border-white/15 border-dashed text-white"
-                    )
-
-                Exactly _ ->
-                    ( label ++ ": " ++ valueName
-                    , "bg-brand-yellow/20 border-brand-yellow/60 text-brand-yellow"
-                    )
-    in
-    button
-        [ Attr.type_ "button"
-        , onClick onPick
-        , Attr.title description
-        , Attr.attribute "aria-label" description
-        , Attr.class ("w-12 h-12 flex items-center justify-center rounded-xl border cursor-pointer transition-all " ++ look)
-        ]
-        [ icon |> FeatherIcons.withSize 22 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ] ]
-
-
-{-| The next pick of a world setting: from chance to the first value, from a
-value (the one the map has) to the next, and from the last back to chance.
--}
-cycle : List a -> Pick a -> a -> Pick a
-cycle values current shown =
-    case current of
-        Any ->
-            List.head values |> Maybe.map Exactly |> Maybe.withDefault Any
-
-        Exactly _ ->
-            case dropUntil shown values of
-                _ :: next :: _ ->
-                    Exactly next
-
-                _ ->
-                    Any
-
-
-dropUntil : a -> List a -> List a
-dropUntil value values =
-    case values of
-        [] ->
-            []
-
-        first :: rest ->
-            if first == value then
-                values
+        cleanBase =
+            if String.endsWith "/" baseUrl then
+                String.dropRight 1 baseUrl
 
             else
-                dropUntil value rest
-
-
-enterKey : msg -> Decode.Decoder msg
-enterKey msg =
-    Decode.field "key" Decode.string
-        |> Decode.andThen
-            (\key ->
-                if key == "Enter" then
-                    Decode.succeed msg
-
-                else
-                    Decode.fail "not Enter"
-            )
-
-
-{-| Online play as icon buttons: host a room of two or of eight, or type a
-room code (or paste a link) and join it.
--}
-viewCrew : Language -> String -> ShipyardActions msg -> Html msg
-viewCrew language roomCode actions =
-    section
-        [ Attr.attribute "aria-label" (T.crewHeading language)
-        , Attr.class "flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-900/65 border border-white/10"
-        ]
-        [ hostButton language actions TwoPlayers FeatherIcons.users
-        , hostButton language actions GridSession FeatherIcons.tv
-        , span [ Attr.class "w-px h-8 bg-white/15 mx-1", Attr.attribute "aria-hidden" "true" ] []
-        , div [ Attr.class "flex flex-1 items-center gap-2 min-w-[180px]" ]
-            [ input
-                [ Attr.type_ "text"
-                , Attr.value roomCode
-                , onInput actions.onRoomCodeChanged
-                , Attr.placeholder (T.roomCodePlaceholder language)
-                , Attr.attribute "aria-label" (T.roomCodeLabel language)
-                , Attr.attribute "autocomplete" "off"
-                , Attr.class "flex-1 min-w-0 min-h-[44px] px-3 rounded-lg bg-slate-900/80 border border-slate-400/30 text-xs font-mono text-white placeholder:text-slate-500"
-                ]
-                []
-            , iconButton (actions.onJoinMultiplayer roomCode) (T.joinRace language) FeatherIcons.logIn
-            ]
-        ]
-
-
-{-| A host button for one session mode (a 2-player room or a grid session).
--}
-hostButton : Language -> ShipyardActions msg -> SessionMode -> FeatherIcons.Icon -> Html msg
-hostButton language actions mode icon =
-    let
-        label =
-            T.hostTitle language (Multiplayer.sessionCapacity mode)
+                baseUrl
     in
-    button
-        [ Attr.type_ "button"
-        , onClick (actions.onStartHostMultiplayer mode)
-        , Attr.title label
-        , Attr.attribute "aria-label" label
-        , Attr.class "w-12 h-12 flex items-center justify-center rounded-xl bg-brand-yellow/20 border border-brand-yellow/40 text-brand-yellow cursor-pointer transition-all active:bg-brand-yellow/30"
-        ]
-        [ icon |> FeatherIcons.withSize 22 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ] ]
+    if String.isEmpty cleanBase then
+        "#room=" ++ roomId
+
+    else
+        cleanBase ++ "/#room=" ++ roomId
 
 
-{-| A 44 px yellow icon-only button with its label for screen readers and as
-its tooltip.
+{-| Helper to round floats to N decimal places.
 -}
-iconButton : msg -> String -> FeatherIcons.Icon -> Html msg
-iconButton msg label icon =
-    button
-        [ Attr.type_ "button"
-        , onClick msg
-        , Attr.title label
-        , Attr.attribute "aria-label" label
-        , Attr.class "w-11 h-11 shrink-0 flex items-center justify-center rounded-lg bg-brand-yellow text-brand cursor-pointer active:brightness-110"
-        ]
-        [ icon |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ] ]
-
-
-{-| A small bar of a boat's stat, with its icon; the stat's name is its
-tooltip.
--}
-statBar : FeatherIcons.Icon -> String -> Float -> Html msg
-statBar icon label v =
-    div
-        [ Attr.attribute "role" "img"
-        , Attr.attribute "aria-label" label
-        , Attr.title label
-        , Attr.class "flex items-center gap-1 w-16 shrink-0 text-slate-300"
-        ]
-        [ icon |> FeatherIcons.withSize 12 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-        , div [ Attr.class "flex-1 h-1.5 rounded-full bg-slate-700 overflow-hidden" ]
-            [ div [ Attr.class "h-full bg-sky-400 rounded-full", Attr.style "width" (String.fromInt (round (clamp 0 1 v * 100)) ++ "%") ] [] ]
-        ]
+roundFloat : Int -> Float -> Float
+roundFloat decimals val =
+    let
+        factor =
+            10.0 ^ toFloat decimals
+    in
+    toFloat (round (val * factor)) / factor
