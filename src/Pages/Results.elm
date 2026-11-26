@@ -156,12 +156,15 @@ view data actions =
                 text ""
 
             -- Action Buttons
-            , div [ Attr.attribute "data-testid" "results-actions", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.gap Th.s3, Tw.pt Th.s2 ] ]
-                [ Button.primaryOnDark actions.onRaceAgain (RI18n.raceAgainButton lang)
-                , Button.secondary actions.onNewMap (RI18n.newMapButton lang)
-                , Button.secondary actions.onCopyShareLink (RI18n.shareRaceUrlButton lang)
-                , Button.secondary actions.onInspectGarage (RI18n.inspectCarButton lang)
-                , Button.secondary actions.onBackToMenu (RI18n.changeCarLabel lang)
+            , div [ Attr.attribute "data-testid" "results-actions", Tw.classes [ Tw.flex, Tw.justify_center, Tw.pt Th.s2 ] ]
+                [ Button.primaryOnDark actions.onBackToMenu
+                    (case lang of
+                        Fi ->
+                            "Palaa päävalikkoon"
+
+                        En ->
+                            "Return to Main Menu"
+                    )
                 ]
             ]
         ]

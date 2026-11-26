@@ -4807,106 +4807,33 @@ viewCelebrationOverlay lang celeb =
             ]
         , div
             [ Attr.style "display" "flex"
-            , Attr.style "gap" "10px"
-            , Attr.style "flex-wrap" "wrap"
             , Attr.style "justify-content" "center"
             , Attr.style "margin-top" "8px"
             ]
             [ button
                 [ Attr.type_ "button"
-                , onClick RestartRace
+                , onClick BackToMenu
+                , Attr.attribute "data-testid" "celebration-menu-button"
                 , Attr.style "display" "inline-flex"
                 , Attr.style "align-items" "center"
-                , Attr.style "gap" "6px"
+                , Attr.style "gap" "8px"
                 , Attr.style "background" Brand.legoYellow
                 , Attr.style "color" Brand.legoBlack
                 , Attr.style "border" "none"
-                , Attr.style "padding" "12px 22px"
+                , Attr.style "padding" "14px 28px"
                 , Attr.style "border-radius" "12px"
                 , Attr.style "font-weight" "900"
-                , Attr.style "font-size" "15px"
+                , Attr.style "font-size" "16px"
                 , Attr.style "cursor" "pointer"
                 , Attr.style "box-shadow" "0 4px 14px rgba(250, 200, 10, 0.4)"
                 ]
                 [ text
                     (case lang of
                         Fi ->
-                            "🔄 Aja uudelleen"
+                            "🏠 Palaa päävalikkoon"
 
                         En ->
-                            "🔄 Race Again"
-                    )
-                ]
-            , button
-                [ Attr.type_ "button"
-                , onClick OpenBuilder
-                , Attr.style "display" "inline-flex"
-                , Attr.style "align-items" "center"
-                , Attr.style "gap" "6px"
-                , Attr.style "background" "rgba(255, 255, 255, 0.12)"
-                , Attr.style "color" Brand.legoWhite
-                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
-                , Attr.style "padding" "12px 18px"
-                , Attr.style "border-radius" "12px"
-                , Attr.style "font-weight" "800"
-                , Attr.style "font-size" "14px"
-                , Attr.style "cursor" "pointer"
-                ]
-                [ text
-                    (case lang of
-                        Fi ->
-                            "🔨 Muokkaa autoa"
-
-                        En ->
-                            "🔨 Edit Car"
-                    )
-                ]
-            , button
-                [ Attr.type_ "button"
-                , onClick InspectInGarage
-                , Attr.style "display" "inline-flex"
-                , Attr.style "align-items" "center"
-                , Attr.style "gap" "6px"
-                , Attr.style "background" "rgba(255, 255, 255, 0.12)"
-                , Attr.style "color" Brand.legoWhite
-                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.25)"
-                , Attr.style "padding" "12px 18px"
-                , Attr.style "border-radius" "12px"
-                , Attr.style "font-weight" "800"
-                , Attr.style "font-size" "14px"
-                , Attr.style "cursor" "pointer"
-                ]
-                [ text
-                    (case lang of
-                        Fi ->
-                            "🏠 Valikko"
-
-                        En ->
-                            "🏠 Menu"
-                    )
-                ]
-            , button
-                [ Attr.type_ "button"
-                , onClick (ShowLeaderboardPage celeb.results)
-                , Attr.style "display" "inline-flex"
-                , Attr.style "align-items" "center"
-                , Attr.style "gap" "6px"
-                , Attr.style "background" "rgba(255, 255, 255, 0.08)"
-                , Attr.style "color" "#cbd5e1"
-                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.15)"
-                , Attr.style "padding" "12px 16px"
-                , Attr.style "border-radius" "12px"
-                , Attr.style "font-weight" "700"
-                , Attr.style "font-size" "13px"
-                , Attr.style "cursor" "pointer"
-                ]
-                [ text
-                    (case lang of
-                        Fi ->
-                            "📊 Tulostaulukko"
-
-                        En ->
-                            "📊 Leaderboard"
+                            "🏠 Return to Main Menu"
                     )
                 ]
             ]

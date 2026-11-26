@@ -220,8 +220,20 @@ view data actions =
                 [ viewPlayerSlotSelector data actions
                 , viewTurntableHero data canvasWidth canvasHeight canvasEvents
                 , viewActionButtons data actions
-                , viewTrackSection data actions
-                , viewPlayerOptions data actions
+                , div
+                    [ Attr.attribute "data-testid" "options-row"
+                    , Tw.classes
+                        [ Tw.w_full
+                        , Tw.grid
+                        , Tw.grid_cols_1
+                        , Bp.md [ Tw.grid_cols_2 ]
+                        , Tw.gap Th.s4
+                        , Tw.items_stretch
+                        ]
+                    ]
+                    [ viewTrackSection data actions
+                    , viewPlayerOptions data actions
+                    ]
                 ]
             ]
         ]
@@ -535,11 +547,13 @@ viewTrackSection data actions =
         , Tw.classes
             [ Tw.flex
             , Tw.flex_col
+            , Tw.justify_between
             , Tw.gap Th.s2
             , Tw.p Th.s3
             , Tw.rounded_2xl
             , Tw.border
             , Tw.w_full
+            , Tw.h_full
             ]
         , Attr.style "background" "rgba(13, 34, 53, 0.95)"
         , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
@@ -782,7 +796,7 @@ boolText b =
 -}
 viewPlayerOptions : GarageViewData -> GarageActions msg -> Html msg
 viewPlayerOptions data actions =
-    div [ Attr.attribute "data-testid" "player-options", Tw.classes [ Tw.w_full ] ]
+    div [ Attr.attribute "data-testid" "player-options", Tw.classes [ Tw.w_full, Tw.h_full ] ]
         [ case data.multiplayer of
             Just room ->
                 viewMultiplayerLobby data actions room
@@ -933,21 +947,47 @@ viewNormalPlayerOptions data actions =
                 , accent = False
                 }
     in
-    div [ Attr.attribute "data-testid" "normal-player-options", Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.justify_center, Tw.items_center, Tw.gap Th.s3, Tw.w_full ] ]
+    div
+        [ Attr.attribute "data-testid" "normal-player-options"
+        , Tw.classes
+            [ Tw.flex
+            , Tw.flex_col
+            , Tw.justify_between
+            , Tw.gap Th.s2
+            , Tw.p Th.s3
+            , Tw.rounded_2xl
+            , Tw.border
+            , Tw.w_full
+            , Tw.h_full
+            ]
+        , Attr.style "background" "rgba(13, 34, 53, 0.95)"
+        , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
+        ]
         [ div
-            [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ]
-            , Attr.attribute "role" "group"
-            , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+            [ Tw.classes
+                [ Tw.flex
+                , Tw.flex_wrap
+                , Tw.items_center
+                , Tw.justify_center
+                , Bp.sm [ Tw.justify_start ]
+                , Tw.gap Th.s3
+                ]
             ]
-            [ tabButton HotSeatTab FeatherIcons.monitor (RI18n.hotSeatTabLabel lang)
-            , tabButton NetworkTab FeatherIcons.wifi (RI18n.networkTabLabel lang)
-            ]
-        , case data.playerModeTab of
-            HotSeatTab ->
-                viewHotSeatOptions data actions
+            [ div
+                [ Tw.classes [ Tw.flex, Tw.rounded_xl, Tw.p Th.s1, Tw.gap Th.s1 ]
+                , Attr.attribute "role" "group"
+                , Attr.style "background" "rgba(15, 23, 42, 0.85)"
+                ]
+                [ tabButton HotSeatTab FeatherIcons.monitor (RI18n.hotSeatTabLabel lang)
+                , tabButton NetworkTab FeatherIcons.wifi (RI18n.networkTabLabel lang)
+                ]
+            , case data.playerModeTab of
+                HotSeatTab ->
+                    viewHotSeatOptions data actions
 
-            NetworkTab ->
-                viewNetworkOptions data actions
+                NetworkTab ->
+                    viewNetworkOptions data actions
+            ]
         ]
 
 
