@@ -1,4 +1,4 @@
-module StarterBasesTest exposing (suite, isOffsetRimTyre)
+module StarterBasesTest exposing (isOffsetRimTyre, suite)
 
 {-| Checks of the starter car bases in `starters/racer/` (embedded in
 `Racer.StarterBases` by `node starters/embed-starters.mjs`):
