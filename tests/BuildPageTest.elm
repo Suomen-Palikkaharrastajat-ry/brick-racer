@@ -137,6 +137,21 @@ baseTest base =
                                 Document.mainPlacements (Build.document added) |> List.map .color
                         in
                         Expect.equal True (List.member 14 colours)
+               , test "toggling base lock unlocks and explodes base grouping into individual placements" <|
+                    \_ ->
+                        let
+                            unlocked =
+                                step ToggleBaseLock opened
+
+                            doc =
+                                Build.document unlocked
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal False unlocked.baseLocked
+                            , \_ -> Expect.equal False (List.any (Editor.isBasePlacement base) (Document.mainPlacements doc))
+                            , \_ -> Expect.equal base.partCount (List.length (Document.mainPlacements doc))
+                            ]
+                            ()
                ]
         )
 

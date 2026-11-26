@@ -608,7 +608,43 @@ updateModel msg model =
             )
 
         ToggleBaseLock ->
-            ( { model | baseLocked = not model.baseLocked, notice = Nothing }, Cmd.none, Stay )
+            if model.baseLocked then
+                case model.base of
+                    Just base ->
+                        let
+                            doc =
+                                Core.getDocument model.studio
+
+                            maybeBasePlacement =
+                                Document.mainPlacements doc
+                                    |> List.filter (Editor.isBasePlacement base)
+                                    |> List.head
+                        in
+                        case maybeBasePlacement of
+                            Just basePlacement ->
+                                let
+                                    unlockedModel =
+                                        { model | baseLocked = False, notice = Nothing }
+
+                                    ( selected, selCmd ) =
+                                        runCore (Core.update (Core.Select (Set.singleton basePlacement.id))) unlockedModel
+
+                                    ( exploded, expCmd ) =
+                                        runCore (Core.update Core.ExplodeSelection) selected
+                                in
+                                ( { exploded | baseLocked = False, notice = Nothing }
+                                , Cmd.batch [ selCmd, expCmd ]
+                                , Stay
+                                )
+
+                            Nothing ->
+                                ( { model | baseLocked = False, notice = Nothing }, Cmd.none, Stay )
+
+                    Nothing ->
+                        ( { model | baseLocked = False, notice = Nothing }, Cmd.none, Stay )
+
+            else
+                ( { model | baseLocked = True, notice = Nothing }, Cmd.none, Stay )
 
         PasteTextChanged textVal ->
             ( { model | pasteText = textVal, pasteError = Nothing }, Cmd.none, Stay )
@@ -716,7 +752,15 @@ runCore step model =
             else
                 case model.base of
                     Just base ->
-                        Editor.baseIntact base (Core.getDocument studio)
+                        let
+                            doc =
+                                Core.getDocument studio
+                        in
+                        if List.any (Editor.isBasePlacement base) (Document.mainPlacements doc) then
+                            Editor.baseIntact base doc
+
+                        else
+                            True
 
                     Nothing ->
                         True
