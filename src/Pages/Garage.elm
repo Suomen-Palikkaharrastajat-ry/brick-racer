@@ -27,22 +27,18 @@ import DesignTokens.Colors as Brand
 import FeatherIcons exposing (Icon)
 import Game.MapParams as Map exposing (Biome, MapParams, Pick(..), Season, Selection, WeatherKind)
 import Game.Multiplayer exposing (Role(..), RoomState, SessionMode(..))
-import Html exposing (Html, button, div, h2, input, span, text)
+import Html exposing (Html, button, div, input, span, text)
 import Html.Attributes as Attr
 import Html.Events exposing (onBlur, onClick, onInput)
-import Html.Lazy
 import I18n exposing (Language(..))
 import Json.Decode as Decode
 import QRCode
 import Racer.Analyze exposing (CarMeshBundle)
-import Racer.Course as Course
-import Racer.CoursePreview as CoursePreview
 import Racer.I18n as RI18n
-import Racer.Leaderboard as Leaderboard exposing (Leaderboard)
+import Racer.Leaderboard exposing (Leaderboard)
 import Racer.MenuIcons as MenuIcons
 import Racer.Render as Render
 import Racer.TerrainShader exposing (TerrainVertex)
-import Racer.Track as Track
 import Racer.Types
     exposing
         ( RaceMode(..)
@@ -548,7 +544,7 @@ viewTrackSection data actions =
                 , icon = MenuIcons.dice
                 , accent = True
                 }
-            , span [ Tw.classes [ Tw.w_px, Tw.h_8, Tw.mx_1 ], Attr.style "background" "rgba(255, 255, 255, 0.15)", Attr.attribute "aria-hidden" "true" ] []
+            , span [ Tw.classes [ Tw.w_px, Tw.h Th.s8, Tw.mx Th.s1 ], Attr.style "background" "rgba(255, 255, 255, 0.15)", Attr.attribute "aria-hidden" "true" ] []
             , iconButton
                 { label = labels.biome ++ ": " ++ labels.biomeName map.biome
                 , pressed = Nothing
@@ -812,195 +808,91 @@ viewMultiplayerLobby data actions room =
         , Attr.style "border-color" Brand.legoYellow
         , Attr.style "box-shadow" "0 0 24px rgba(250, 200, 10, 0.15)"
         ]
-        [ -- Title & Role Badge
-          div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s1, Tw.text_center ] ]
-            [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
-                [ span [ Tw.classes [ Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded, Tw.text_xs, Tw.font_bold, Tw.uppercase ], Attr.style "background" Brand.legoYellow, Attr.style "color" Brand.legoBlack ]
-                    [ text
-                        (if isHost then
-                            "HOST"
-
-                         else
-                            "PLAYER"
-                        )
-                    ]
-                , h2 [ Tw.classes [ Tw.text_base, Bp.sm [ Tw.text_lg ], Tw.font_extrabold, Tw.tracking_wide ] ]
-                    [ text
-                        (if isTwoPlayerHost then
-                            RI18n.networkTwoPlayersTitle lang
-
-                         else if isHost then
-                            RI18n.networkHostGridTitle lang
-
-                         else
-                            "Huone: " ++ room.roomId
-                        )
-                    ]
+        [ -- Room header: icon + room code + copy & leave/start icon buttons
+          div [ Tw.classes [ Tw.flex, Tw.flex_wrap, Tw.items_center, Tw.justify_center, Tw.gap Th.s2, Tw.w_full ] ]
+            ([ span
+                [ Tw.classes [ Tw.text_lg, Tw.font_mono, Tw.font_black, Tw.tracking_widest, Tw.px Th.s3, Tw.py Th.s1, Tw.rounded_lg, Tw.border ]
+                , Attr.style "color" Brand.legoYellow
+                , Attr.style "background" "rgba(15, 23, 42, 0.8)"
+                , Attr.style "border-color" "rgba(250, 200, 10, 0.3)"
                 ]
-            ]
-        , -- QR Code & Room Code Banner (Prominent for Hosts!)
-          if isHost then
-            div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s3 ] ]
-                [ viewQrCode roomUrl
-                , div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
-                    [ span [ Tw.classes [ Tw.text_xs ], Attr.style "color" "#94a3b8" ] [ text "Huonekoodi:" ]
-                    , span [ Tw.classes [ Tw.text_lg, Tw.font_mono, Tw.font_black, Tw.tracking_widest, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_lg, Tw.border ], Attr.style "color" Brand.legoYellow, Attr.style "background" "rgba(15, 23, 42, 0.8)", Attr.style "border-color" "rgba(250, 200, 10, 0.3)" ]
-                        [ text room.roomId ]
-                    , button
-                        [ Attr.type_ "button"
-                        , onClick actions.onCopyMultiplayerLink
-                        , Tw.classes [ Tw.px Th.s2_dot_5, Tw.py Th.s1, Tw.rounded_lg, Tw.text_xs, Tw.font_bold, Tw.cursor_pointer, Tw.transition_all ]
-                        , Attr.style "background" "rgba(255, 255, 255, 0.1)"
-                        , Attr.style "color" Brand.legoWhite
-                        ]
-                        [ text
-                            (if data.shareCopiedNotice then
-                                "✓ Kopioitu!"
+                [ text room.roomId ]
+             , iconButton
+                { label = RI18n.copyRoomLinkButton lang
+                , pressed = Just data.shareCopiedNotice
+                , onPress = actions.onCopyMultiplayerLink
+                , icon =
+                    if data.shareCopiedNotice then
+                        FeatherIcons.check
 
-                             else
-                                RI18n.copyRoomLinkButton lang
-                            )
+                    else
+                        FeatherIcons.copy
+                , accent = False
+                }
+             , iconButton
+                { label = RI18n.leaveRoomButton lang
+                , pressed = Nothing
+                , onPress = actions.onLeaveMultiplayer
+                , icon = FeatherIcons.logOut
+                , accent = False
+                }
+             ]
+                ++ (if isHost && readyToStart then
+                        [ iconButton
+                            { label = RI18n.startMultiplayerRaceButton lang
+                            , pressed = Nothing
+                            , onPress = actions.onStartMultiplayerCountdown
+                            , icon = FeatherIcons.play
+                            , accent = True
+                            }
                         ]
-                    ]
-                ]
+
+                    else
+                        []
+                   )
+            )
+        , if isHost then
+            viewQrCode roomUrl
 
           else
             text ""
-        , -- Player Roster & Readiness Status
-          div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s2, Tw.w_full ], Attr.style "max-width" "28rem" ]
-            [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.w_full, Tw.px Th.s2 ] ]
-                [ span [ Tw.classes [ Tw.text_xs, Tw.font_bold, Tw.uppercase, Tw.tracking_wider ], Attr.style "color" Brand.legoYellow ]
-                    [ text ("Pelaajat (" ++ String.fromInt playerCount ++ " / " ++ String.fromInt room.maxPlayers ++ ")") ]
-                , span
-                    [ Tw.classes [ Tw.text_xs, Tw.font_semibold, Tw.px Th.s2, Tw.py Th.s0_dot_5, Tw.rounded_md ]
-                    , Attr.style "background"
-                        (if readyToStart then
-                            "rgba(34, 197, 94, 0.2)"
-
-                         else
-                            "rgba(245, 158, 11, 0.2)"
-                        )
-                    , Attr.style "color"
-                        (if readyToStart then
-                            "#22c55e"
-
-                         else
-                            "#f59e0b"
-                        )
-                    ]
-                    [ text
-                        (if isTwoPlayerHost then
-                            if playerCount >= 2 then
-                                RI18n.bothPlayersReady lang
-
-                            else
-                                RI18n.waitingForPlayerTwo lang
-
-                         else if isHost then
-                            if playerCount >= 1 then
-                                "Valmis aloittamaan!"
-
-                            else
-                                "Odotetaan pelaajia..."
-
-                         else
-                            RI18n.waitingForHostToStart lang
-                        )
-                    ]
-                ]
-            , div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s1_dot_5, Tw.w_full ] ]
-                (List.map
-                    (\p ->
-                        div
-                            [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.px Th.s3, Tw.py Th.s2, Tw.rounded_lg, Tw.border ]
-                            , Attr.style "background" "rgba(15, 23, 42, 0.7)"
-                            , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
-                            ]
-                            [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
-                                [ span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold ], Attr.style "color" Brand.legoYellow ]
-                                    [ text ("#" ++ String.fromInt p.slot) ]
-                                , span [ Tw.classes [ Tw.text_xs, Tw.font_semibold ] ] [ text p.name ]
-                                ]
-                            , span
-                                [ Tw.classes [ Tw.text_xs ]
-                                , Attr.style "color"
-                                    (if p.vehicleReady then
-                                        "#22c55e"
-
-                                     else
-                                        "#94a3b8"
-                                    )
-                                ]
-                                [ text
-                                    (if p.vehicleReady then
-                                        "Auto valmis"
-
-                                     else
-                                        "Ladataan..."
-                                    )
-                                ]
-                            ]
-                    )
-                    room.players
-                )
-            ]
-        , -- Action Buttons: Start Race (Host only) & Leave Room
-          div [ Tw.classes [ Tw.flex, Tw.gap Th.s3, Tw.w_full, Tw.pt Th.s2 ], Attr.style "max-width" "28rem" ]
-            [ button
-                [ Attr.type_ "button"
-                , onClick actions.onLeaveMultiplayer
-                , Tw.classes [ Tw.flex_1, Tw.py Th.s2_dot_5, Tw.px Th.s4, Tw.rounded_xl, Tw.text_xs, Tw.font_bold, Tw.cursor_pointer, Tw.transition_all ]
-                , Attr.style "background" "rgba(255, 255, 255, 0.08)"
-                , Attr.style "border" "1px solid rgba(255, 255, 255, 0.2)"
-                , Attr.style "color" "#cbd5e1"
-                ]
-                [ text (RI18n.leaveRoomButton lang) ]
-            , if isHost then
-                button
-                    [ Attr.type_ "button"
-                    , onClick actions.onStartMultiplayerCountdown
-                    , Attr.disabled (not readyToStart)
-                    , Tw.classes
-                        [ Tw.flex_1
-                        , Tw.py Th.s2_dot_5
-                        , Tw.px Th.s4
-                        , Tw.rounded_xl
-                        , Tw.text_xs
-                        , Tw.font_extrabold
-                        , Tw.transition_all
-                        , if readyToStart then
-                            Tw.cursor_pointer
-
-                          else
-                            Tw.cursor_not_allowed
+        , -- Player Roster
+          div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.gap Th.s1_dot_5, Tw.w_full ], Attr.style "max-width" "24rem" ]
+            (List.map
+                (\p ->
+                    div
+                        [ Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.px Th.s3, Tw.py Th.s1_dot_5, Tw.rounded_lg, Tw.border, Tw.w_full ]
+                        , Attr.style "background" "rgba(15, 23, 42, 0.7)"
+                        , Attr.style "border-color" "rgba(255, 255, 255, 0.1)"
                         ]
-                    , Attr.style "background"
-                        (if readyToStart then
-                            Brand.legoYellow
+                        [ div [ Tw.classes [ Tw.flex, Tw.items_center, Tw.gap Th.s2 ] ]
+                            [ span [ Tw.classes [ Tw.text_xs, Tw.font_mono, Tw.font_bold ], Attr.style "color" Brand.legoYellow ]
+                                [ text ("#" ++ String.fromInt p.slot) ]
+                            , span [ Tw.classes [ Tw.text_xs, Tw.font_semibold ] ] [ text p.name ]
+                            ]
+                        , span
+                            [ Tw.classes [ Tw.text_xs ]
+                            , Attr.style "color"
+                                (if p.vehicleReady then
+                                    "#22c55e"
 
-                         else
-                            "#475569"
-                        )
-                    , Attr.style "color"
-                        (if readyToStart then
-                            Brand.legoBlack
+                                 else
+                                    "#94a3b8"
+                                )
+                            ]
+                            [ (if p.vehicleReady then
+                                FeatherIcons.check
 
-                         else
-                            "#94a3b8"
-                        )
-                    ]
-                    [ text
-                        (if isTwoPlayerHost && not readyToStart then
-                            "Odotetaan 2. pelaajaa..."
-
-                         else
-                            RI18n.startMultiplayerRaceButton lang
-                        )
-                    ]
-
-              else
-                text ""
-            ]
+                               else
+                                FeatherIcons.clock
+                              )
+                                |> FeatherIcons.withSize 14
+                                |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                            ]
+                        ]
+                )
+                room.players
+            )
         ]
 
 
@@ -1162,14 +1054,3 @@ makeRoomUrl baseUrl roomId =
 
     else
         cleanBase ++ "/#room=" ++ roomId
-
-
-{-| Helper to round floats to N decimal places.
--}
-roundFloat : Int -> Float -> Float
-roundFloat decimals val =
-    let
-        factor =
-            10.0 ^ toFloat decimals
-    in
-    toFloat (round (val * factor)) / factor

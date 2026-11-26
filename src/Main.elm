@@ -1377,12 +1377,24 @@ update msg model =
             applySelection (\sel -> { sel | weather = pick }) model
 
         ChangeSeed rawStr ->
-            case Map.fromCode rawStr of
+            let
+                trimmed =
+                    String.trim rawStr
+
+                maybeMap =
+                    case Map.fromCode trimmed of
+                        Just pasted ->
+                            Just pasted
+
+                        Nothing ->
+                            (Ingest.parseHash trimmed).map
+            in
+            case maybeMap of
                 Just pasted ->
                     applySelection (\_ -> exactSelection pasted) model
 
                 Nothing ->
-                    case String.toInt (String.trim rawStr) of
+                    case String.toInt (String.replace "#" "" trimmed) of
                         Just n ->
                             let
                                 ( nextModel, cmd ) =
@@ -1416,8 +1428,23 @@ update msg model =
             ( { model | editingSeed = False, seedText = Map.toCode model.map }, Cmd.none )
 
         CopySeed ->
-            ( { model | shareCopiedNotice = True }
-            , GamePorts.copyShareUrl (Map.toCode model.map)
+            let
+                ( nextModel, commitCmd ) =
+                    if model.editingSeed then
+                        let
+                            ( committed, cmd ) =
+                                update (ChangeSeed model.seedText) { model | editingSeed = False }
+                        in
+                        ( { committed | seedText = Map.toCode committed.map }, cmd )
+
+                    else
+                        ( model, Cmd.none )
+            in
+            ( { nextModel | shareCopiedNotice = True }
+            , Cmd.batch
+                [ commitCmd
+                , GamePorts.copyShareUrl (Map.toCode nextModel.map)
+                ]
             )
 
         ToggleSteepness ->
@@ -1436,7 +1463,11 @@ update msg model =
             ( { model | menuPanel = panel }, Cmd.none )
 
         RandomSeed ->
-            applySelection (\sel -> { sel | seed = nextRandomSeed sel.seed }) model
+            let
+                chance =
+                    Map.anySelection
+            in
+            applySelection (\sel -> { chance | seed = nextRandomSeed sel.seed }) model
 
         UsePreviousMap ->
             case model.lastMap of
