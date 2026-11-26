@@ -36,7 +36,7 @@ import Math.Vector3 as Vec3 exposing (Vec3, vec3)
 import Math.Vector4 exposing (Vec4, vec4)
 import Racer.SceneryModels as SceneryModels
 import Racer.TerrainShader exposing (DebrisPiece)
-import Racer.Types exposing (ObstacleKind(..), TrackObstacle)
+import Racer.Types exposing (ObstacleKind(..), TrackObstacle, lduToMeters)
 import WebGL
 
 
@@ -131,7 +131,7 @@ modelFor season obs =
             ( "bush", BrickProps.fitHeight obs.heightM )
 
         FenceSection ->
-            ( "fence", BrickProps.fitLength 3.0 )
+            ( "fence", \prop -> BrickProps.fitLength (lduToMeters (Vec3.getZ (BrickProps.size prop))) prop )
 
         Rock ->
             ( "rock", BrickProps.fitBox { width = 2 * obs.radiusM, height = obs.heightM, depth = 1.6 * obs.radiusM } )
