@@ -113,7 +113,7 @@ import Racer.Types exposing (CrashReason(..), SteeringMechanism(..), SurfaceType
 -}
 menuTitle : Language -> String
 menuTitle _ =
-    "Mäkiautoleikki"
+    "Mäkiautokisa"
 
 
 {-| Main game subtitle explaining the brick-family build-to-race workflow.
