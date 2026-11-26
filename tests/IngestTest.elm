@@ -310,13 +310,32 @@ ingestSuite =
                                 Document.parse preset.ldrText
 
                             -- A 6014b rim with its 56890 tyre is a known false positive
-                            -- (see StarterBasesTest.isOffsetRimTyre), so it is not counted.
-                            healthIssues =
+                            -- (see StarterBasesTest.isOffsetRimTyre), so neither the issues
+                            -- nor the planned moves of those parts are counted.
+                            rawIssues =
                                 Health.check EmbeddedParts.cache doc Set.empty
-                                    |> List.filter (not << isOffsetRimTyre doc)
+
+                            exemptIssues =
+                                List.filter (isOffsetRimTyre doc) rawIssues
+
+                            exemptIds =
+                                List.concatMap
+                                    (\i ->
+                                        case i of
+                                            Health.Overlapping { first, second } ->
+                                                [ first, second ]
+
+                                            Health.Misaligned { placement } ->
+                                                [ placement ]
+                                    )
+                                    exemptIssues
+
+                            healthIssues =
+                                List.filter (\i -> not (isOffsetRimTyre doc i)) rawIssues
 
                             tidyFixes =
                                 Health.plan EmbeddedParts.cache doc Set.empty healthIssues
+                                    |> List.filter (\f -> not (List.member f.placement exemptIds))
 
                             analyzed =
                                 Analyze.analyzeDocument preset.nameEn doc EmbeddedParts.cache Catalog.emptyPartIndex
