@@ -138,8 +138,22 @@ viewHudOverlayWith slots data actions =
 
 viewTopArea : List (Html msg) -> HudViewData -> HudActions msg -> Html msg
 viewTopArea belowTopBar data actions =
-    div [ Attr.attribute "data-testid" "hud-top-area", Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_end, Tw.gap Th.s2 ] ]
-        (viewToolbar data actions :: belowTopBar)
+    div [ Attr.attribute "data-testid" "hud-top-area", Tw.classes [ Tw.flex, Tw.flex_col, Tw.gap Th.s2, Tw.w_full ] ]
+        (viewTopBar data actions :: belowTopBar)
+
+
+viewTopBar : HudViewData -> HudActions msg -> Html msg
+viewTopBar data actions =
+    div [ Attr.attribute "data-testid" "hud-top-bar", Tw.classes [ Tw.flex, Tw.items_center, Tw.justify_between, Tw.w_full ] ]
+        [ div [ Tw.classes [ Tw.flex, Tw.items_center ] ]
+            [ if carStopped data then
+                hudIconBtn actions.onGoMenu FeatherIcons.logOut (RI18n.exitRaceLabel data.language)
+
+              else
+                text ""
+            ]
+        , viewToolbar data actions
+        ]
 
 
 viewToolbar : HudViewData -> HudActions msg -> Html msg
@@ -250,7 +264,7 @@ viewCenterOverlays data actions =
 
         Nothing ->
             div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_center, Tw.justify_center, Tw.my_auto, Tw.gap Th.s3 ] ]
-                (viewCrashOrAlert data actions ++ [ viewExitPrompt data actions ])
+                (viewCrashOrAlert data actions)
 
 
 viewCrashOrAlert : HudViewData -> HudActions msg -> List (Html msg)
@@ -287,18 +301,6 @@ viewCrashOrAlert data actions =
 
                 Nothing ->
                     []
-
-
-{-| Leave the race, offered once the car has come to a stop.
--}
-viewExitPrompt : HudViewData -> HudActions msg -> Html msg
-viewExitPrompt data actions =
-    if carStopped data then
-        div [ Tw.classes [ Tw.pointer_events_auto ] ]
-            [ Button.primaryOnDark actions.onGoMenu (RI18n.exitRaceLabel data.language) ]
-
-    else
-        text ""
 
 
 viewCrashOverlay : Language -> { timer : Float, reason : CrashReason } -> HudActions msg -> Html msg
