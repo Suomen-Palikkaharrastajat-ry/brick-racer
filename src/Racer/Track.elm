@@ -2431,8 +2431,70 @@ heightWithProjection track proj x z =
 
             fields =
                 noiseVal * smoothstep recoveryCorridorM (recoveryCorridorM + 24.0) u
+
+            rawY =
+                edgeY + recoveryBankGrade * u + recoveryBankCurve * u * u + ripple + fields
+
+            applyTerrace obs curY =
+                let
+                    dx =
+                        x - Vec3.getX obs.position
+
+                    dz =
+                        z - Vec3.getZ obs.position
+
+                    distSq =
+                        dx * dx + dz * dz
+
+                    padR =
+                        obs.radiusM + 0.5
+
+                    outerR =
+                        padR + 2.5
+                in
+                if distSq >= outerR * outerR then
+                    curY
+
+                else
+                    let
+                        dist =
+                            sqrt distSq
+
+                        targetY =
+                            Vec3.getY obs.position + 0.12
+
+                        weight =
+                            smoothstep outerR padR dist
+
+                        roadClearWeight =
+                            clamp 0.0 1.0 (u / 0.8)
+                    in
+                    curY + weight * roadClearWeight * (targetY - curY)
+
+            nearbyBuildings =
+                obstaclesNear track proj.s 15.0
+                    |> List.filter (\o -> isBuildingObstacle o.kind)
         in
-        edgeY + recoveryBankGrade * u + recoveryBankCurve * u * u + ripple + fields
+        List.foldl applyTerrace rawY nearbyBuildings
+
+
+isBuildingObstacle : ObstacleKind -> Bool
+isBuildingObstacle kind =
+    case kind of
+        Cottage ->
+            True
+
+        Barn ->
+            True
+
+        Chalet ->
+            True
+
+        PitGarage ->
+            True
+
+        _ ->
+            False
 
 
 rampHeightOffset : List RampZone -> Float -> Float -> Float
