@@ -13,6 +13,7 @@ module Racer.I18n exposing
     , copyRoomLinkButton
     , copySeedLabel
     , coursesHeading
+    , crashHeadline
     , crashReasonText
     , createGridRoomButton
     , createTwoPlayerRoomButton
@@ -1025,6 +1026,18 @@ inspectCarButton lang =
 
         En ->
             "Garage / Inspect"
+
+
+{-| Simple car crash headline.
+-}
+crashHeadline : Language -> String
+crashHeadline lang =
+    case lang of
+        Fi ->
+            "Auts! Autosi hajosi kappaleiksi!"
+
+        En ->
+            "Ouch! Your car broke into pieces!"
 
 
 {-| Crash reason headline.

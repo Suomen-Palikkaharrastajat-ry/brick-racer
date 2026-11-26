@@ -304,7 +304,7 @@ viewCrashOrAlert data actions =
 
 
 viewCrashOverlay : Language -> { timer : Float, reason : CrashReason } -> HudActions msg -> Html msg
-viewCrashOverlay lang rec actions =
+viewCrashOverlay lang { timer } _ =
     div
         [ Tw.classes [ Tw.pointer_events_auto, Tw.flex, Tw.items_center, Tw.justify_center ]
         ]
@@ -315,22 +315,9 @@ viewCrashOverlay lang rec actions =
             , Attr.style "border-color" Brand.red
             ]
             [ div [ Tw.classes [ Tw.text_n2xl, Tw.font_extrabold ], Attr.style "color" "#f87171" ]
-                [ text (RI18n.crashReasonText lang rec.reason) ]
-            , div [ Tw.classes [ Tw.text_sm ], Attr.style "color" "#e2e8f0" ]
-                [ text
-                    ((if rec.reason == StructuralCollapse then
-                        RI18n.wreckedHint lang
-
-                      else
-                        RI18n.recoveryHint lang
-                     )
-                        ++ " ("
-                        ++ String.fromFloat (toFloat (round (max 0 rec.timer * 10)) / 10.0)
-                        ++ "s)"
-                    )
-                ]
-            , div [ Tw.classes [ Tw.flex, Tw.justify_center ] ]
-                [ Button.primaryOnDark actions.onRespawnCheckpoint (RI18n.resetCheckpointLabel lang) ]
+                [ text (RI18n.crashHeadline lang) ]
+            , div [ Tw.classes [ Tw.text_xl, Tw.font_bold ], Attr.style "color" "#fef08a" ]
+                [ text (String.fromFloat (toFloat (round (max 0 timer * 10)) / 10.0) ++ " s") ]
             ]
         ]
 
