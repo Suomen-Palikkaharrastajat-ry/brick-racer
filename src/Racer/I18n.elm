@@ -11,6 +11,7 @@ module Racer.I18n exposing
     , changeCarLabel
     , checkpointBanner
     , copyRoomLinkButton
+    , copySeedLabel
     , coursesHeading
     , crashReasonText
     , createGridRoomButton
@@ -20,6 +21,7 @@ module Racer.I18n exposing
     , dropHintLabel
     , dropZoneButton
     , editCarButton
+    , editSeedLabel
     , exitRaceLabel
     , finishedHeadline
     , garageClearanceLabel
@@ -41,8 +43,10 @@ module Racer.I18n exposing
     , leaveRoomButton
     , mapPickerLabels
     , mapTitle
+    , menuCourseTab
     , menuSubtitle
     , menuTitle
+    , menuWorldTab
     , metersToNextCheckpointLabel
     , needsFixBanner
     , needsPolishBanner
@@ -63,11 +67,14 @@ module Racer.I18n exposing
     , playerOptionsHeading
     , raceAgainButton
     , raceAnywayButton
+    , randomWorldLabel
     , readyToRaceBanner
     , recoveryHint
     , resetCheckpointLabel
     , reviewTab
+    , roomCodePlaceholder
     , scanQrButton
+    , scanQrLabel
     , seasonName
     , seedLabel
     , shareRaceUrlButton
@@ -78,6 +85,7 @@ module Racer.I18n exposing
     , splitScreenModeLabel
     , startMultiplayerRaceButton
     , startRaceButton
+    , steepnessLabel
     , steeringMechName
     , surfaceName
     , validationDetail
@@ -97,6 +105,7 @@ module Racer.I18n exposing
 import Game.MapParams exposing (Biome(..), MapParams, Season(..), WeatherKind(..))
 import Game.MapPicker as MapPicker
 import I18n exposing (Language(..))
+import Racer.Course exposing (Steepness(..))
 import Racer.Types exposing (CrashReason(..), SteeringMechanism(..), SurfaceType(..), ValidationCode(..))
 
 
@@ -254,6 +263,108 @@ mapTitle lang map =
         ++ String.fromInt map.seed
 
 
+{-| Main-menu tab that shows the course plan.
+-}
+menuCourseTab : Language -> String
+menuCourseTab lang =
+    case lang of
+        Fi ->
+            "Rata"
+
+        En ->
+            "Course"
+
+
+{-| Main-menu tab that shows the world buttons.
+-}
+menuWorldTab : Language -> String
+menuWorldTab lang =
+    case lang of
+        Fi ->
+            "Maailma"
+
+        En ->
+            "World"
+
+
+{-| Label of the dice button that rolls a new world.
+-}
+randomWorldLabel : Language -> String
+randomWorldLabel lang =
+    case lang of
+        Fi ->
+            "Arvo uusi maailma"
+
+        En ->
+            "Roll a new world"
+
+
+{-| Label of the button that copies the seed.
+-}
+copySeedLabel : Language -> String
+copySeedLabel lang =
+    case lang of
+        Fi ->
+            "Kopioi siemen"
+
+        En ->
+            "Copy seed"
+
+
+{-| Label of the small seed number that opens the seed editor.
+-}
+editSeedLabel : Language -> Int -> String
+editSeedLabel lang seed =
+    case lang of
+        Fi ->
+            "Siemen " ++ String.fromInt seed ++ ", muokkaa"
+
+        En ->
+            "Seed " ++ String.fromInt seed ++ ", edit"
+
+
+{-| Label of the slope button: the course's steepness and average gradient.
+-}
+steepnessLabel : Language -> Steepness -> Int -> String
+steepnessLabel lang steepness percent =
+    case ( lang, steepness ) of
+        ( Fi, Gentle ) ->
+            "Rinne: loiva, " ++ String.fromInt percent ++ " %"
+
+        ( Fi, Steep ) ->
+            "Rinne: jyrkkä, " ++ String.fromInt percent ++ " %"
+
+        ( En, Gentle ) ->
+            "Slope: gentle, " ++ String.fromInt percent ++ " %"
+
+        ( En, Steep ) ->
+            "Slope: steep, " ++ String.fromInt percent ++ " %"
+
+
+{-| Placeholder of the room code field.
+-}
+roomCodePlaceholder : Language -> String
+roomCodePlaceholder lang =
+    case lang of
+        Fi ->
+            "Huonekoodi"
+
+        En ->
+            "Room code"
+
+
+{-| Label of the button that scans a room QR code with the camera.
+-}
+scanQrLabel : Language -> String
+scanQrLabel lang =
+    case lang of
+        Fi ->
+            "Lue QR-koodi kameralla"
+
+        En ->
+            "Scan QR code with camera"
+
+
 {-| The words of the shared map picker.
 -}
 mapPickerLabels : Language -> MapPicker.Labels
@@ -402,10 +513,10 @@ startRaceButton : Language -> String
 startRaceButton lang =
     case lang of
         Fi ->
-            "Laske mäki alas!"
+            "Laske mäki alas"
 
         En ->
-            "Roll downhill!"
+            "Roll downhill"
 
 
 {-| Button to bypass non-blocking warnings cleanly.
@@ -1109,10 +1220,10 @@ openBuilderButton : Language -> String
 openBuilderButton lang =
     case lang of
         Fi ->
-            "Rakenna oma kärry!"
+            "Rakenna oma mäkiauto"
 
         En ->
-            "Build your own cart!"
+            "Build your own soapbox"
 
 
 {-| Subtext under open builder button.

@@ -40,6 +40,7 @@ import Ports
 import Racer.Analyze as Analyze exposing (CarMeshBundle)
 import Racer.Audio as Audio
 import Racer.Camera as RacerCamera
+import Racer.Course as Course
 import Racer.Editor as Editor
 import Racer.HUD as HUD exposing (HudAlert)
 import Racer.I18n as RI18n
@@ -248,6 +249,8 @@ type alias Model =
     , selection : Selection
     , map : MapParams
     , seedText : String
+    , editingSeed : Bool
+    , menuPanel : Garage.MenuPanel
     , lastMap : Maybe MapParams
     , cachedTrack : Maybe CachedTrack
     , language : Language
@@ -351,6 +354,13 @@ type Msg
     | PickSeason (Pick Season)
     | PickWeather (Pick WeatherKind)
     | ChangeSeed String
+    | SeedDraftChanged String
+    | StartSeedEdit
+    | CommitSeed
+    | CancelSeedEdit
+    | CopySeed
+    | ToggleSteepness
+    | SetMenuPanel Garage.MenuPanel
     | RandomSeed
     | UsePreviousMap
     | NewMap
@@ -382,22 +392,30 @@ type Msg
     | CamWheel Float
 
 
-{-| Default soapbox preset loaded on initial startup when no URL model hash is present.
+{-| Default car on startup when no URL model hash is present, and the car the
+menu falls back to: the pinewood starter base (11 parts, fixed wheel holders,
+4 wheels), as the editor's `.mpd` with its grouped base submodel, so "Build"
+opens it in the car editor (`Editor.baseOf` recognises it).
 -}
 defaultPreset : PresetBuild
 defaultPreset =
-    case Ingest.presets of
-        p :: _ ->
-            p
+    case Editor.starterPreset "pinewood-classic" of
+        Just preset ->
+            preset
 
-        [] ->
-            { id = "turntable-kart"
-            , nameEn = "Turntable GP Kart"
-            , nameFi = "Kääntöpöytä-karting"
-            , summaryEn = "Real front 2x2 turntable steering, balloon tires, and sloped nosecone."
-            , summaryFi = "Aito etuakselin kääntöpöytäohjaus, ilmakumirenkaat ja viisto keula."
-            , ldrText = ""
-            }
+        Nothing ->
+            case Ingest.presets of
+                p :: _ ->
+                    p
+
+                [] ->
+                    { id = "pinewood-classic"
+                    , nameEn = "Pinewood Plank Racer"
+                    , nameFi = "Klassinen mäkiauto"
+                    , summaryEn = ""
+                    , summaryFi = ""
+                    , ldrText = ""
+                    }
 
 
 {-| Initial fallback turntable garage state before asynchronous part caches settle.
@@ -465,12 +483,7 @@ init flags =
             defaultPreset
 
         initP2Preset =
-            case Ingest.findPresetById "pinewood-classic" of
-                Just p ->
-                    p
-
-                Nothing ->
-                    initPreset
+            initPreset
 
         initP2Garage =
             initGarageState initP2Preset lang
@@ -500,6 +513,8 @@ init flags =
                 , selection = initSelection
                 , map = initMap
                 , seedText = String.fromInt initSelection.seed
+                , editingSeed = False
+                , menuPanel = Garage.WorldPanel
                 , lastMap = Nothing
                 , cachedTrack = Nothing
                 , language = lang
@@ -1377,6 +1392,48 @@ update msg model =
 
                         Nothing ->
                             ( { model | seedText = rawStr, shareCopiedNotice = False }, Cmd.none )
+
+        SeedDraftChanged rawStr ->
+            ( { model | seedText = rawStr }, Cmd.none )
+
+        StartSeedEdit ->
+            ( { model | editingSeed = True, seedText = String.fromInt model.selection.seed }
+            , Task.attempt (\_ -> NoOp) (Dom.focus Garage.seedInputId)
+            )
+
+        CommitSeed ->
+            if model.editingSeed then
+                let
+                    ( nextModel, cmd ) =
+                        update (ChangeSeed model.seedText) { model | editingSeed = False }
+                in
+                ( { nextModel | seedText = String.fromInt nextModel.selection.seed }, cmd )
+
+            else
+                ( model, Cmd.none )
+
+        CancelSeedEdit ->
+            ( { model | editingSeed = False, seedText = String.fromInt model.selection.seed }, Cmd.none )
+
+        CopySeed ->
+            ( { model | shareCopiedNotice = True }
+            , GamePorts.copyShareUrl (String.fromInt model.map.seed)
+            )
+
+        ToggleSteepness ->
+            case seedWithOtherSteepness model.map of
+                Just seed ->
+                    let
+                        currentMap =
+                            model.map
+                    in
+                    applySelection (\_ -> exactSelection { currentMap | seed = seed }) model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        SetMenuPanel panel ->
+            ( { model | menuPanel = panel }, Cmd.none )
 
         RandomSeed ->
             applySelection (\sel -> { sel | seed = nextRandomSeed sel.seed }) model
@@ -2974,6 +3031,29 @@ applySelection change model =
             ( nextModel, Cmd.none )
 
 
+{-| The nearest seed after the map's own (in dice order) whose course has the
+other steepness, keeping the map's biome, season and weather; `Nothing` when
+none of the next 64 seeds has it.
+-}
+seedWithOtherSteepness : MapParams -> Maybe Int
+seedWithOtherSteepness map =
+    let
+        current =
+            Course.steepness map
+
+        search tries seed =
+            if tries <= 0 then
+                Nothing
+
+            else if Course.steepness { map | seed = seed } /= current then
+                Just seed
+
+            else
+                search (tries - 1) (nextRandomSeed seed)
+    in
+    search 64 (nextRandomSeed map.seed)
+
+
 {-| The next seed from the dice button, 1 to 999999.
 -}
 nextRandomSeed : Int -> Int
@@ -4288,6 +4368,8 @@ view model =
                 , selection = model.selection
                 , map = model.map
                 , seedText = model.seedText
+                , editingSeed = model.editingSeed
+                , menuPanel = model.menuPanel
                 , hasPreviousMap = model.lastMap /= Nothing && model.lastMap /= Just model.map
                 , leaderboard = model.leaderboard
                 , viewportWidth = model.viewportWidth
@@ -4308,7 +4390,13 @@ view model =
                 , onPickBiome = PickBiome
                 , onPickSeason = PickSeason
                 , onPickWeather = PickWeather
-                , onChangeSeed = ChangeSeed
+                , onToggleSteepness = ToggleSteepness
+                , onChangeSeed = SeedDraftChanged
+                , onStartSeedEdit = StartSeedEdit
+                , onCommitSeed = CommitSeed
+                , onCancelSeedEdit = CancelSeedEdit
+                , onCopySeed = CopySeed
+                , onSetMenuPanel = SetMenuPanel
                 , onRandomSeed = RandomSeed
                 , onUsePreviousMap = UsePreviousMap
                 , onSetPlayerModeTab = SetPlayerModeTab

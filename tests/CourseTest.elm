@@ -43,7 +43,21 @@ violations check =
 suite : Test
 suite =
     describe "Racer.Course"
-        [ test "knot count is 8 or 9 and matches the course" <|
+        [ test "every biome has both gentle and steep courses among the test seeds" <|
+            \_ ->
+                [ Farmland, Boreal, Fell, Desert ]
+                    |> List.filter
+                        (\biome ->
+                            let
+                                kinds =
+                                    maps
+                                        |> List.filter (\m -> m.biome == biome)
+                                        |> List.map Course.steepness
+                            in
+                            not (List.member Course.Gentle kinds && List.member Course.Steep kinds)
+                        )
+                    |> Expect.equal []
+        , test "knot count is 8 or 9 and matches the course" <|
             \_ ->
                 Expect.equal []
                     (violations

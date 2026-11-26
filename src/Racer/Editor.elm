@@ -11,6 +11,7 @@ module Racer.Editor exposing
     , palette
     , parts
     , presets
+    , starterPreset
     , wheelParts
     )
 
@@ -623,6 +624,42 @@ overlaps a b =
             getter a.max - slack <= getter b.min || getter b.max - slack <= getter a.min
     in
     not (apart Vec3.getX 2 || apart Vec3.getY (studHeight + 1) || apart Vec3.getZ 2)
+
+
+{-| A starter base as a ready-to-race preset: the starter's `.mpd` text, so
+the car keeps its grouped base submodel and `baseOf` recognises it when the
+garage reopens it in the editor. The summaries come from the built-in preset
+of the same id, when there is one.
+-}
+starterPreset : String -> Maybe PresetBuild
+starterPreset id =
+    let
+        starterText =
+            StarterBases.all
+                |> List.filter (\s -> String.replace ".mpd" "" s.file == id)
+                |> List.head
+                |> Maybe.map .text
+
+        base =
+            bases
+                |> List.filter (\b -> b.id == id)
+                |> List.head
+
+        summaries =
+            Ingest.findPresetById id
+    in
+    Maybe.map2
+        (\text b ->
+            { id = b.id
+            , nameEn = b.nameEn
+            , nameFi = b.nameFi
+            , summaryEn = summaries |> Maybe.map .summaryEn |> Maybe.withDefault ""
+            , summaryFi = summaries |> Maybe.map .summaryFi |> Maybe.withDefault ""
+            , ldrText = text
+            }
+        )
+        starterText
+        base
 
 
 {-| Built-in starter soapbox presets ready to inspect and race.

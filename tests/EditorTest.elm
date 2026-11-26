@@ -77,6 +77,12 @@ suite =
                     , \bs -> Expect.equal (List.map .id bs) (List.filterMap (\b -> Editor.baseOf b.document |> Maybe.map .id) bs)
                     ]
                     Editor.bases
+        , test "the startup car is the pinewood starter base, and the editor recognises it" <|
+            \_ ->
+                Editor.starterPreset "pinewood-classic"
+                    |> Maybe.andThen (\p -> Editor.baseOf (Document.parse p.ldrText))
+                    |> Maybe.map .id
+                    |> Expect.equal (Just "pinewood-classic")
         , describe "every part added to every base keeps the car drivable"
             (Editor.bases |> List.map partsOnBaseTest)
         , describe "a base with added parts" (List.map builtCarTest Editor.bases)

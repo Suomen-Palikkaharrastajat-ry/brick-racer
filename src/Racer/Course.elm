@@ -1,7 +1,10 @@
 module Racer.Course exposing
     ( CourseParams
+    , Steepness(..)
     , courseParams
     , generateKnots
+    , gradientPercent
+    , steepness
     )
 
 {-| Seeded course blueprints for a map.
@@ -25,6 +28,10 @@ checkpoints, ramps, loops and scenery stay as they are:
     forward;
   - surfaces change in runs of two knots;
   - washes and launch ramps sit on middle knots, never next to each other.
+
+`steepness` sorts a course into gentle or steep against the middle of its
+biome's drop and length ranges, for the main menu's slope icon. It reads the
+same draws, so it does not change any course.
 
 -}
 
@@ -135,6 +142,46 @@ courseParams map =
     , ramps = shape.ramps
     , surfaces = shape.surfaces
     }
+
+
+{-| Whether a course falls more or less than the middle course of its biome.
+-}
+type Steepness
+    = Gentle
+    | Steep
+
+
+{-| The steepness of a map's course: `Steep` when its drop per metre is at
+least that of a course with the middle length and drop of its biome.
+-}
+steepness : MapParams -> Steepness
+steepness map =
+    let
+        shape =
+            shapeOf map.biome
+
+        middle ( lo, hi ) =
+            (lo + hi) / 2
+
+        cp =
+            courseParams map
+    in
+    if cp.dropM / max 1 cp.lengthM >= middle shape.dropM / max 1 (middle shape.lengthM) then
+        Steep
+
+    else
+        Gentle
+
+
+{-| The average gradient of a map's course, drop over length, in whole percent.
+-}
+gradientPercent : MapParams -> Int
+gradientPercent map =
+    let
+        cp =
+            courseParams map
+    in
+    round (100 * cp.dropM / max 1 cp.lengthM)
 
 
 {-| The blueprint knots of a course, in order from the start to the finish.
