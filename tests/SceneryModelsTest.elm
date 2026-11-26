@@ -6,10 +6,17 @@ editor's dock, and the seeded placement keeps the pieces off the road, off the
 start pad, clear of the checkpoint and finish arches and clear of the ramps.
 -}
 
+import Dict
 import Expect
+import Game.BrickModels as BrickModels
+import Game.BrickProps as BrickProps
 import Game.MapParams as Map
+import LDraw.Geometry as Geometry
+import LDraw.Parser as Parser
+import LDraw.Resolve exposing (PartStatus(..))
 import Math.Vector3 as Vec3
 import Racer.Editor as Editor
+import Racer.Scenery as Scenery
 import Racer.SceneryModels as SceneryModels
 import Racer.Track as Track
 import Racer.Types exposing (ObstacleKind(..))
@@ -32,6 +39,10 @@ suite =
             (List.concatMap (\id -> List.map (verifyPlacement id) [ 7, 42, 99, 1234 ]) courseBiomes)
         , describe "Every course has some of them"
             (List.map verifyPresence courseBiomes)
+        , describe "Static mesh optimization & BFC certification"
+            [ verifyBfcCertification
+            , verifySceneryPropDetailOptions
+            ]
         ]
 
 
@@ -267,3 +278,83 @@ verifyPresence id =
                         [ 7, 42, 99 ]
             in
             Expect.atLeast 3 (List.minimum counts |> Maybe.withDefault 0)
+
+
+verifyBfcCertification : Test
+verifyBfcCertification =
+    test "every 1:1 scenery model certifies BFC CCW for back-face culling" <|
+        \_ ->
+            SceneryModels.all
+                |> List.all (\( _, ldr ) -> String.contains "0 BFC CERTIFY CCW" ldr)
+                |> Expect.equal True
+
+
+verifySceneryPropDetailOptions : Test
+verifySceneryPropDetailOptions =
+    test "Racer.Scenery.refresh uses BoxStuds without hollows on 1:1 structures and keeps full detail on single parts" <|
+        \_ ->
+            let
+                studPart =
+                    -- 10 quads (20 tris) modeling a simplified cylindrical stud (>= BoxStuds's 10 tris)
+                    Parser.parseFile
+                        (String.join "\n"
+                            ([ "0 BFC CERTIFY CCW" ]
+                                ++ List.repeat 10 "4 16 -4 0 -4 4 0 -4 4 -4 4 -4 -4 4"
+                            )
+                        )
+
+                hollowPart =
+                    Parser.parseFile "0 BFC CERTIFY CCW\n4 16 -2 0 -2 2 0 -2 2 8 2 -2 8 2"
+
+                brickWithDetails =
+                    Parser.parseFile
+                        (String.join "\n"
+                            [ "0 BFC CERTIFY CCW"
+                            , "4 16 -20 0 -20 20 0 -20 20 24 20 -20 24 20"
+                            , "1 16 0 0 0 1 0 0 0 1 0 0 0 1 stud.dat"
+                            , "1 16 0 0 0 1 0 0 0 1 0 0 0 1 48/stud2a.dat"
+                            , "1 16 0 0 0 1 0 0 0 1 0 0 0 1 stud4.dat"
+                            , "2 24 -20 0 -20 20 0 -20"
+                            ]
+                        )
+
+                allPartNames =
+                    List.map .file Editor.parts
+                        ++ [ "2412b.dat", "2423.dat", "3002.dat", "3005.dat", "3010.dat", "3020.dat", "3021.dat", "3022.dat", "3023.dat", "3024.dat", "3039.dat", "3062b.dat", "3068b.dat", "3070b.dat", "3471.dat", "3623.dat", "3641.dat", "3660b.dat", "3795.dat", "3942c.dat", "3957a.dat", "54200.dat", "56890.dat", "56891.dat", "6014b.dat", "6141.dat", "87580.dat" ]
+
+                cache =
+                    allPartNames
+                        |> List.map (\n -> ( n, Loaded brickWithDetails ))
+                        |> (++)
+                            [ ( "stud.dat", Loaded studPart )
+                            , ( "48/stud2a.dat", Loaded studPart )
+                            , ( "stud4.dat", Loaded hollowPart )
+                            ]
+                        |> Dict.fromList
+
+                fullGarage =
+                    BrickProps.build SceneryModels.pitGarage cache
+
+                refreshed =
+                    Scenery.refresh cache Scenery.empty
+            in
+            Expect.all
+                [ \_ -> Expect.equal Geometry.BoxStuds (Scenery.propDetailOptions "pitGarage").studs
+                , \_ -> Expect.equal False (Scenery.propDetailOptions "pitGarage").includeHollows
+                , \_ -> Expect.equal True (Scenery.propDetailOptions "pitGarage").includeLines
+                , \_ -> Expect.equal Geometry.FullStuds (Scenery.propDetailOptions "3001.dat").studs
+                , \_ -> Expect.equal True (Scenery.propDetailOptions "3004.dat").includeHollows
+                , \_ ->
+                    Dict.get "pitGarage" refreshed.props
+                        |> Maybe.map (\p -> ( p.triangleCount < fullGarage.triangleCount, p.scene.bfcCertified ))
+                        |> Expect.equal (Just ( True, True ))
+                , \_ ->
+                    let
+                        fullBrick =
+                            BrickProps.build (BrickModels.singlePart "3001.dat") cache
+                    in
+                    Dict.get "3001.dat" refreshed.props
+                        |> Maybe.map .triangleCount
+                        |> Expect.equal (Just fullBrick.triangleCount)
+                ]
+                ()

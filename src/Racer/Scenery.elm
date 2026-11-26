@@ -6,6 +6,7 @@ module Racer.Scenery exposing
     , debrisEntities
     , empty
     , obstacleEntities
+    , propDetailOptions
     , refresh
     )
 
@@ -30,6 +31,7 @@ import Game.BrickLook as BrickLook
 import Game.BrickModels as BrickModels
 import Game.BrickProps as BrickProps exposing (PropModel)
 import Game.MapParams exposing (Season(..))
+import LDraw.Geometry as Geometry
 import LDraw.Resolve exposing (PartCache)
 import Math.Matrix4 as Mat4 exposing (Mat4)
 import Math.Vector3 as Vec3 exposing (Vec3, vec3)
@@ -84,12 +86,33 @@ debrisPart =
     "3004.dat"
 
 
+{-| Geometry detail options per scenery prop name: standalone arch and crash
+debris single bricks keep full studs and undersides because they tumble or form
+overhangs in isolation, while assembled roadside props and 1:1 buildings use
+lightweight `BoxStuds` and omit hidden `stud3*`/`stud4*` underside hollows while
+retaining seam edge lines for close-up passes.
+-}
+propDetailOptions : String -> Geometry.DetailOptions
+propDetailOptions name =
+    if String.endsWith ".dat" name then
+        BrickProps.defaultDetailOptions
+
+    else
+        { flipYZ = True
+        , trackInherit = True
+        , studs = Geometry.BoxStuds
+        , includeHollows = False
+        , includeLines = True
+        , includeConditionals = False
+        }
+
+
 {-| Build every model whose parts have all arrived, and list the part files
 still to fetch (marked as loading in the returned cache).
 -}
 refresh : PartCache -> Props -> { props : Props, cache : PartCache, fetch : List String }
 refresh =
-    BrickProps.refresh sources
+    BrickProps.refreshWith propDetailOptions sources
 
 
 

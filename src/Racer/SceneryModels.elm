@@ -90,7 +90,7 @@ part colour ( x, y, z ) turn file =
 
 model : String -> List String -> String
 model name lines =
-    String.join "\n" (("0 " ++ name) :: "0 Author: Brick Racer" :: lines)
+    String.join "\n" (("0 " ++ name) :: "0 Author: Brick Racer" :: "0 BFC CERTIFY CCW" :: lines)
 
 
 layerY : Int -> Float
