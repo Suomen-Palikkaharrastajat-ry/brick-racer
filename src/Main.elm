@@ -536,6 +536,7 @@ init flags =
                     , brake = False
                     , tuck = False
                     , drift = False
+                    , steerTouch = TouchBrake.none
                     }
                 , tilt =
                     { enabled = False
