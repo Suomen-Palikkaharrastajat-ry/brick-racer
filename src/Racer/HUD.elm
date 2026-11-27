@@ -26,6 +26,7 @@ import I18n exposing (Language)
 import Json.Decode as Decode
 import Math.Vector3 as Vec3
 import Racer.I18n as RI18n
+import Racer.TouchBrake as TouchBrake
 import Racer.Types exposing (CrashReason(..), PhysicsState, SteeringMechanism(..), VehicleSpec, WheelSpec)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgA
@@ -68,6 +69,7 @@ type alias HudViewData =
     , touchBrakeHeld : Bool
     , touchTuckHeld : Bool
     , touchDriftHeld : Bool
+    , steerBrakeActive : Bool
     }
 
 
@@ -77,8 +79,8 @@ type alias HudActions msg =
     { onGoMenu : msg
     , onRespawnCheckpoint : msg
     , onToggleAudio : msg
-    , onTouchSteerLeft : Bool -> msg
-    , onTouchSteerRight : Bool -> msg
+    , onTouchSteerLeft : TouchBrake.PadPress -> msg
+    , onTouchSteerRight : TouchBrake.PadPress -> msg
     , onTouchBrake : Bool -> msg
     , onTouchTuck : Bool -> msg
     , onTouchDrift : Bool -> msg
@@ -1044,15 +1046,68 @@ viewTouchControls data actions =
             , Html.Events.on "pointercancel" (Decode.succeed (setter False))
             , Html.Events.on "pointerleave" (Decode.succeed (setter False))
             ]
+
+        -- Steer pads also report the pointer type, so a finger brakes too.
+        steerEvents setter =
+            [ Html.Events.preventDefaultOn "pointerdown" (TouchBrake.padPressDecoder True |> Decode.map (\p -> ( setter p, True )))
+            , Html.Events.on "pointerup" (TouchBrake.padPressDecoder False |> Decode.map setter)
+            , Html.Events.on "pointercancel" (TouchBrake.padPressDecoder False |> Decode.map setter)
+            , Html.Events.on "pointerleave" (TouchBrake.padPressDecoder False |> Decode.map setter)
+            ]
     in
     div [ Attr.attribute "data-testid" "hud-touch-controls", Tw.classes [ Tw.flex, Tw.items_end, Tw.justify_between, Tw.w_full, Tw.mb Th.s1 ] ]
-        [ div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
-            [ button (Attr.type_ "button" :: holdEvents actions.onTouchSteerLeft ++ padStyle data.touchLeftHeld) [ text "◀" ]
-            , button (Attr.type_ "button" :: holdEvents actions.onTouchSteerRight ++ padStyle data.touchRightHeld) [ text "▶" ]
+        [ div [ Tw.classes [ Tw.flex, Tw.flex_col, Tw.items_start, Tw.gap Th.s2 ] ]
+            [ viewSteerBrakeIndicator lang data.steerBrakeActive
+            , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2 ] ]
+                [ button (Attr.type_ "button" :: steerEvents actions.onTouchSteerLeft ++ padStyle data.touchLeftHeld) [ text "◀" ]
+                , button (Attr.type_ "button" :: steerEvents actions.onTouchSteerRight ++ padStyle data.touchRightHeld) [ text "▶" ]
+                ]
             ]
         , div [ Tw.classes [ Tw.flex, Tw.gap Th.s2, Tw.items_center ] ]
             [ button (Attr.type_ "button" :: holdEvents actions.onTouchDrift ++ padStyle data.touchDriftHeld) [ text (RI18n.handbrakeHint lang) ]
             , button (Attr.type_ "button" :: holdEvents actions.onTouchTuck ++ padStyle data.touchTuckHeld) [ text "▲" ]
             , button (Attr.type_ "button" :: holdEvents actions.onTouchBrake ++ padStyle data.touchBrakeHeld) [ text "■" ]
             ]
+        ]
+
+
+{-| Red "braking" pill with a stop-sign icon, shown above the steer pads while
+a finger holds one of them. It keeps its space when hidden, so the pads do not
+jump when braking starts.
+-}
+viewSteerBrakeIndicator : Language -> Bool -> Html msg
+viewSteerBrakeIndicator lang active =
+    div
+        [ Attr.attribute "data-testid" "hud-steer-brake"
+        , Attr.attribute "role" "status"
+        , Attr.attribute "aria-hidden"
+            (if active then
+                "false"
+
+             else
+                "true"
+            )
+        , Tw.classes
+            [ Tw.flex
+            , Tw.items_center
+            , Tw.gap Th.s1
+            , Tw.px Th.s3
+            , Tw.py Th.s1
+            , Tw.rounded_full
+            , Tw.font_bold
+            , Tw.text_sm
+            , Tw.text_simple Th.white
+            , Tw.pointer_events_none
+            ]
+        , Attr.style "background" "rgba(220, 38, 38, 0.85)"
+        , Attr.style "visibility"
+            (if active then
+                "visible"
+
+             else
+                "hidden"
+            )
+        ]
+        [ FeatherIcons.octagon |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml []
+        , span [] [ text (RI18n.steerBrakeLabel lang) ]
         ]

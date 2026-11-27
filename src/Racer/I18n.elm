@@ -87,6 +87,7 @@ module Racer.I18n exposing
     , startMultiplayerRaceButton
     , startRaceButton
     , steepnessLabel
+    , steerBrakeLabel
     , steeringMechName
     , surfaceName
     , validationDetail
@@ -1189,6 +1190,18 @@ handbrakeHint lang =
 
         En ->
             "DRIFT"
+
+
+{-| Label of the HUD indicator shown while a finger on a steer pad brakes.
+-}
+steerBrakeLabel : Language -> String
+steerBrakeLabel lang =
+    case lang of
+        Fi ->
+            "Jarrutus"
+
+        En ->
+            "BRAKING"
 
 
 {-| Heading of the menu card that opens the car editor.

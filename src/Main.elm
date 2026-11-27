@@ -53,6 +53,7 @@ import Racer.Scenery as Scenery
 import Racer.TerrainMesh as TerrainMesh exposing (TrackRenderBundle)
 import Racer.TerrainShader as TerrainShader exposing (DebrisPiece, TerrainVertex)
 import Racer.TiltPitch as TiltPitch
+import Racer.TouchBrake as TouchBrake
 import Racer.Track as Track
 import Racer.Types
     exposing
@@ -211,6 +212,7 @@ type alias TouchState =
     , brake : Bool
     , tuck : Bool
     , drift : Bool
+    , steerTouch : TouchBrake.SteerTouch
     }
 
 
@@ -377,8 +379,8 @@ type Msg
     | TiltStatusChanged { available : Bool, enabled : Bool }
     | TiltSteerChanged Float
     | TiltOrientation { available : Bool, gamma : Float, beta : Float }
-    | TouchSteerLeft Bool
-    | TouchSteerRight Bool
+    | TouchSteerLeft TouchBrake.PadPress
+    | TouchSteerRight TouchBrake.PadPress
     | TouchBrake Bool
     | TouchTuck Bool
     | TouchDrift Bool
@@ -1704,19 +1706,19 @@ update msg model =
             else
                 ( model, Cmd.none )
 
-        TouchSteerLeft held ->
+        TouchSteerLeft pad ->
             let
                 t =
                     model.touch
             in
-            ( { model | touch = { t | left = held } }, Cmd.none )
+            ( { model | touch = { t | left = pad.held, steerTouch = TouchBrake.press TouchBrake.Left pad t.steerTouch } }, Cmd.none )
 
-        TouchSteerRight held ->
+        TouchSteerRight pad ->
             let
                 t =
                     model.touch
             in
-            ( { model | touch = { t | right = held } }, Cmd.none )
+            ( { model | touch = { t | right = pad.held, steerTouch = TouchBrake.press TouchBrake.Right pad t.steerTouch } }, Cmd.none )
 
         TouchBrake held ->
             let
@@ -3529,12 +3531,13 @@ sampleP1Input model =
         leanX =
             steer * 0.85
     in
-    { steer = steer
-    , brake = brake
-    , handbrake = handbrake
-    , aeroTuck = aeroTuck
-    , leanX = leanX
-    }
+    TouchBrake.withSteerBrake model.touch.steerTouch
+        { steer = steer
+        , brake = brake
+        , handbrake = handbrake
+        , aeroTuck = aeroTuck
+        , leanX = leanX
+        }
 
 
 sampleP2Input : Model -> InputState
@@ -4306,6 +4309,7 @@ emptyTouch =
     , brake = False
     , tuck = False
     , drift = False
+    , steerTouch = TouchBrake.none
     }
 
 
@@ -4512,6 +4516,7 @@ view model =
                                     , touchBrakeHeld = False
                                     , touchTuckHeld = False
                                     , touchDriftHeld = False
+                                    , steerBrakeActive = False
                                     }
                                 }
                             )
@@ -4550,6 +4555,7 @@ view model =
                         , touchBrakeHeld = model.touch.brake
                         , touchTuckHeld = model.touch.tuck
                         , touchDriftHeld = model.touch.drift
+                        , steerBrakeActive = TouchBrake.braking model.touch.steerTouch
                         }
                         { onGoMenu = BackToMenu
                         , onRespawnCheckpoint = RespawnCheckpoint

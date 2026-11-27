@@ -15,6 +15,7 @@ import Math.Vector3 as Vec3 exposing (vec3)
 import Racer.Analyze as Analyze
 import Racer.Ingest as Ingest
 import Racer.Physics as Physics
+import Racer.TouchBrake as TouchBrake
 import Racer.Track as Track
 import Racer.Types
     exposing
@@ -137,6 +138,38 @@ suite =
                         simulateSteps 120 track spec { neutralInput | brake = 1.0 } sFast
                 in
                 Expect.lessThan 2.5 (Vec3.length sBraked.velocity)
+        , test "Touching a steer pad slows the car more over one second than steering alone" <|
+            \_ ->
+                let
+                    track =
+                        buildFlatTestTrack 0.0 400.0
+
+                    spec =
+                        loadSpec "pinewood-classic"
+
+                    s0 =
+                        Physics.initPhysics track spec
+
+                    sFast =
+                        { s0 | velocity = vec3 0 0 12.0 }
+
+                    steerOnly =
+                        { neutralInput | steer = -1.0, leanX = -0.85 }
+
+                    fingerOnPad =
+                        TouchBrake.press TouchBrake.Left { held = True, touch = True } TouchBrake.none
+
+                    sSteered =
+                        simulateSteps 60 track spec steerOnly sFast
+
+                    sTouchBraked =
+                        simulateSteps 60 track spec (TouchBrake.withSteerBrake fingerOnPad steerOnly) sFast
+                in
+                Expect.all
+                    [ \_ -> Expect.equal True (TouchBrake.braking fingerOnPad)
+                    , \_ -> Expect.lessThan (Vec3.length sSteered.velocity - 3.0) (Vec3.length sTouchBraked.velocity)
+                    ]
+                    ()
         , test "User soapbox b/HYux... descends downhill smoothly without bouncing or losing integrity" <|
             \_ ->
                 let
