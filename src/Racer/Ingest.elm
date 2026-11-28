@@ -3,6 +3,7 @@ module Racer.Ingest exposing
     , IngestError(..)
     , ParsedHash
     , decodeRaceInput
+    , encodeBuildLink
     , encodeGarageHash
     , encodeRaceHash
     , findPresetById
@@ -164,6 +165,18 @@ documentResult defaultName maybeMap isGarage doc =
             , map = maybeMap
             , isGarage = isGarage
             }
+
+
+{-| Encode an LDraw document as a compact `#b/...` build link (no map code),
+the form a built car is copied and shared in.
+-}
+encodeBuildLink : Document -> String
+encodeBuildLink doc =
+    HashPayload.encode { mode = HashPayload.FreeBuilding, document = doc, kit = Nothing }
+        |> Flate.deflate
+        |> Base64.fromBytes
+        |> Maybe.map (\b64 -> "#b/" ++ HashPayload.standardToBase64Url b64)
+        |> Maybe.withDefault ""
 
 
 {-| Encode a map and an LDraw document into a shareable `#map=<code>&b/...` hash.

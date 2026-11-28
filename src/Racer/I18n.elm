@@ -10,6 +10,7 @@ module Racer.I18n exposing
     , carsAndBasesTab
     , changeCarLabel
     , checkpointBanner
+    , copyBuildCodeButton
     , copyRoomLinkButton
     , copySeedLabel
     , coursesHeading
@@ -1314,6 +1315,16 @@ carsAndBasesTab lang =
 
 {-| Tab label for opening builds in builder.
 -}
+copyBuildCodeButton : Language -> String
+copyBuildCodeButton lang =
+    case lang of
+        Fi ->
+            "Kopioi rakennelman koodi"
+
+        En ->
+            "Copy build code"
+
+
 openBuildTab : Language -> String
 openBuildTab lang =
     case lang of

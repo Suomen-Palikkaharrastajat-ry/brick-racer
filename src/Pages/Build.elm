@@ -114,6 +114,7 @@ type Msg
     | CanvasTapped
     | CatalogFilterChanged String
     | SubmitPaste
+    | CopyBuildCode
     | RequestFileUpload
     | OpenQrScanner
     | LoadExternalDocument Document (Maybe Base)
@@ -648,6 +649,12 @@ updateModel msg model =
 
         PasteTextChanged textVal ->
             ( { model | pasteText = textVal, pasteError = Nothing }, Cmd.none, Stay )
+
+        CopyBuildCode ->
+            ( model
+            , GamePorts.copyShareUrl (Ingest.encodeBuildLink (Core.getDocument model.studio))
+            , Stay
+            )
 
         PaletteLeft ->
             stay ( model, Cmd.none )
@@ -1886,6 +1893,21 @@ viewImportDrawer model =
                     ]
                     [ text (RI18n.pasteButtonLabel lang) ]
                 ]
+            , button
+                [ Attr.type_ "button"
+                , onClick CopyBuildCode
+                , Attr.attribute "data-testid" "copy-build-code"
+                , Attr.style "align-self" "flex-start"
+                , Attr.style "padding" "6px 12px"
+                , Attr.style "border-radius" "8px"
+                , Attr.style "background" "rgba(15, 23, 42, 0.8)"
+                , Attr.style "color" Brand.legoWhite
+                , Attr.style "font-weight" "700"
+                , Attr.style "font-size" "12px"
+                , Attr.style "cursor" "pointer"
+                , Attr.style "border" "1px solid rgba(148, 163, 184, 0.3)"
+                ]
+                [ text (RI18n.copyBuildCodeButton lang) ]
             , case model.pasteError of
                 Just err ->
                     div [ Attr.style "color" "#ef4444", Attr.style "font-size" "12px" ] [ text err ]
