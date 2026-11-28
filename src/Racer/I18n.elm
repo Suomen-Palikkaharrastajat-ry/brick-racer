@@ -1,6 +1,9 @@
 module Racer.I18n exposing
     ( audioMutedLabel
     , audioUnmutedLabel
+    , baseLockCaption
+    , baseLockedLabel
+    , baseUnlockedLabel
     , basesTab
     , biomeName
     , bothPlayersReady
@@ -42,6 +45,9 @@ module Racer.I18n exposing
     , garageTooFewWheelsHint
     , garageWheelsLabel
     , goBanner
+    , groupDisabledLabel
+    , groupLockedLabel
+    , groupOpenLabel
     , handbrakeHint
     , hotSeatSingleDesc
     , hotSeatSplitDesc
@@ -1752,3 +1758,79 @@ restoreBuildLabel lang name =
 
         En ->
             "Restore build: " ++ name
+
+
+
+-- GROUPING LOCK AND BASE LOCK (the car editor's palette row)
+
+
+{-| Grouping lock button when the selection is exactly one group.
+-}
+groupLockedLabel : Language -> String
+groupLockedLabel lang =
+    case lang of
+        Fi ->
+            "Ryhmä lukittu (paina vapauttaaksesi palikat)"
+
+        En ->
+            "Group locked (press to release the bricks)"
+
+
+{-| Grouping lock button when the selection can be merged into one group.
+-}
+groupOpenLabel : Language -> String
+groupOpenLabel lang =
+    case lang of
+        Fi ->
+            "Ryhmä auki (paina lukitaksesi valitut palikat yhdeksi ryhmäksi)"
+
+        En ->
+            "Group open (press to lock the selected bricks into one group)"
+
+
+{-| Grouping lock button when nothing is selected.
+-}
+groupDisabledLabel : Language -> String
+groupDisabledLabel lang =
+    case lang of
+        Fi ->
+            "Valitse palikoita ryhmitelläksesi ne"
+
+        En ->
+            "Select bricks to group them"
+
+
+{-| Base lock button while the starter base is locked.
+-}
+baseLockedLabel : Language -> String
+baseLockedLabel lang =
+    case lang of
+        Fi ->
+            "Alusta lukittu (paina avataksesi alustan muokkaus)"
+
+        En ->
+            "Base locked (press to unlock and edit the chassis)"
+
+
+{-| Base lock button while the starter base is unlocked.
+-}
+baseUnlockedLabel : Language -> String
+baseUnlockedLabel lang =
+    case lang of
+        Fi ->
+            "Alusta avattu (paina lukitaksesi alusta)"
+
+        En ->
+            "Base unlocked (press to lock the chassis)"
+
+
+{-| Short caption under the base lock icon.
+-}
+baseLockCaption : Language -> String
+baseLockCaption lang =
+    case lang of
+        Fi ->
+            "Alusta"
+
+        En ->
+            "Base"

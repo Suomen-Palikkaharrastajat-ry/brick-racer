@@ -1,6 +1,6 @@
 import './main.css'
 import { bootGame } from './vendor/packages/brick-frame-game/runtime/game-boot.js'
-import { initThumbnails } from './vendor/packages/brick-frame-viewport/runtime/thumbnail-pipeline.js'
+import { initGameThumbnails } from './thumbnails.js'
 import { createAudioEngine } from './audio.js'
 import { Elm } from './src/Main.elm'
 import { tiltSteerOptions } from './steer-mode.js'
@@ -43,8 +43,9 @@ const { ports } = bootGame({
 
 // Part pictures for the car editor's dock (`Pages.Build`) and pictures of
 // whole bases and saved builds, from the same catalog the game loads its parts
-// from.
-initThumbnails(ports, import.meta.env.VITE_LDRAW_BASE || 'https://catalog.palikkaharrastajat.fi/raw')
+// from. The base pictures do not wait behind the dock's part pictures
+// (see thumbnails.js).
+initGameThumbnails(ports, import.meta.env.VITE_LDRAW_BASE || 'https://catalog.palikkaharrastajat.fi/raw')
 
 // The car editor's build history (`Game.BuildHistory`): saved on every change,
 // handed back to Elm at start-up. Storage may be blocked (private mode, full

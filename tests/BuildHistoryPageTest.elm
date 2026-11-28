@@ -206,6 +206,63 @@ suite =
                                 |> List.map .key
                                 |> List.member ("base:" ++ first.id)
                                 |> Expect.equal False
+                    , test "every base picture is asked for as soon as the editor opens, before the drawer does" <|
+                        \_ ->
+                            Expect.all
+                                [ \m -> Expect.equal BuildBricksTab m.activeTab
+                                , \m ->
+                                    Build.previewRequests m
+                                        |> List.map .key
+                                        |> Expect.equal (List.map (\b -> "base:" ++ b.id) Editor.bases)
+                                ]
+                                opened
+                    , test "only the bases without a picture are asked for" <|
+                        \_ ->
+                            opened
+                                |> step (ModelPreviewLoaded { key = "base:" ++ first.id, url = "data:image/png;base64,AAAA" })
+                                |> step (ModelPreviewLoaded { key = "base:" ++ second.id, url = "data:image/png;base64,BBBB" })
+                                |> Build.previewRequests
+                                |> List.map .key
+                                |> Expect.equal
+                                    (Editor.bases
+                                        |> List.filter (\b -> b.id /= first.id && b.id /= second.id)
+                                        |> List.map (\b -> "base:" ++ b.id)
+                                    )
+                    , test "a base card shows the bundled picture until its live picture arrives" <|
+                        \_ ->
+                            opened
+                                |> step (SelectTab BasesTab)
+                                |> Build.view
+                                |> Query.fromHtml
+                                |> Query.find [ Selector.attribute (Html.Attributes.attribute "data-base" first.id) ]
+                                |> Query.has [ Selector.attribute (Html.Attributes.attribute "data-preview" "bundled") ]
+                    , test "the live picture replaces the bundled one on its card only" <|
+                        \_ ->
+                            let
+                                drawer =
+                                    opened
+                                        |> step (SelectTab BasesTab)
+                                        |> step (ModelPreviewLoaded { key = "base:" ++ first.id, url = "data:image/png;base64,AAAA" })
+                                        |> Build.view
+                                        |> Query.fromHtml
+
+                                card id =
+                                    Query.find [ Selector.attribute (Html.Attributes.attribute "data-base" id) ] drawer
+                            in
+                            Expect.all
+                                [ \_ ->
+                                    card first.id
+                                        |> Query.find [ Selector.attribute (Html.Attributes.attribute "data-preview" "rendered") ]
+                                        |> Query.has [ Selector.tag "img", Selector.attribute (Html.Attributes.src "data:image/png;base64,AAAA") ]
+                                , \_ ->
+                                    card first.id
+                                        |> Query.findAll [ Selector.attribute (Html.Attributes.attribute "data-preview" "bundled") ]
+                                        |> Query.count (Expect.equal 0)
+                                , \_ ->
+                                    card second.id
+                                        |> Query.has [ Selector.attribute (Html.Attributes.attribute "data-preview" "bundled") ]
+                                ]
+                                ()
                     , test "a base card shows its rendered picture once it arrives" <|
                         \_ ->
                             opened

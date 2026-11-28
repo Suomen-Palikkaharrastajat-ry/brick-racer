@@ -237,6 +237,10 @@ init config maybeBase doc =
         [ Cmd.map StudioMsg studioCmd
         , Cmd.map StudioMsg fitCmd
         , sizeCmd
+
+        -- The base pictures are asked for as soon as the bases are known, not
+        -- only when the drawer opens, so the cards are live when it does.
+        , sendPreviewRequests sized
         , requestThumbnails sized
         , Task.perform ClockTick Time.now
         ]
@@ -493,7 +497,8 @@ saveSnapshot model =
 
 
 {-| The picture requests the bases drawer still needs: every starter base and
-every saved build without a picture yet. Asked for whenever the drawer opens.
+every saved build without a picture yet (one already known is never asked for
+again). Asked for when the editor opens and again whenever the drawer opens.
 -}
 previewRequests : Model -> List ModelPreview.Request
 previewRequests model =
@@ -519,15 +524,20 @@ previewRequests model =
 requestPreviews : Model -> Cmd Msg
 requestPreviews model =
     if model.activeTab == BasesTab then
-        case previewRequests model of
-            [] ->
-                Cmd.none
-
-            requests ->
-                Ports.requestModelThumbnails requests
+        sendPreviewRequests model
 
     else
         Cmd.none
+
+
+sendPreviewRequests : Model -> Cmd Msg
+sendPreviewRequests model =
+    case previewRequests model of
+        [] ->
+            Cmd.none
+
+        requests ->
+            Ports.requestModelThumbnails requests
 
 
 basePreviewKey : Base -> String
@@ -1334,7 +1344,128 @@ noticeView model =
             text ""
 
 
-{-| Base lock toggle, shown at the far right of the palette row.
+{-| The lock controls at the far right of the palette row: the grouping lock,
+then the base lock.
+-}
+lockControls : Model -> Html Msg
+lockControls model =
+    div
+        [ Attr.style "display" "flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "gap" "6px"
+        , Attr.style "flex-shrink" "0"
+        ]
+        [ groupLockButton model
+        , lockButton model
+        ]
+
+
+{-| The grouping lock (see `Core.GroupLock`): greyed with nothing selected or
+during a drag, LOCKED on exactly one group (pressing releases its bricks),
+OPEN otherwise (pressing merges the selection into one group).
+-}
+groupLockButton : Model -> Html Msg
+groupLockButton model =
+    let
+        lang =
+            model.language
+
+        state =
+            Core.groupLock model.studio
+
+        ( label, stateName, icon ) =
+            case state of
+                Core.GroupLockDisabled ->
+                    ( RI18n.groupDisabledLabel lang, "disabled", FeatherIcons.unlock )
+
+                Core.GroupLockOpen ->
+                    ( RI18n.groupOpenLabel lang, "open", FeatherIcons.unlock )
+
+                Core.GroupLockLocked ->
+                    ( RI18n.groupLockedLabel lang, "locked", FeatherIcons.lock )
+
+        enabled =
+            state /= Core.GroupLockDisabled
+
+        locked =
+            state == Core.GroupLockLocked
+    in
+    button
+        ([ Attr.type_ "button"
+         , Attr.attribute "data-testid" "group-lock"
+         , Attr.attribute "data-state" stateName
+         , Attr.disabled (not enabled)
+         , Attr.style "display" "inline-flex"
+         , Attr.style "align-items" "center"
+         , Attr.style "justify-content" "center"
+         , Attr.style "width" "40px"
+         , Attr.style "height" "40px"
+         , Attr.style "flex-shrink" "0"
+         , Attr.style "border-radius" "12px"
+         , Attr.style "border"
+            (if not enabled then
+                "1px solid rgba(255, 255, 255, 0.08)"
+
+             else if locked then
+                "1px solid rgba(255, 255, 255, 0.2)"
+
+             else
+                "1px solid #f59e0b"
+            )
+         , Attr.style "background"
+            (if not enabled then
+                "rgba(15, 23, 42, 0.4)"
+
+             else if locked then
+                "rgba(15, 23, 42, 0.82)"
+
+             else
+                "rgba(245, 158, 11, 0.25)"
+            )
+         , Attr.style "color"
+            (if not enabled then
+                "#475569"
+
+             else if locked then
+                "#cbd5e1"
+
+             else
+                "#fbbf24"
+            )
+         , Attr.style "opacity"
+            (if enabled then
+                "1"
+
+             else
+                "0.35"
+            )
+         , Attr.style "cursor"
+            (if enabled then
+                "pointer"
+
+             else
+                "default"
+            )
+         , Attr.style "touch-action" "manipulation"
+         , Attr.style "pointer-events" "auto"
+         , Attr.title label
+         , Attr.attribute "aria-label" label
+         ]
+            ++ (if enabled then
+                    [ onClick (StudioMsg Core.ToggleGroupLock) ]
+
+                else
+                    []
+               )
+        )
+        [ icon
+            |> FeatherIcons.withSize 18
+            |> FeatherIcons.toHtml []
+        ]
+
+
+{-| Base lock toggle: locks the starter base so edits cannot split it. A shield
+with a small "Base" caption, so it is not mistaken for the grouping lock.
 -}
 lockButton : Model -> Html Msg
 lockButton model =
@@ -1347,15 +1478,27 @@ lockButton model =
 
         label =
             if locked then
-                tr lang "Base locked (click to unlock and edit chassis)" "Alusta lukittu (klikkaa avataksesi alustan muokkaus)"
+                RI18n.baseLockedLabel lang
 
             else
-                tr lang "Base unlocked (click to lock chassis)" "Alusta avattu (klikkaa lukitaksesi alusta)"
+                RI18n.baseUnlockedLabel lang
     in
     button
         [ Attr.type_ "button"
         , onClick ToggleBaseLock
+        , Attr.attribute "data-testid" "base-lock"
+        , Attr.attribute "aria-pressed"
+            (if locked then
+                "true"
+
+             else
+                "false"
+            )
         , Attr.style "display" "inline-flex"
+        , Attr.style "flex-direction" "column"
+        , Attr.style "gap" "1px"
+        , Attr.style "padding" "0"
+        , Attr.style "touch-action" "manipulation"
         , Attr.style "align-items" "center"
         , Attr.style "justify-content" "center"
         , Attr.style "width" "40px"
@@ -1389,13 +1532,20 @@ lockButton model =
         , Attr.attribute "aria-label" label
         ]
         [ (if locked then
-            FeatherIcons.lock
+            FeatherIcons.shield
 
            else
-            FeatherIcons.unlock
+            FeatherIcons.shieldOff
           )
-            |> FeatherIcons.withSize 18
+            |> FeatherIcons.withSize 16
             |> FeatherIcons.toHtml []
+        , span
+            [ Attr.style "font-size" "9px"
+            , Attr.style "line-height" "1"
+            , Attr.style "font-weight" "600"
+            , Attr.attribute "aria-hidden" "true"
+            ]
+            [ text (RI18n.baseLockCaption lang) ]
         ]
 
 
@@ -1568,7 +1718,7 @@ paletteRow model =
             , Attr.style "flex-shrink" "0"
             ]
             []
-        , lockButton model
+        , lockControls model
         ]
 
 
