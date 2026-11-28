@@ -1,4 +1,4 @@
-# Brick Racer (Mäkiautokisa)
+# Brick Racer (Mäkiautojen pienajot)
 
 Brick Racer is a 3D soapbox downhill racer by Suomen Palikkaharrastajat ry: steer your Brick Play or Brick Studio car down generated downhill courses under gravity.
 
