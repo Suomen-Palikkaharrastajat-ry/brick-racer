@@ -4,8 +4,11 @@ module Pages.Build exposing
     , Msg(..)
     , Outcome(..)
     , document
+    , history
     , init
+    , previewRequests
     , resize
+    , setHistory
     , setLanguage
     , setPartCacheAndIndex
     , subscriptions
@@ -18,11 +21,23 @@ module Pages.Build exposing
 Includes the 3D builder `Studio.Core`, the parts dock, starter bases & preset cars,
 URL/file/QR model import, and live mechanical inspection & chassis specs.
 
+The build is saved as it changes into the build history (`Game.BuildHistory`,
+kept in localStorage by `main.js` through `Ports.saveBuildHistory`): a short
+while after each edit, when the page is hidden (a phone switching apps or
+discarding the tab), when the bases drawer opens, before another base, preset
+or build replaces it, and when the player finishes. The bases drawer lists the
+saved builds under the starter bases, so a replaced build is one tap away.
+Base cards and saved builds show pictures from the shared thumbnail pipeline
+(`Game.ModelPreview`, `Ports.requestModelThumbnails`).
+
 -}
 
+import Browser.Events
 import DesignTokens.Colors as Brand
 import Dict exposing (Dict)
 import FeatherIcons
+import Game.BuildHistory as BuildHistory exposing (History)
+import Game.ModelPreview as ModelPreview
 import Game.Ports as GamePorts
 import Html exposing (Html, button, div, h3, input, span, text, textarea)
 import Html.Attributes as Attr
@@ -35,6 +50,7 @@ import LDraw.Colors as Colors
 import LDraw.Document as Document exposing (Document)
 import LDraw.Resolve exposing (PartCache)
 import Ports
+import Process
 import Racer.Analyze as Analyze
 import Racer.Editor as Editor exposing (Base, PartEntry)
 import Racer.GarageFloor as GarageFloor
@@ -46,6 +62,8 @@ import Studio.Colours as Colours
 import Studio.Core as Core
 import Studio.Health as Health
 import Studio.Shortcuts exposing (TurnDirection(..))
+import Task
+import Time
 import UI.PartCard as PartCard
 import Viewport
 
@@ -61,6 +79,15 @@ type BuilderTab
 
 
 {-| Editor state: studio, base, active tab, thumbnails, import inputs, and part cache/index.
+
+The build history: the saved builds (`history`), the clock (ms, refreshed
+by `ClockTick` and each autosave), the editing session saves go to
+(`session`, `Nothing` until the next save starts a new one; `lastSession` is
+the newest session id used), the edit counter the autosave debounce checks
+(`revision`), the build link of the build as last saved (`savedCode`), and
+the pictures of bases (`"base:" ++ id`) and saved builds (by build link) in
+`previews`.
+
 -}
 type alias Model =
     { studio : Core.Model
@@ -80,6 +107,13 @@ type alias Model =
     , partIndex : PartIndex
     , activePart : String
     , recentParts : List String
+    , history : History
+    , clock : Int
+    , session : Maybe Int
+    , lastSession : Int
+    , revision : Int
+    , savedCode : String
+    , previews : Dict String String
     }
 
 
@@ -118,6 +152,11 @@ type Msg
     | RequestFileUpload
     | OpenQrScanner
     | LoadExternalDocument Document (Maybe Base)
+    | ClockTick Time.Posix
+    | AutoSave Int Time.Posix
+    | PageVisibility Browser.Events.Visibility
+    | RestoreBuild BuildHistory.Entry
+    | ModelPreviewLoaded { key : String, url : String }
 
 
 {-| What the editor asks `Main` to do after an update.
@@ -181,14 +220,42 @@ init config maybeBase doc =
             , partIndex = Catalog.emptyPartIndex
             , activePart = "3001.dat"
             , recentParts = [ "3001.dat", "3003.dat", "3020.dat", "3022.dat", "3039.dat", "4600.dat" ]
+            , history = BuildHistory.empty
+            , clock = 0
+            , session = Nothing
+            , lastSession = 0
+            , revision = 0
+            , savedCode = ""
+            , previews = Dict.empty
             }
 
         ( sized, sizeCmd ) =
             resize config.width config.height model
     in
     ( sized
-    , Cmd.batch [ Cmd.map StudioMsg studioCmd, Cmd.map StudioMsg fitCmd, sizeCmd, requestThumbnails sized ]
+    , Cmd.batch
+        [ Cmd.map StudioMsg studioCmd
+        , Cmd.map StudioMsg fitCmd
+        , sizeCmd
+        , requestThumbnails sized
+        , Task.perform ClockTick Time.now
+        ]
     )
+
+
+{-| The saved builds, newest first.
+-}
+history : Model -> History
+history model =
+    model.history
+
+
+{-| Hand the editor the saved builds (opening it, or once `main.js` has read
+them from localStorage).
+-}
+setHistory : History -> Model -> Model
+setHistory saved model =
+    { model | history = saved }
 
 
 {-| The build as it stands.
@@ -310,17 +377,209 @@ update msg model =
                  else
                     model
                 )
+
+        ( saved, saveCmd ) =
+            scheduleAutoSave model next
     in
-    if next.activeTab /= model.activeTab then
+    if saved.activeTab /= model.activeTab then
         -- Any change of drawer changes the canvas height, so resize it here.
         let
             ( resized, resizeCmd ) =
-                runCore (Core.update (Core.ViewportMsg (Viewport.WindowResize next.width (canvasHeight next)))) next
+                runCore (Core.update (Core.ViewportMsg (Viewport.WindowResize saved.width (canvasHeight saved)))) saved
         in
-        ( resized, Cmd.batch [ cmd, resizeCmd ], outcome )
+        ( resized, Cmd.batch [ cmd, saveCmd, resizeCmd, requestPreviews resized ], outcome )
 
     else
-        ( next, cmd, outcome )
+        ( saved, Cmd.batch [ cmd, saveCmd ], outcome )
+
+
+{-| How long the build must stay unchanged before it is saved.
+-}
+autoSaveDelay : Float
+autoSaveDelay =
+    1500
+
+
+{-| After an edit, save the build once it has stayed unchanged for
+`autoSaveDelay` (each edit bumps `revision`, so only the last one saves).
+-}
+scheduleAutoSave : Model -> Model -> ( Model, Cmd Msg )
+scheduleAutoSave before after =
+    if Core.getDocument after.studio /= Core.getDocument before.studio then
+        let
+            revision =
+                after.revision + 1
+        in
+        ( { after | revision = revision }
+        , Process.sleep autoSaveDelay
+            |> Task.andThen (\_ -> Time.now)
+            |> Task.perform (AutoSave revision)
+        )
+
+    else
+        ( after, Cmd.none )
+
+
+{-| Whether the build has anything on it beyond a bare starter base.
+-}
+hasOwnParts : Model -> Bool
+hasOwnParts model =
+    let
+        doc =
+            Core.getDocument model.studio
+
+        count =
+            List.length (Document.flattenedPlacements doc)
+    in
+    case model.base of
+        Just base ->
+            not (Editor.baseIntact base doc && count <= base.partCount)
+
+        Nothing ->
+            count > 0
+
+
+{-| Save the build as it stands into the history, in the current session (a
+new one when there is none), and store the history. A bare starter base is
+not saved.
+-}
+saveBuild : Model -> ( Model, Cmd Msg )
+saveBuild model =
+    if not (hasOwnParts model) then
+        ( model, Cmd.none )
+
+    else
+        let
+            doc =
+                Core.getDocument model.studio
+
+            sessionId =
+                case model.session of
+                    Just id ->
+                        id
+
+                    Nothing ->
+                        max model.clock (model.lastSession + 1)
+
+            code =
+                Ingest.encodeBuildLink doc
+
+            saved =
+                BuildHistory.record
+                    { code = code
+                    , base = model.base |> Maybe.map .id |> Maybe.withDefault ""
+                    , parts = List.length (Document.flattenedPlacements doc)
+                    , savedAt = model.clock
+                    , session = sessionId
+                    }
+                    model.history
+
+            next =
+                { model | session = Just sessionId, lastSession = max sessionId model.lastSession, savedCode = code }
+        in
+        if saved == model.history then
+            ( next, Cmd.none )
+
+        else
+            ( { next | history = saved }, Ports.saveBuildHistory (BuildHistory.toJson saved) )
+
+
+{-| Save the build and start a new session, so later edits are saved as a
+new entry (and the saved one stays in the history).
+-}
+saveSnapshot : Model -> ( Model, Cmd Msg )
+saveSnapshot model =
+    saveBuild model |> Tuple.mapFirst (\m -> { m | session = Nothing })
+
+
+{-| The picture requests the bases drawer still needs: every starter base and
+every saved build without a picture yet. Asked for whenever the drawer opens.
+-}
+previewRequests : Model -> List ModelPreview.Request
+previewRequests model =
+    let
+        bases =
+            Editor.bases
+                |> List.filter (\b -> not (Dict.member (basePreviewKey b) model.previews))
+                |> List.map (\b -> ModelPreview.request (basePreviewKey b) b.document)
+
+        builds =
+            BuildHistory.entries model.history
+                |> List.filter (\e -> not (Dict.member e.code model.previews))
+                |> List.filterMap
+                    (\e ->
+                        Ingest.decodeRaceInput Nothing e.code
+                            |> Result.toMaybe
+                            |> Maybe.map (\decoded -> ModelPreview.request e.code decoded.document)
+                    )
+    in
+    bases ++ builds
+
+
+requestPreviews : Model -> Cmd Msg
+requestPreviews model =
+    if model.activeTab == BasesTab then
+        case previewRequests model of
+            [] ->
+                Cmd.none
+
+            requests ->
+                Ports.requestModelThumbnails requests
+
+    else
+        Cmd.none
+
+
+basePreviewKey : Base -> String
+basePreviewKey base =
+    "base:" ++ base.id
+
+
+{-| Replace the build with `doc` (optionally on `base`): the studio is reset
+(its undo history too), the view fitted and the drawer closed. The base is
+locked when the build holds it.
+-}
+loadBuild : Maybe Base -> Document -> Model -> ( Model, Cmd Msg )
+loadBuild maybeBase doc model =
+    let
+        ( nextStudio, cmd, events ) =
+            Core.resetDocument doc model.studio
+
+        ( fittedStudio, fitCmd ) =
+            Core.fitView nextStudio
+
+        updated =
+            { model
+                | studio = fittedStudio
+                , base = maybeBase
+                , baseLocked = maybeBase /= Nothing
+                , activeTab = BuildBricksTab
+                , notice = Nothing
+            }
+    in
+    ( updated
+    , Cmd.batch
+        [ Cmd.map StudioMsg cmd
+        , Cmd.map StudioMsg fitCmd
+        , Cmd.batch (List.map eventCmd events)
+        , requestThumbnails updated
+        ]
+    )
+
+
+{-| Save the build, then replace it (see `loadBuild`): the old build stays in
+the history.
+-}
+replaceBuild : Maybe Base -> Document -> Model -> ( Model, Cmd Msg )
+replaceBuild maybeBase doc model =
+    let
+        ( saved, saveCmd ) =
+            saveSnapshot model
+
+        ( loaded, loadCmd ) =
+            loadBuild maybeBase doc saved
+    in
+    ( loaded, Cmd.batch [ saveCmd, loadCmd ] )
 
 
 updateModel : Msg -> Model -> ( Model, Cmd Msg, Outcome )
@@ -516,7 +775,11 @@ updateModel msg model =
             ( { model | studio = studio }, Cmd.map StudioMsg cmd, Stay )
 
         Finish ->
-            ( model, Cmd.none, Finished (Core.getDocument model.studio) )
+            let
+                ( saved, saveCmd ) =
+                    saveSnapshot model
+            in
+            ( saved, saveCmd, Finished (Core.getDocument model.studio) )
 
         Leave ->
             ( model, Cmd.none, Quit )
@@ -537,76 +800,96 @@ updateModel msg model =
                     else
                         tab
 
+                -- Opening the bases drawer saves the build first, so it is
+                -- listed there, and later edits are saved as a new entry.
+                ( snapshot, saveCmd ) =
+                    if nextTab == BasesTab && model.activeTab /= BasesTab then
+                        saveSnapshot model
+
+                    else
+                        ( model, Cmd.none )
+
                 updated =
-                    { model | activeTab = nextTab, notice = Nothing }
+                    { snapshot | activeTab = nextTab, notice = Nothing }
 
                 ( next, cmd ) =
                     runCore (Core.update (Core.ViewportMsg (Viewport.WindowResize model.width (canvasHeight updated)))) updated
             in
-            ( next, cmd, Stay )
+            ( next, Cmd.batch [ saveCmd, cmd ], Stay )
 
         SelectPreset preset ->
             let
                 doc =
                     Document.parse preset.ldrText
-
-                newBase =
-                    Editor.baseOf doc
-
-                ( nextStudio, cmd, events ) =
-                    Core.resetDocument doc model.studio
-
-                ( fittedStudio, fitCmd ) =
-                    Core.fitView nextStudio
-
-                updated =
-                    { model
-                        | studio = fittedStudio
-                        , base = newBase
-                        , baseLocked = newBase /= Nothing
-                        , activeTab = BuildBricksTab
-                        , notice = Nothing
-                    }
             in
-            ( updated
-            , Cmd.batch
-                [ Cmd.map StudioMsg cmd
-                , Cmd.map StudioMsg fitCmd
-                , Cmd.batch (List.map eventCmd events)
-                , requestThumbnails updated
-                ]
-            , Stay
-            )
+            stay (replaceBuild (Editor.baseOf doc) doc model)
 
         SelectBase base ->
+            if Maybe.map .id model.base == Just base.id then
+                -- The base the build stands on: keep the build.
+                ( { model | activeTab = BuildBricksTab, notice = Nothing }, Cmd.none, Stay )
+
+            else
+                -- The build is saved first; it stays in the history below the bases.
+                stay (replaceBuild (Just base) base.document model)
+
+        RestoreBuild entry ->
+            if entry.code == Ingest.encodeBuildLink (Core.getDocument model.studio) then
+                -- Already the build on the stand.
+                ( { model | activeTab = BuildBricksTab, notice = Nothing }, Cmd.none, Stay )
+
+            else
+                case Ingest.decodeRaceInput Nothing entry.code of
+                    Ok decoded ->
+                        let
+                            base =
+                                case List.filter (\b -> b.id == entry.base) Editor.bases |> List.head of
+                                    Just found ->
+                                        if Editor.baseIntact found decoded.document then
+                                            Just found
+
+                                        else
+                                            Editor.baseOf decoded.document
+
+                                    Nothing ->
+                                        Editor.baseOf decoded.document
+
+                            ( restored, restoreCmd ) =
+                                replaceBuild base decoded.document model
+                        in
+                        ( { restored | notice = Just (RI18n.buildHistoryRestored model.language), savedCode = entry.code }, restoreCmd, Stay )
+
+                    Err _ ->
+                        -- Cannot be read any more: drop it from the list.
+                        let
+                            pruned =
+                                BuildHistory.remove entry.code model.history
+                        in
+                        ( { model | history = pruned }, Ports.saveBuildHistory (BuildHistory.toJson pruned), Stay )
+
+        ClockTick now ->
+            ( { model | clock = Time.posixToMillis now }, Cmd.none, Stay )
+
+        AutoSave revision now ->
             let
-                doc =
-                    base.document
-
-                ( nextStudio, cmd, events ) =
-                    Core.resetDocument doc model.studio
-
-                ( fittedStudio, fitCmd ) =
-                    Core.fitView nextStudio
-
-                updated =
-                    { model
-                        | studio = fittedStudio
-                        , base = Just base
-                        , baseLocked = True
-                        , activeTab = BuildBricksTab
-                        , notice = Nothing
-                    }
+                ticked =
+                    { model | clock = Time.posixToMillis now }
             in
-            ( updated
-            , Cmd.batch
-                [ Cmd.map StudioMsg cmd
-                , Cmd.map StudioMsg fitCmd
-                , Cmd.batch (List.map eventCmd events)
-                , requestThumbnails updated
-                ]
-            , Stay
-            )
+            if revision == model.revision then
+                stay (saveBuild ticked)
+
+            else
+                ( ticked, Cmd.none, Stay )
+
+        PageVisibility Browser.Events.Hidden ->
+            -- A phone may discard a hidden tab: save what is there now.
+            stay (saveBuild model)
+
+        PageVisibility Browser.Events.Visible ->
+            ( model, Cmd.none, Stay )
+
+        ModelPreviewLoaded picture ->
+            ( { model | previews = Dict.insert picture.key picture.url model.previews }, Cmd.none, Stay )
 
         ToggleBaseLock ->
             if model.baseLocked then
@@ -668,35 +951,7 @@ updateModel msg model =
         SubmitPaste ->
             case Ingest.decodeRaceInput Nothing model.pasteText of
                 Ok decoded ->
-                    let
-                        newBase =
-                            Editor.baseOf decoded.document
-
-                        ( nextStudio, cmd, events ) =
-                            Core.resetDocument decoded.document model.studio
-
-                        ( fittedStudio, fitCmd ) =
-                            Core.fitView nextStudio
-
-                        updated =
-                            { model
-                                | studio = fittedStudio
-                                , base = newBase
-                                , baseLocked = newBase /= Nothing
-                                , pasteText = ""
-                                , pasteError = Nothing
-                                , activeTab = BuildBricksTab
-                            }
-                    in
-                    ( updated
-                    , Cmd.batch
-                        [ Cmd.map StudioMsg cmd
-                        , Cmd.map StudioMsg fitCmd
-                        , Cmd.batch (List.map eventCmd events)
-                        , requestThumbnails updated
-                        ]
-                    , Stay
-                    )
+                    stay (replaceBuild (Editor.baseOf decoded.document) decoded.document { model | pasteText = "", pasteError = Nothing })
 
                 Err _ ->
                     ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }, Cmd.none, Stay )
@@ -716,32 +971,8 @@ updateModel msg model =
 
                         Nothing ->
                             Editor.baseOf doc
-
-                ( nextStudio, cmd, events ) =
-                    Core.resetDocument doc model.studio
-
-                ( fittedStudio, fitCmd ) =
-                    Core.fitView nextStudio
-
-                updated =
-                    { model
-                        | studio = fittedStudio
-                        , base = newBase
-                        , baseLocked = newBase /= Nothing
-                        , pasteText = ""
-                        , pasteError = Nothing
-                        , activeTab = BuildBricksTab
-                    }
             in
-            ( updated
-            , Cmd.batch
-                [ Cmd.map StudioMsg cmd
-                , Cmd.map StudioMsg fitCmd
-                , Cmd.batch (List.map eventCmd events)
-                , requestThumbnails updated
-                ]
-            , Stay
-            )
+            stay (replaceBuild newBase doc { model | pasteText = "", pasteError = Nothing })
 
 
 {-| Run a studio step, unless it would split the base.
@@ -892,6 +1123,9 @@ subscriptions model =
         , GamePorts.geometryFlattened (StudioMsg << Core.geometryFlattened)
         , GamePorts.geometryFlattenFailed (StudioMsg << Core.geometryFlattenFailed)
         , Ports.thumbnailLoaded ThumbnailLoaded
+        , Ports.modelThumbnailLoaded ModelPreviewLoaded
+        , Browser.Events.onVisibilityChange PageVisibility
+        , Time.every 30000 ClockTick
         ]
 
 
@@ -1583,7 +1817,8 @@ partCard model isActive file =
         }
 
 
-{-| Drawer showing the 4 starter bases.
+{-| Drawer of the starter bases, each with its picture, and below them the
+saved builds (`historyCards`).
 -}
 viewBasesDrawer : Model -> Html Msg
 viewBasesDrawer model =
@@ -1607,6 +1842,7 @@ viewBasesDrawer model =
             button
                 [ Attr.type_ "button"
                 , onClick (SelectBase base)
+                , Attr.attribute "data-base" base.id
                 , Attr.style "display" "flex"
                 , Attr.style "flex-direction" "column"
                 , Attr.style "gap" "8px"
@@ -1629,24 +1865,11 @@ viewBasesDrawer model =
                 , Attr.style "color" Brand.legoWhite
                 , Attr.style "cursor" "pointer"
                 , Attr.style "text-align" "left"
+                , Attr.style "touch-action" "manipulation"
                 ]
-                [ div
-                    [ Attr.style "width" "100%"
-                    , Attr.style "aspect-ratio" "1 / 1"
-                    , Attr.style "border-radius" "8px"
-                    , Attr.style "overflow" "hidden"
-                    , Attr.style "background" "#070c14"
-                    , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
-                    ]
-                    [ Html.img
-                        [ Attr.src ("base-previews/" ++ base.id ++ ".png")
-                        , Attr.alt name
-                        , Attr.style "width" "100%"
-                        , Attr.style "height" "100%"
-                        , Attr.style "object-fit" "contain"
-                        ]
-                        []
-                    ]
+                [ cardPicture name
+                    (Dict.get (basePreviewKey base) model.previews)
+                    (Just ("base-previews/" ++ base.id ++ ".png"))
                 , div []
                     [ div [ Attr.style "font-weight" "800", Attr.style "font-size" "13px" ] [ text ("🔨 " ++ name) ]
                     , div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8", Attr.style "margin-top" "2px" ]
@@ -1656,12 +1879,154 @@ viewBasesDrawer model =
     in
     div (drawerStyle (drawerHeight model 280) ++ [ Attr.attribute "data-testid" "bases-drawer" ])
         [ div [ Attr.style "display" "flex", Attr.style "flex-direction" "column", Attr.style "gap" "10px", Attr.style "height" "100%", Attr.style "overflow-y" "auto" ]
-            [ h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase" ]
-                [ text (tr lang "Choose Starter Chassis" "Valitse aloituspohja") ]
-            , div [ Attr.style "display" "grid", Attr.style "grid-template-columns" "repeat(2, minmax(0, 1fr))", Attr.style "gap" "10px" ]
+            [ drawerHeading (tr lang "Choose Starter Chassis" "Valitse aloituspohja")
+            , div cardGridStyle
                 (List.map renderBaseCard Editor.bases)
+            , drawerHeading (RI18n.buildHistoryHeading lang)
+            , historyCards model
             ]
         ]
+
+
+drawerHeading : String -> Html msg
+drawerHeading label =
+    h3 [ Attr.style "font-size" "13px", Attr.style "font-weight" "800", Attr.style "color" Brand.legoYellow, Attr.style "text-transform" "uppercase", Attr.style "margin" "0" ]
+        [ text label ]
+
+
+{-| The card grid of the bases drawer: as many columns as fit, so a phone in
+landscape shows a row of small cards rather than two huge ones.
+-}
+cardGridStyle : List (Html.Attribute msg)
+cardGridStyle =
+    [ Attr.style "display" "grid"
+    , Attr.style "grid-template-columns" "repeat(auto-fill, minmax(132px, 1fr))"
+    , Attr.style "gap" "10px"
+    ]
+
+
+{-| The square picture of a base or saved build card: the rendered picture
+when it has arrived, else the bundled one (`fallback`, drawn as a background
+so a missing file shows the empty frame rather than a broken image), else a
+hammer.
+-}
+cardPicture : String -> Maybe String -> Maybe String -> Html msg
+cardPicture name rendered fallback =
+    div
+        [ Attr.attribute "data-testid" "card-picture"
+        , Attr.style "width" "100%"
+        , Attr.style "aspect-ratio" "1 / 1"
+        , Attr.style "border-radius" "8px"
+        , Attr.style "overflow" "hidden"
+        , Attr.style "background-color" "#070c14"
+        , Attr.style "border" "1px solid rgba(255, 255, 255, 0.08)"
+        , Attr.style "display" "flex"
+        , Attr.style "align-items" "center"
+        , Attr.style "justify-content" "center"
+        ]
+        [ case ( rendered, fallback ) of
+            ( Just url, _ ) ->
+                Html.img
+                    [ Attr.src url
+                    , Attr.alt name
+                    , Attr.attribute "data-preview" "rendered"
+                    , Attr.style "width" "100%"
+                    , Attr.style "height" "100%"
+                    , Attr.style "object-fit" "contain"
+                    ]
+                    []
+
+            ( Nothing, Just url ) ->
+                div
+                    [ Attr.attribute "role" "img"
+                    , Attr.attribute "aria-label" name
+                    , Attr.attribute "data-preview" "bundled"
+                    , Attr.style "width" "100%"
+                    , Attr.style "height" "100%"
+                    , Attr.style "background-image" ("url(\"" ++ url ++ "\")")
+                    , Attr.style "background-size" "contain"
+                    , Attr.style "background-position" "center"
+                    , Attr.style "background-repeat" "no-repeat"
+                    ]
+                    []
+
+            ( Nothing, Nothing ) ->
+                span [ Attr.style "font-size" "28px", Attr.style "opacity" "0.6" ] [ text "🔨" ]
+        ]
+
+
+{-| The saved builds (`Game.BuildHistory`), newest first, as cards like the
+base cards: a picture of the build, its base, part count and age. A tap opens
+the build again; the build open now is marked.
+-}
+historyCards : Model -> Html Msg
+historyCards model =
+    let
+        lang =
+            model.language
+
+        card entry =
+            let
+                baseLabel =
+                    Editor.bases
+                        |> List.filter (\b -> b.id == entry.base)
+                        |> List.head
+                        |> Maybe.map (\b -> tr lang b.nameEn b.nameFi)
+                        |> Maybe.withDefault (tr lang "Car" "Auto")
+
+                isCurrent =
+                    entry.code == model.savedCode
+            in
+            button
+                [ Attr.type_ "button"
+                , onClick (RestoreBuild entry)
+                , Attr.attribute "data-history-entry" (String.fromInt entry.savedAt)
+                , Attr.attribute "aria-label" (RI18n.restoreBuildLabel lang baseLabel)
+                , Attr.title (RI18n.restoreBuildLabel lang baseLabel)
+                , Attr.style "display" "flex"
+                , Attr.style "flex-direction" "column"
+                , Attr.style "gap" "8px"
+                , Attr.style "padding" "10px 12px"
+                , Attr.style "border-radius" "12px"
+                , Attr.style "border"
+                    (if isCurrent then
+                        "2px solid " ++ Brand.legoYellow
+
+                     else
+                        "1px solid rgba(255, 255, 255, 0.15)"
+                    )
+                , Attr.style "background" "rgba(15, 23, 42, 0.7)"
+                , Attr.style "color" Brand.legoWhite
+                , Attr.style "cursor" "pointer"
+                , Attr.style "text-align" "left"
+                , Attr.style "touch-action" "manipulation"
+                ]
+                [ cardPicture baseLabel (Dict.get entry.code model.previews) Nothing
+                , div []
+                    [ div [ Attr.style "font-weight" "800", Attr.style "font-size" "13px" ] [ text ("↺ " ++ baseLabel) ]
+                    , div [ Attr.style "font-size" "11px", Attr.style "color" "#94a3b8", Attr.style "margin-top" "2px" ]
+                        [ text
+                            (RI18n.buildHistoryParts lang entry.parts
+                                ++ " • "
+                                ++ (if isCurrent then
+                                        RI18n.buildHistoryCurrent lang
+
+                                    else
+                                        RI18n.buildHistoryAge lang (max 0 (model.clock - entry.savedAt))
+                                   )
+                            )
+                        ]
+                    ]
+                ]
+    in
+    case BuildHistory.entries model.history of
+        [] ->
+            div [ Attr.attribute "data-testid" "build-history-empty", Attr.style "font-size" "12px", Attr.style "color" "#94a3b8" ]
+                [ text (RI18n.buildHistoryEmpty lang) ]
+
+        saved ->
+            div (Attr.attribute "data-testid" "build-history" :: cardGridStyle)
+                (List.map card saved)
 
 
 {-| Category definitions for the categorized All-Bricks drawer.

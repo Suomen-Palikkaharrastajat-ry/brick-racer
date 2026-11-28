@@ -6,6 +6,12 @@ module Racer.I18n exposing
     , bothPlayersReady
     , buildCarHeading
     , buildCarHint
+    , buildHistoryAge
+    , buildHistoryCurrent
+    , buildHistoryEmpty
+    , buildHistoryHeading
+    , buildHistoryParts
+    , buildHistoryRestored
     , buildTab
     , carsAndBasesTab
     , changeCarLabel
@@ -73,6 +79,7 @@ module Racer.I18n exposing
     , readyToRaceBanner
     , recoveryHint
     , resetCheckpointLabel
+    , restoreBuildLabel
     , reviewTab
     , roomCodePlaceholder
     , scanQrButton
@@ -1634,3 +1641,114 @@ waitingForHostToStart lang =
 
         En ->
             "Waiting for host to start the race..."
+
+
+
+-- BUILD HISTORY (the car editor's bases drawer)
+
+
+{-| Heading of the saved builds in the bases drawer.
+-}
+buildHistoryHeading : Language -> String
+buildHistoryHeading lang =
+    case lang of
+        Fi ->
+            "Aiemmat rakennelmat"
+
+        En ->
+            "Previous builds"
+
+
+{-| Shown in place of the saved builds before there are any.
+-}
+buildHistoryEmpty : Language -> String
+buildHistoryEmpty lang =
+    case lang of
+        Fi ->
+            "Rakennelmasi tallentuvat tähän, kun rakennat."
+
+        En ->
+            "Your builds are saved here as you build."
+
+
+{-| Badge of the saved build that is open in the editor.
+-}
+buildHistoryCurrent : Language -> String
+buildHistoryCurrent lang =
+    case lang of
+        Fi ->
+            "Työn alla"
+
+        En ->
+            "In progress"
+
+
+{-| Notice after a saved build was opened again.
+-}
+buildHistoryRestored : Language -> String
+buildHistoryRestored lang =
+    case lang of
+        Fi ->
+            "↺ Aiempi rakennelma palautettu"
+
+        En ->
+            "↺ Earlier build restored"
+
+
+{-| The part count of a saved build.
+-}
+buildHistoryParts : Language -> Int -> String
+buildHistoryParts lang n =
+    case lang of
+        Fi ->
+            String.fromInt n ++ " osaa"
+
+        En ->
+            String.fromInt n ++ " parts"
+
+
+{-| How long ago a build was saved, from its age in milliseconds.
+-}
+buildHistoryAge : Language -> Int -> String
+buildHistoryAge lang ms =
+    let
+        minutes =
+            ms // 60000
+
+        hours =
+            minutes // 60
+
+        days =
+            hours // 24
+
+        say fi en =
+            case lang of
+                Fi ->
+                    fi
+
+                En ->
+                    en
+    in
+    if minutes < 1 then
+        say "juuri nyt" "just now"
+
+    else if hours < 1 then
+        String.fromInt minutes ++ say " min sitten" " min ago"
+
+    else if days < 1 then
+        String.fromInt hours ++ say " t sitten" " h ago"
+
+    else
+        String.fromInt days ++ say " pv sitten" " d ago"
+
+
+{-| Label of a saved build's card, which opens it again.
+-}
+restoreBuildLabel : Language -> String -> String
+restoreBuildLabel lang name =
+    case lang of
+        Fi ->
+            "Palauta rakennelma: " ++ name
+
+        En ->
+            "Restore build: " ++ name

@@ -16,6 +16,7 @@ import Browser.Dom as Dom
 import Browser.Events
 import DesignTokens.Colors as Brand
 import Dict exposing (Dict)
+import Game.BuildHistory as BuildHistory exposing (History)
 import Game.MapParams as Map exposing (Biome, MapParams, Pick(..), Season, Selection, WeatherKind)
 import Game.Multiplayer as Multiplayer exposing (Role(..), RoomState, RoomStatus(..))
 import Game.PartLoading as PartLoading
@@ -279,6 +280,7 @@ type alias Model =
     , customCar : Maybe { title : String, document : Document }
     , selectedPresetId : Maybe String
     , savedGarage : Maybe GarageState
+    , buildHistory : History
     , activeSlot : Garage.PlayerSlot
     , playerOneCar : Maybe GarageState
     , playerTwoCar : PlayerTwoCar
@@ -343,6 +345,7 @@ type Msg
     | SubmitPaste
     | BinaryHashDecoded (Maybe (List Int))
     | FileContentReceived String
+    | BuildHistoryLoaded String
     | FileLoadError String
     | HashChanged String
     | RequestFileUpload
@@ -554,6 +557,7 @@ init flags =
                 , customCar = Nothing
                 , selectedPresetId = Just initPreset.id
                 , savedGarage = Nothing
+                , buildHistory = BuildHistory.empty
                 , activeSlot = Garage.SlotPlayer1
                 , playerOneCar = Nothing
                 , playerTwoCar = p2Car
@@ -1129,6 +1133,24 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        BuildHistoryLoaded json ->
+            let
+                saved =
+                    BuildHistory.fromJson json
+            in
+            ( { model
+                | buildHistory = saved
+                , page =
+                    case model.page of
+                        BuildPage build ->
+                            BuildPage (Build.setHistory saved build)
+
+                        other ->
+                            other
+              }
+            , Cmd.none
+            )
+
         FileContentReceived rawLdr ->
             case model.page of
                 BuildPage build ->
@@ -1138,7 +1160,7 @@ update msg model =
                                 ( nextBuild, buildCmd, _ ) =
                                     Build.update (Build.LoadExternalDocument decoded.document Nothing) build
                             in
-                            ( { model | page = BuildPage nextBuild }, Cmd.map BuildMsg buildCmd )
+                            ( { model | page = BuildPage nextBuild, buildHistory = Build.history nextBuild }, Cmd.map BuildMsg buildCmd )
 
                         Err _ ->
                             ( { model | pasteError = Just (RI18n.pasteErrorFallback model.language) }
@@ -1279,93 +1301,20 @@ update msg model =
                     let
                         ( nextBuild, buildCmd, outcome ) =
                             Build.update buildMsg build
+
+                        ( next, cmd ) =
+                            buildOutcome build nextBuild buildCmd outcome { model | buildHistory = Build.history nextBuild }
                     in
                     case outcome of
-                        Build.Stay ->
-                            let
-                                docBefore =
-                                    Build.document build
-
-                                docAfter =
-                                    Build.document nextBuild
-
-                                hashCmd =
-                                    if docBefore /= docAfter then
-                                        GamePorts.setUrlHash (Ingest.encodeGarageHash model.map docAfter)
-
-                                    else
-                                        Cmd.none
-                            in
-                            ( { model | page = BuildPage nextBuild }
-                            , Cmd.batch [ Cmd.map BuildMsg buildCmd, hashCmd ]
-                            )
-
                         Build.Quit ->
-                            case model.savedGarage of
-                                Just garage ->
-                                    ( { model | page = SetupPage garage, savedGarage = Nothing }
-                                    , GamePorts.setUrlHash (Ingest.encodeRaceHash model.map garage.document)
-                                    )
+                            -- The editor's last save (of the build it leaves) still goes out.
+                            ( next, Cmd.batch [ cmd, Cmd.map BuildMsg buildCmd ] )
 
-                                Nothing ->
-                                    let
-                                        doc =
-                                            Document.parse defaultPreset.ldrText
+                        Build.Finished _ ->
+                            ( next, Cmd.batch [ cmd, Cmd.map BuildMsg buildCmd ] )
 
-                                        title =
-                                            presetTitle model.language defaultPreset
-                                    in
-                                    loadDocumentIntoGarage title doc Nothing True { model | selectedPresetId = Just defaultPreset.id }
-
-                        Build.Finished doc ->
-                            let
-                                title =
-                                    builtCarTitle model.language nextBuild.base
-
-                                isP2 =
-                                    model.raceMode == SplitScreenTwoPlayer && model.activeSlot == Garage.SlotPlayer2
-                            in
-                            if isP2 then
-                                let
-                                    analyzed =
-                                        Analyze.analyzeDocument title doc model.partCache model.partIndex
-
-                                    updatedModel =
-                                        { model
-                                            | playerTwoCar =
-                                                { title = title
-                                                , document = doc
-                                                , vehicle = analyzed.spec
-                                                , meshes = analyzed.meshes
-                                                }
-                                            , savedGarage = Nothing
-                                        }
-                                in
-                                loadDocumentIntoGarage title doc Nothing True updatedModel
-
-                            else
-                                let
-                                    custom =
-                                        Just { title = title, document = doc }
-
-                                    ( nextModel, enterCmd ) =
-                                        loadDocumentIntoGarage title doc Nothing True { model | customCar = custom, selectedPresetId = Nothing, savedGarage = Nothing }
-
-                                    shareCmd =
-                                        case model.multiplayer of
-                                            Just _ ->
-                                                GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash nextModel.map doc)
-
-                                            Nothing ->
-                                                Cmd.none
-                                in
-                                ( nextModel, Cmd.batch [ enterCmd, shareCmd ] )
-
-                        Build.TriggerFileUpload ->
-                            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.requestFileUpload () ] )
-
-                        Build.TriggerQrScanner ->
-                            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.openQrScanner () ] )
+                        _ ->
+                            ( next, cmd )
 
                 _ ->
                     ( model, Cmd.none )
@@ -4345,6 +4294,7 @@ subscriptions model =
         , GamePorts.fileContentReceived FileContentReceived
         , GamePorts.fileLoadError FileLoadError
         , GamePorts.binaryHashDecoded BinaryHashDecoded
+        , Ports.buildHistoryLoaded BuildHistoryLoaded
         , GamePorts.hashChanged HashChanged
         , GamePorts.tiltStatus TiltStatusChanged
         , GamePorts.tiltSteer TiltSteerChanged
@@ -4608,6 +4558,100 @@ view model =
                 }
 
 
+{-| What `Main` does after a car editor update, by its outcome: stay in the
+editor (following the build in the URL hash), go back to the garage, or take
+the finished car there.
+-}
+buildOutcome : Build.Model -> Build.Model -> Cmd Build.Msg -> Build.Outcome -> Model -> ( Model, Cmd Msg )
+buildOutcome build nextBuild buildCmd outcome model =
+    case outcome of
+        Build.Stay ->
+            let
+                docBefore =
+                    Build.document build
+
+                docAfter =
+                    Build.document nextBuild
+
+                hashCmd =
+                    if docBefore /= docAfter then
+                        GamePorts.setUrlHash (Ingest.encodeGarageHash model.map docAfter)
+
+                    else
+                        Cmd.none
+            in
+            ( { model | page = BuildPage nextBuild }
+            , Cmd.batch [ Cmd.map BuildMsg buildCmd, hashCmd ]
+            )
+
+        Build.Quit ->
+            case model.savedGarage of
+                Just garage ->
+                    ( { model | page = SetupPage garage, savedGarage = Nothing }
+                    , GamePorts.setUrlHash (Ingest.encodeRaceHash model.map garage.document)
+                    )
+
+                Nothing ->
+                    let
+                        doc =
+                            Document.parse defaultPreset.ldrText
+
+                        title =
+                            presetTitle model.language defaultPreset
+                    in
+                    loadDocumentIntoGarage title doc Nothing True { model | selectedPresetId = Just defaultPreset.id }
+
+        Build.Finished doc ->
+            let
+                title =
+                    builtCarTitle model.language nextBuild.base
+
+                isP2 =
+                    model.raceMode == SplitScreenTwoPlayer && model.activeSlot == Garage.SlotPlayer2
+            in
+            if isP2 then
+                let
+                    analyzed =
+                        Analyze.analyzeDocument title doc model.partCache model.partIndex
+
+                    updatedModel =
+                        { model
+                            | playerTwoCar =
+                                { title = title
+                                , document = doc
+                                , vehicle = analyzed.spec
+                                , meshes = analyzed.meshes
+                                }
+                            , savedGarage = Nothing
+                        }
+                in
+                loadDocumentIntoGarage title doc Nothing True updatedModel
+
+            else
+                let
+                    custom =
+                        Just { title = title, document = doc }
+
+                    ( nextModel, enterCmd ) =
+                        loadDocumentIntoGarage title doc Nothing True { model | customCar = custom, selectedPresetId = Nothing, savedGarage = Nothing }
+
+                    shareCmd =
+                        case model.multiplayer of
+                            Just _ ->
+                                GamePorts.setMultiplayerVehicle (Ingest.encodeRaceHash nextModel.map doc)
+
+                            Nothing ->
+                                Cmd.none
+                in
+                ( nextModel, Cmd.batch [ enterCmd, shareCmd ] )
+
+        Build.TriggerFileUpload ->
+            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.requestFileUpload () ] )
+
+        Build.TriggerQrScanner ->
+            ( { model | page = BuildPage nextBuild }, Cmd.batch [ Cmd.map BuildMsg buildCmd, GamePorts.openQrScanner () ] )
+
+
 {-| Open the car editor on a build optionally standing on `base`.
 -}
 openBuilder : Maybe Editor.Base -> Document -> Model -> ( Model, Cmd Msg )
@@ -4624,7 +4668,7 @@ openBuilder maybeBase doc model =
                 }
                 maybeBase
                 doc
-                |> Tuple.mapFirst (Build.setPartCacheAndIndex model.partCache model.partIndex)
+                |> Tuple.mapFirst (Build.setPartCacheAndIndex model.partCache model.partIndex >> Build.setHistory model.buildHistory)
 
         hashCmd =
             GamePorts.setUrlHash (Ingest.encodeGarageHash model.map doc)
